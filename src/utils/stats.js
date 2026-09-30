@@ -1,0 +1,22 @@
+import {addDays,dateKey,daysBetween} from './dates.js';
+export const formatNumber=n=>new Intl.NumberFormat('es-ES',{maximumFractionDigits:1}).format(n);
+export function average(values) { return values.length?values.reduce((a,b)=>a+b,0)/values.length:0; }
+export function inRange(entries,start,end) { return entries.filter(e=>e.date>=start&&e.date<=end).sort((a,b)=>a.date.localeCompare(b.date)); }
+export function maxStreak(entries) { let max=0,current=0,previous; for(const date of [...new Set(entries.map(e=>e.date))].sort()){current=previous&&daysBetween(previous,date)===1?current+1:1; max=Math.max(max,current); previous=date;} return max; }
+export function currentStreak(entries,today=dateKey()) {const dates=new Set(entries.map(e=>e.date)); let d=dates.has(today)?today:addDays(today,-1),n=0; while(dates.has(d)){n++;d=addDays(d,-1);} return n; }
+export function calculateStats(entries) {
+ const sorted=[...entries].sort((a,b)=>a.date.localeCompare(b.date));
+ const highest=field=>sorted.reduce((best,e)=>!best||e[field]>best[field]?e:best,null);
+ return {count:entries.length,mood:average(entries.map(e=>e.mood)),sleep:average(entries.map(e=>e.sleepHours)),study:average(entries.map(e=>e.studyHours)),totalSleep:entries.reduce((s,e)=>s+e.sleepHours,0),totalStudy:entries.reduce((s,e)=>s+e.studyHours,0),best:highest('mood'),worst:sorted.reduce((best,e)=>!best||e.mood<best.mood?e:best,null),mostStudy:highest('studyHours'),mostSleep:highest('sleepHours'),maxStreak:maxStreak(entries),moods:[1,2,3,4,5].map(m=>entries.filter(e=>e.mood===m).length)};
+}
+export function sleepInterpretation(h){return h<6?'Has dormido poco.':h<7?'Una cantidad algo baja.':h<=9?'Un descanso razonable.':'Has dormido bastante.';}
+export function studyInterpretation(h){return h===0?'Hoy no has dedicado tiempo al estudio.':h<1?'Has hecho un poco de estudio.':h<3?'Has tenido una sesión de estudio considerable.':h<5?'Has dedicado bastante tiempo.':'Ha sido un día de estudio intenso.';}
+export function generateSummary(e){return `Hoy ha sido un día ${['','difícil','flojo','normal','bueno','genial'][e.mood]}. Has dormido ${formatNumber(e.sleepHours)} horas y has dedicado ${formatNumber(e.studyHours)} horas al estudio. ${sleepInterpretation(e.sleepHours)} ${studyInterpretation(e.studyHours)}`;}
+export function periodSummary(s,monthly=false){if(!s.count)return 'Aún no hay entradas en este período. Cada día que escribas irá dando forma a tu historia.';return monthly?`Durante este mes has registrado ${s.count} ${s.count===1?'día':'días'}. Tu valoración media ha sido de ${formatNumber(s.mood)}/5. Has estudiado un total de ${formatNumber(s.totalStudy)} horas y tu media de sueño ha sido de ${formatNumber(s.sleep)} horas.`:`Esta semana has registrado ${s.count} ${s.count===1?'día':'días'}. Tu estado medio ha sido ${['','difícil','flojo','normal','bueno','genial'][Math.round(s.mood)]}. Has dormido una media de ${formatNumber(s.sleep)} horas y estudiado ${formatNumber(s.study)} horas por día registrado.`;}
+export function generateTrends(entries,today=dateKey()){
+ const recent=inRange(entries,addDays(today,-6),today),previous=inRange(entries,addDays(today,-13),addDays(today,-7)),messages=[];
+ if(recent.length>=3&&previous.length>=3){const a=calculateStats(recent),b=calculateStats(previous); if(a.sleep<b.sleep-0.3)messages.push('Tu cantidad media de sueño ha disminuido respecto a los 7 días anteriores.');if(a.sleep>b.sleep+0.3)messages.push('En tus registros, has dormido más que en los 7 días anteriores.');if(a.study>b.study+0.3)messages.push('Has aumentado tus horas medias de estudio respecto a los 7 días anteriores.');if(a.study<b.study-0.3)messages.push('Tu tiempo medio de estudio ha disminuido respecto a los 7 días anteriores.');if(a.mood>b.mood+0.2)messages.push('Tu valoración diaria ha mejorado recientemente.');if(a.mood<b.mood-0.2)messages.push('Tu valoración diaria ha bajado respecto a los 7 días anteriores.');if(!messages.length)messages.push('Tus medias se han mantenido bastante estables respecto a los 7 días anteriores.');}
+ const lastMonth=inRange(entries,addDays(today,-29),today),more=lastMonth.filter(e=>e.sleepHours>7),less=lastMonth.filter(e=>e.sleepHours<=7);
+ if(more.length>=3&&less.length>=3&&average(more.map(e=>e.mood))>average(less.map(e=>e.mood))+0.3)messages.push('En tus registros de los últimos 30 días, dormir más de 7 horas parece coincidir con una valoración más alta. Es una relación entre registros, no una causa demostrada.');
+ return messages;
+}
