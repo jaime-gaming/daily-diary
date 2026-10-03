@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {dateKey, parseDate, addDays, daysBetween, dayNumber, weekStart, monthRange, monthMove, generateCalendar, longDate} from '../src/utils/dates.js';
-import {average, calculateStats, currentStreak, maxStreak, sleepInterpretation, studyInterpretation, generateSummary, periodSummary, generateTrends, inRange, formatNumber} from '../src/utils/stats.js';
+import {average, calculateStats, currentStreak, maxStreak, sleepInterpretation, studyInterpretation, generateSummary, periodSummary, generateTrends, inRange, formatNumber, wordCount, totalWords, habitStreak, habitCount, tagFrequency, counterInterpretation} from '../src/utils/stats.js';
 
 const entry = (date, mood, sleepHours, studyHours, extra = {}) => ({
-  id: date, date, mood, sleepHours, studyHours,
-  bestOfDay: '', differentToday: '', generalDay: 'Un día.', gratitude: ['', '', ''], tomorrow: '', goals: [], createdAt: date, updatedAt: date, ...extra
+  id: date, date, mood, sleepHours, studyHours, energy: null, stress: null,
+  bestOfDay: '', differentToday: '', generalDay: 'Un día.', wordOfDay: '',
+  gratitude: ['', '', ''], tomorrow: '', goals: [], tags: [],
+  counters: {water: 0, exercise: 0, reading: 0, mindfulness: 0}, habits: {},
+  createdAt: date, updatedAt: date, ...extra
 });
 
 test('fechas: claves y sumas de días', () => {
@@ -100,4 +103,53 @@ test('filtrado por rango de fechas', () => {
   assert.equal(inRange(entries, '2026-09-01', '2026-09-10').length, 1);
   assert.equal(inRange(entries, '2026-10-01', '2026-10-31').length, 0);
   assert.equal(formatNumber(7.25), '7,3');
+});
+
+test('palabras, hábitos y etiquetas', () => {
+  assert.equal(wordCount(entry('2026-09-01', 3, 7, 1)), 2); // "Un día."
+  const e = entry('2026-09-02', 3, 7, 1, {
+    generalDay: 'Hoy he escrito tres palabras aquí',
+    habits: {h1: true}, tags: ['Tranquilo', 'Social'], counters: {water: 6}
+  });
+  assert.equal(wordCount(e), 6);
+  assert.equal(totalWords([e]), 6);
+  const list = [entry('2026-09-01', 3, 7, 1, {habits: {h1: true}}),
+    entry('2026-09-02', 3, 7, 1, {habits: {h1: true}}),
+    entry('2026-09-03', 3, 7, 1, {})];
+  assert.equal(habitStreak(list, 'h1'), 2);
+  assert.equal(habitCount(list, 'h1'), 2);
+  assert.equal(habitStreak(list, 'ninguno'), 0);
+  assert.deepEqual(tagFrequency([entry('2026-09-01', 3, 7, 1, {tags: ['Social', 'Tranquilo']}),
+    entry('2026-09-02', 3, 7, 1, {tags: ['Social']})])[0], ['Social', 2]);
+});
+
+test('interpretaciones de contadores y resumen ampliado', () => {
+  assert.match(counterInterpretation('water', 0), /Sin registrar agua/);
+  assert.match(counterInterpretation('water', 10), /hidratación/);
+  assert.match(counterInterpretation('exercise', 30), /notable/);
+  assert.match(counterInterpretation('reading', 90), /mucha lectura/);
+  assert.match(counterInterpretation('mindfulness', 15), /considerable/);
+  const summary = generateSummary(entry('2026-09-30', 4, 8, 2, {
+    energy: 5, stress: 2, habits: {h1: true, h2: true, h3: false},
+    counters: {water: 7, exercise: 30, reading: 10, mindfulness: 5}
+  }));
+  assert.match(summary, /día bueno/);
+  assert.match(summary, /energía se ha sentido muy alta/);
+  assert.match(summary, /estrés ha sido bajo/);
+  assert.match(summary, /cumplido 2 de tus hábitos/);
+  assert.match(summary, /7 vasos de agua/);
+});
+
+test('estadísticas ampliadas: escalas, contadores y palabras', () => {
+  const entries = [
+    entry('2026-09-01', 3, 7, 1, {energy: 4, stress: 2, counters: {water: 6, exercise: 30}, generalDay: 'Dos palabras'}),
+    entry('2026-09-02', 5, 8, 3, {energy: 2, stress: 4, counters: {water: 8, exercise: 10}, generalDay: 'Tres palabras aquí'})
+  ];
+  const s = calculateStats(entries);
+  assert.equal(s.energy, 3);
+  assert.equal(s.stress, 3);
+  assert.equal(s.counters.water.total, 14);
+  assert.equal(s.counters.exercise.average, 20);
+  assert.equal(s.words, 5);
+  assert.equal(average([null, 3, 5]), 4); // los nulos se ignoran
 });
