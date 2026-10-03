@@ -1,1 +1,1 @@
-{"name":"Diario · Un momento para ti","short_name":"Diario","lang":"es","start_url":"/","display":"standalone","background_color":"#f7f7f2","theme_color":"#667353","icons":[{"src":"/favicon.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]}
+{"name":"Diario Personal","short_name":"Diario","lang":"es","start_url":"./","scope":"./","display":"standalone","background_color":"#F3EFE6","theme_color":"#B34A2E","icons":[{"src":"./favicon.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]}

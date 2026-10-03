@@ -1,7 +1,41 @@
 import {dayNumber,dateKey} from './dates.js';
-import {COUNTERS,TEXT_FIELDS} from '../data/constants.js';
+import {COUNTERS,TEXT_FIELDS,THEMES,SETUP_PURPOSES,AGE_GROUPS,INTEREST_OPTIONS,WRITING_RITUALS,TONE_STYLES} from '../data/constants.js';
 const KEY='diario.entries.v1';
 const HABITS_KEY='diario.habits.v1';
+const SETUP_KEY='diario.setup.v1';
+
+export const DEFAULT_SETUP = {
+  completed: false,
+  name: '',
+  age: null,
+  ageGroup: 'young',
+  interests: [],
+  ritual: 'night',
+  tone: 'warm',
+  savedQuotes: [],
+  purpose: 'calm',
+  motto: 'Un día a la vez.',
+  theme: 'paper',
+  sleepGoal: 7.5,
+  studyGoal: 2,
+  waterGoal: 8,
+  showDailyWord: true,
+  showDailyTip: true,
+  crisisAlertsEnabled: true,
+  trustedContactName: '',
+  trustedContactPhone: '',
+  sidebarCollapsed: false,
+  updatedAt: null
+};
+
+export function ageGroupFromAge(age, fallback = 'young'){
+  const n = Number(age);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  if (n <= 18) return 'teen';
+  if (n <= 26) return 'young';
+  if (n <= 49) return 'adult';
+  return 'senior';
+}
 
 function cleanText(value,label){
   if(typeof value!=='string')throw new Error(`${label} debe ser texto.`);
@@ -32,6 +66,7 @@ export function validateEntry(e){
   }
   const text=Object.fromEntries(TEXT_FIELDS.map(f=>[f,cleanText(e[f]??'',f)]));
   if(!text.generalDay.trim())throw new Error('Escribe cómo ha ido tu día en general.');
+  const capsule=cleanText(e.capsule??'','La cápsula del día').slice(0,300);
   if(!Array.isArray(e.gratitude)||e.gratitude.length!==3||e.gratitude.some(x=>typeof x!=='string'||x.length>20000))throw new Error('El agradecimiento debe tener tres campos de texto.');
   if(e.goals!==undefined&&(!Array.isArray(e.goals)||e.goals.length>30||e.goals.some(x=>typeof x!=='string'||x.length>500)))throw new Error('La lista de objetivos no es válida.');
   const tags=Array.isArray(e.tags)?e.tags:[];
@@ -51,6 +86,7 @@ export function validateEntry(e){
     energy:cleanScale(e.energy),
     stress:cleanScale(e.stress),
     ...text,
+    capsule,
     gratitude:e.gratitude.map(x=>cleanText(x??'','El agradecimiento')),
     goals:(e.goals||[]).map(x=>cleanText(x,'Un objetivo')),
     tags:[...new Set(tags.map(t=>t.trim()))],
@@ -66,7 +102,7 @@ export function loadEntry(date){return loadEntries().find(e=>e.date===date)||nul
 function persist(entries){const normalized=normalize(entries);localStorage.setItem(KEY,JSON.stringify(normalized));return normalized;}
 export function saveEntry(entry){const clean=validateEntry(entry);clean.updatedAt=new Date().toISOString();const entries=loadEntries();return persist([...entries.filter(e=>e.date!==clean.date),clean]);}
 export function deleteEntry(date){return persist(loadEntries().filter(e=>e.date!==date));}
-export function clearEntries(){localStorage.removeItem(KEY);localStorage.removeItem(HABITS_KEY);}
+export function clearEntries(){localStorage.removeItem(KEY);localStorage.removeItem(HABITS_KEY);localStorage.removeItem(SETUP_KEY);}
 
 /* ----- Hábitos (configuración) ----- */
 export function validateHabit(h){
@@ -81,8 +117,94 @@ function persistHabits(habits){const list=habits.map(validateHabit);localStorage
 export function saveHabit(habit){const clean=validateHabit(habit);const habits=loadHabits();return persistHabits([...habits.filter(h=>h.id!==clean.id),clean]);}
 export function deleteHabit(id){return persistHabits(loadHabits().filter(h=>h.id!==id));}
 
+/* ----- Set Up y preferencias del usuario ----- */
+export function validateSetup(s = {}){
+  const raw = s && typeof s === 'object' ? s : {};
+  const validThemes = new Set(THEMES.map(t => t.id));
+  const validPurposes = new Set(SETUP_PURPOSES.map(p => p.id));
+  const validAgeGroups = new Set(AGE_GROUPS.map(g => g.id));
+  const validInterests = new Set(INTEREST_OPTIONS.map(i => i.id));
+  const validRituals = new Set(WRITING_RITUALS.map(r => r.id));
+  const validTones = new Set(TONE_STYLES.map(t => t.id));
+  const clampNum = (val, min, max, fallback) => {
+    const n = Number(val);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(max, Math.max(min, Math.round(n * 10) / 10));
+  };
+
+  let age = null;
+  if (raw.age !== undefined && raw.age !== null && raw.age !== '') {
+    const parsedAge = Math.round(Number(raw.age));
+    if (Number.isFinite(parsedAge) && parsedAge >= 8 && parsedAge <= 115) {
+      age = parsedAge;
+    }
+  }
+
+  const rawGroup = validAgeGroups.has(raw.ageGroup) ? raw.ageGroup : DEFAULT_SETUP.ageGroup;
+  const ageGroup = age !== null ? ageGroupFromAge(age, rawGroup) : rawGroup;
+
+  const interests = Array.isArray(raw.interests)
+    ? [...new Set(raw.interests.filter(id => validInterests.has(id)))]
+    : [];
+
+  const savedQuotes = Array.isArray(raw.savedQuotes)
+    ? [...new Set(raw.savedQuotes.filter(q => typeof q === 'string' && q.trim().length > 0).map(q => q.trim().slice(0, 260)))].slice(0, 40)
+    : [];
+
+  return {
+    completed: Boolean(raw.completed),
+    name: String(raw.name ?? '').trim().slice(0, 50),
+    age,
+    ageGroup,
+    interests,
+    ritual: validRituals.has(raw.ritual) ? raw.ritual : DEFAULT_SETUP.ritual,
+    tone: validTones.has(raw.tone) ? raw.tone : DEFAULT_SETUP.tone,
+    savedQuotes,
+    purpose: validPurposes.has(raw.purpose) ? raw.purpose : DEFAULT_SETUP.purpose,
+    motto: String(raw.motto ?? DEFAULT_SETUP.motto).trim().slice(0, 140) || DEFAULT_SETUP.motto,
+    theme: validThemes.has(raw.theme) ? raw.theme : DEFAULT_SETUP.theme,
+    sleepGoal: clampNum(raw.sleepGoal, 4, 14, DEFAULT_SETUP.sleepGoal),
+    studyGoal: clampNum(raw.studyGoal, 0, 16, DEFAULT_SETUP.studyGoal),
+    waterGoal: clampNum(raw.waterGoal, 1, 25, DEFAULT_SETUP.waterGoal),
+    showDailyWord: raw.showDailyWord === undefined ? true : Boolean(raw.showDailyWord),
+    showDailyTip: raw.showDailyTip === undefined ? true : Boolean(raw.showDailyTip),
+    crisisAlertsEnabled: raw.crisisAlertsEnabled === undefined ? true : Boolean(raw.crisisAlertsEnabled),
+    trustedContactName: String(raw.trustedContactName ?? '').trim().slice(0, 60),
+    trustedContactPhone: String(raw.trustedContactPhone ?? '').trim().slice(0, 30),
+    sidebarCollapsed: Boolean(raw.sidebarCollapsed),
+    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : new Date().toISOString()
+  };
+}
+
+export function loadSetup(){
+  const raw = localStorage.getItem(SETUP_KEY);
+  if (!raw) return {...DEFAULT_SETUP};
+  try {
+    const parsed = JSON.parse(raw);
+    return validateSetup(parsed);
+  } catch {
+    return {...DEFAULT_SETUP};
+  }
+}
+
+export function saveSetup(partial = {}){
+  const current = loadSetup();
+  const next = validateSetup({...current, ...partial, updatedAt: new Date().toISOString()});
+  localStorage.setItem(SETUP_KEY, JSON.stringify(next));
+  return next;
+}
+
 /* ----- Exportar / importar ----- */
-export function exportData(entries,habits=loadHabits()){return JSON.stringify({app:'diario',version:1,exportedAt:new Date().toISOString(),entries:normalize(entries),habits:habits.map(validateHabit)},null,2);}
+export function exportData(entries,habits=loadHabits(),setup=loadSetup()){
+  return JSON.stringify({
+    app:'diario',
+    version:1,
+    exportedAt:new Date().toISOString(),
+    entries:normalize(entries),
+    habits:habits.map(validateHabit),
+    setup:validateSetup(setup)
+  },null,2);
+}
 export function parseImport(text){
   let data;
   try{data=JSON.parse(text);}catch{throw new Error('El archivo no es una copia JSON válida.');}
@@ -90,7 +212,8 @@ export function parseImport(text){
   const entries=data.entries.map(validateEntry);
   if(new Set(entries.map(e=>e.date)).size!==entries.length)throw new Error('La copia contiene fechas duplicadas.');
   const habits=Array.isArray(data.habits)?data.habits.map(validateHabit):[];
-  return {entries,habits};
+  const setup=data.setup?validateSetup(data.setup):null;
+  return {entries,habits,setup};
 }
 export function importData(incoming){
   const current=loadEntries();
@@ -99,5 +222,6 @@ export function importData(incoming){
   const habitMap=new Map(loadHabits().map(h=>[h.id,h]));
   for(const h of incoming.habits)habitMap.set(h.id,validateHabit(h));
   persistHabits([...habitMap.values()]);
+  if(incoming.setup)saveSetup(incoming.setup);
   return persist([...map.values()]);
 }
