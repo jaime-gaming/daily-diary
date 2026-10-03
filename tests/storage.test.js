@@ -6,7 +6,7 @@ globalThis.localStorage = {
   setItem: (k, v) => store.set(k, String(v)),
   removeItem: k => store.delete(k)
 };
-const {loadEntries, saveEntry, loadEntry, deleteEntry, clearEntries, exportData, parseImport, importData, validateEntry, loadHabits, saveHabit, deleteHabit} = await import('../src/utils/storage.js');
+const {loadEntries, saveEntry, loadEntry, deleteEntry, clearEntries, exportData, parseImport, importData, validateEntry, loadHabits, saveHabit, deleteHabit, loadSetup, saveSetup} = await import('../src/utils/storage.js');
 
 const valid = (date, extra = {}) => ({
   date, mood: 4, sleepHours: 7.5, studyHours: 2,
@@ -104,3 +104,51 @@ test('exportar e importar (entradas y hábitos)', () => {
   assert.throws(() => parseImport(JSON.stringify({version: 1, entries: [valid('2026-09-01'), valid('2026-09-01')]})), /duplicadas/);
   clearEntries();
 });
+
+test('set up: guardar, validar y recuperar preferencias y sidebar', () => {
+  clearEntries();
+  const initial = loadSetup();
+  assert.equal(initial.completed, false);
+  assert.equal(initial.theme, 'paper');
+  assert.equal(initial.sidebarCollapsed, false);
+
+  const saved = saveSetup({
+    completed: true,
+    name: 'Jaime',
+    age: 16,
+    interests: ['reading', 'sport', 'invalid_interest'],
+    theme: 'night',
+    sleepGoal: 8,
+    studyGoal: 3.5,
+    waterGoal: 10,
+    sidebarCollapsed: true,
+    trustedContactName: 'Laura',
+    trustedContactPhone: '600123456'
+  });
+  assert.equal(saved.completed, true);
+  assert.equal(saved.name, 'Jaime');
+  assert.equal(saved.age, 16);
+  assert.equal(saved.ageGroup, 'teen');
+  assert.deepEqual(saved.interests, ['reading', 'sport']);
+  assert.equal(saved.theme, 'night');
+  assert.equal(saved.sleepGoal, 8);
+  assert.equal(saved.studyGoal, 3.5);
+  assert.equal(saved.waterGoal, 10);
+  assert.equal(saved.sidebarCollapsed, true);
+  assert.equal(loadSetup().trustedContactName, 'Laura');
+
+  const adultSetup = saveSetup({age: 34});
+  assert.equal(adultSetup.ageGroup, 'adult');
+
+  const seniorSetup = saveSetup({age: 62, ritual: 'morning', tone: 'literary', theme: 'ocean', savedQuotes: ['El tiempo es nuestro mejor maestro.']});
+  assert.equal(seniorSetup.ageGroup, 'senior');
+  assert.equal(seniorSetup.ritual, 'morning');
+  assert.equal(seniorSetup.tone, 'literary');
+  assert.equal(seniorSetup.theme, 'ocean');
+  assert.deepEqual(seniorSetup.savedQuotes, ['El tiempo es nuestro mejor maestro.']);
+
+  const withCapsule = validateEntry(valid('2026-09-30', {capsule: 'Sonaba Radiohead de fondo'}));
+  assert.equal(withCapsule.capsule, 'Sonaba Radiohead de fondo');
+  clearEntries();
+});
+

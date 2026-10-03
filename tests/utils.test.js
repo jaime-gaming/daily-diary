@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {dateKey, parseDate, addDays, daysBetween, dayNumber, weekStart, monthRange, monthMove, generateCalendar, longDate} from '../src/utils/dates.js';
 import {average, calculateStats, currentStreak, maxStreak, sleepInterpretation, studyInterpretation, generateSummary, periodSummary, generateTrends, inRange, formatNumber, wordCount, totalWords, habitStreak, habitCount, tagFrequency, counterInterpretation} from '../src/utils/stats.js';
+import {detectCrisisRisk, getDailyWord, getDailyTip, getContextualAdvice, calculateEntryCompletion, getGreeting, getAgeProfile, generateThemeFaviconSvg, generateThemeFaviconDataUri, getPersonalQuote, calculateGoalStats} from '../src/utils/wellbeing.js';
 
 const entry = (date, mood, sleepHours, studyHours, extra = {}) => ({
   id: date, date, mood, sleepHours, studyHours, energy: null, stress: null,
@@ -153,3 +154,93 @@ test('estadísticas ampliadas: escalas, contadores y palabras', () => {
   assert.equal(s.words, 5);
   assert.equal(average([null, 3, 5]), 4); // los nulos se ignoran
 });
+
+test('detección de riesgo de suicidio / autolesión y alertas de bienestar', () => {
+  const safe = detectCrisisRisk('Hoy he salido a caminar, he estudiado dos horas y he cenado tranquilo.');
+  assert.equal(safe.triggered, false);
+  assert.equal(safe.level, 'none');
+
+  const highRisk1 = detectCrisisRisk('No quiero vivir más, pienso en quitarme la vida.');
+  assert.equal(highRisk1.triggered, true);
+  assert.equal(highRisk1.level, 'high');
+  assert.ok(highRisk1.matchedTerms.length >= 1);
+
+  const highRisk2 = detectCrisisRisk({generalDay: 'Hoy he tenido pensamientos de suicidio y hacerme daño.'});
+  assert.equal(highRisk2.triggered, true);
+  assert.equal(highRisk2.level, 'high');
+
+  const normalBadDay = detectCrisisRisk({mood: 1, stress: 5, generalDay: 'Un día muy pesado y cansado.'});
+  assert.equal(normalBadDay.triggered, false);
+  assert.equal(normalBadDay.level, 'none');
+});
+
+test('palabras diarias, consejos diarios y progreso del registro', () => {
+  const w1 = getDailyWord('2026-10-03', 0);
+  const w2 = getDailyWord('2026-10-03', 1);
+  assert.ok(w1.word && w1.meaning && w1.prompt);
+  assert.notEqual(w1.word, w2.word);
+
+  const t1 = getDailyTip('2026-10-03', 0);
+  const t2 = getDailyTip('2026-10-03', 1);
+  assert.ok(t1.title && t1.tip && t1.action);
+  assert.notEqual(t1.title, t2.title);
+
+  const advice = getContextualAdvice({sleepHours: 4.5, stress: 5, mood: 1}, {sleepGoal: 8});
+  assert.ok(advice.length >= 2);
+
+  const comp = calculateEntryCompletion(entry('2026-10-03', 4, 8, 2, {energy: 4, wordOfDay: 'Calma', gratitude: ['Sol', '', '']}), 0);
+  assert.equal(comp.percent, 100);
+  assert.match(getGreeting('Jaime', 9), /Buenos días, Jaime/);
+});
+
+test('adaptación por edad, grupo de edad y gustos', () => {
+  const teenProfile = getAgeProfile({age: 15, interests: ['music', 'sport']});
+  assert.equal(teenProfile.group.id, 'teen');
+  assert.equal(teenProfile.isMinor, true);
+  assert.equal(teenProfile.sleepRecommended, 8.5);
+  assert.ok(teenProfile.tags.includes('Exámenes'));
+  assert.ok(teenProfile.tags.includes('Deporte'));
+  assert.ok(teenProfile.suggestedHabits.some(h => /álbum|Entrenar|deporte|caminar/i.test(h)));
+
+  const adultProfile = getAgeProfile({age: 35, interests: ['projects', 'reading']});
+  assert.equal(adultProfile.group.id, 'adult');
+  assert.equal(adultProfile.isMinor, false);
+  assert.match(adultProfile.focusLabel, /enfoque|proyectos/i);
+  assert.ok(adultProfile.suggestedHabits.some(h => /proyecto|Leer/i.test(h)));
+});
+
+test('generación dinámica del favicon según el tema y monograma del usuario', () => {
+  const paperSvg = generateThemeFaviconSvg('paper', {name: 'Jaime'});
+  const nightSvg = generateThemeFaviconSvg('night', {name: 'Jaime'});
+  const oceanUri = generateThemeFaviconDataUri('ocean', {name: ''});
+  assert.ok(paperSvg.includes('#F3EFE6'));
+  assert.ok(paperSvg.includes('>J<'));
+  assert.ok(nightSvg.includes('#151412'));
+  assert.notEqual(paperSvg, nightSvg);
+  assert.ok(oceanUri.startsWith('data:image/svg+xml'));
+});
+
+test('frases personalizadas y metas personales en estadísticas', () => {
+  const q1 = getPersonalQuote('2026-10-03', 0, {age: 19, interests: ['reading'], tone: 'literary'});
+  const q2 = getPersonalQuote('2026-10-03', 1, {age: 19, interests: ['reading'], tone: 'literary'});
+  assert.ok(q1.text && q1.author);
+  assert.notEqual(q1.text, q2.text);
+
+  const customQuote = getPersonalQuote('2026-10-03', 0, {name: 'Jaime', savedQuotes: ['Mi frase favorita de hoy']});
+  assert.ok(customQuote.text.length > 0);
+
+  const sampleEntries = [
+    entry('2026-10-01', 5, 8, 3, {counters: {water: 8, exercise: 30, reading: 20, mindfulness: 10}}),
+    entry('2026-10-02', 4, 8.5, 2.5, {counters: {water: 9, exercise: 20, reading: 15, mindfulness: 5}}),
+    entry('2026-10-03', 2, 5.5, 1, {counters: {water: 4, exercise: 0, reading: 0, mindfulness: 0}})
+  ];
+  const goals = calculateGoalStats(sampleEntries, {sleepGoal: 7.5, studyGoal: 2, waterGoal: 8});
+  assert.equal(goals.total, 3);
+  assert.equal(goals.sleepMet, 2);
+  assert.equal(goals.studyMet, 2);
+  assert.equal(goals.waterMet, 2);
+  assert.equal(goals.sleepPct, 67);
+});
+
+
+

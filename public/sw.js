@@ -1,6 +1,6 @@
-const CACHE = 'diario-v2';
+const CACHE = 'diario-v3';
 
-const APP_SHELL = ['/', '/index.html', '/favicon.svg', '/manifest.webmanifest'];
+const APP_SHELL = ['./', './index.html', './favicon.svg', './manifest.webmanifest'];
 
 self.addEventListener('install', event => {
   event.waitUntil(
@@ -22,10 +22,9 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
 
-  const isHtml = event.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html');
+  const isHtml = event.request.mode === 'navigate' || url.pathname.endsWith('/') || url.pathname.endsWith('.html');
 
   if (isHtml) {
-    // Red primero: cada deploy nuevo se ve al recargar; sin conexión, cae a la caché.
     event.respondWith(
       fetch(event.request)
         .then(response => {
@@ -33,12 +32,11 @@ self.addEventListener('fetch', event => {
           caches.open(CACHE).then(cache => cache.put(event.request, copy));
           return response;
         })
-        .catch(() => caches.match(event.request).then(cached => cached || caches.match('/index.html')))
+        .catch(() => caches.match(event.request).then(cached => cached || caches.match('./index.html')))
     );
     return;
   }
 
-  // Assets con nombre inmutable (Vite añade hash): caché primero.
   event.respondWith(
     caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
       if (response.ok) {
