@@ -77,6 +77,34 @@ Cada entrada se guarda como JSON en `localStorage` (`diario.entries.v1`):
 
 El número de día se calcula automáticamente desde la fecha de la primera entrada.
 
+## Desplegar en Render
+
+El repositorio incluye un `render.yaml` listo para usar. Dos formas de desplegar:
+
+**Opción A — Blueprint (recomendada, un clic)**
+
+1. Sube este repositorio a GitHub.
+2. En [render.com](https://render.com) → **New** → **Blueprint** y selecciona el repositorio.
+3. Render lee `render.yaml`, crea el *Static Site* y despliega solo. Cada `git push` a `main` redespliega automáticamente.
+
+**Opción B — Manual**
+
+1. En Render → **New** → **Static Site**.
+2. Conecta el repositorio.
+3. *Build Command*: `npm ci && npm run build`
+4. *Publish Directory*: `dist`
+5. En **Redirects/Rewrites** añade: `/* → /index.html` (rewrite). El `render.yaml` ya lo incluye si usas Blueprint.
+
+Notas del despliegue:
+
+- Es un sitio 100 % estático: no hay servidor que mantener ni variables de secreto.
+- La app funciona sin conexión tras la primera carga (service worker). El HTML se
+  actualiza en cada recarga y los assets llevan hash, así que cada deploy se ve al instante.
+- El diario sigue estando **solo en el navegador de cada visitante**: hosting en Render
+  no implica que tus entradas se envíen a ningún servidor; nunca salen del dispositivo.
+- Dominio por defecto: `https://<nombre>.onrender.com`. Puedes añadir un dominio propio
+  desde el panel de Render (el plan gratuito incluye HTTPS).
+
 ## Privacidad
 
 Todo ocurre en tu dispositivo: no hay servidores, seguimiento, anuncios, fuentes remotas ni
