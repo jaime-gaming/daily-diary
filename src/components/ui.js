@@ -1,4 +1,4 @@
-import {MOODS,WEEKDAYS,CRISIS_HELPLINES,THEMES,AGE_GROUPS,INTEREST_OPTIONS,WRITING_RITUALS,TONE_STYLES} from '../data/constants.js';
+import {MOODS,WEEKDAYS,CRISIS_HELPLINES,THEMES,AGE_GROUPS,INTEREST_OPTIONS,WRITING_RITUALS,TONE_STYLES,counterGoal,COUNTERS} from '../data/constants.js';
 import {dateKey,generateCalendar,longDate,dayNumber,addDays} from '../utils/dates.js';
 import {formatNumber,counterInterpretation} from '../utils/stats.js';
 import {getDailyWord,getDailyTip,getContextualAdvice,getAgeProfile,getPersonalQuote,calculateGoalStats,generateThemeFaviconSvg} from '../utils/wellbeing.js';
@@ -49,7 +49,25 @@ const ICONS={
   spark:'<path d="m12 3 1.9 5.8L20 10.8l-6.1 1.9L12 18.5l-1.9-5.8L4 10.8l6.1-2Z"/>',
   quote:'<path d="M10 11H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v6c0 2.7-1.3 4.4-4 5"/><path d="M19 11h-4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v6c0 2.7-1.3 4.4-4 5"/>',
   expand:'<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',
-  chevronDown:'<path d="m6 9 6 6 6-6"/>'
+  chevronDown:'<path d="m6 9 6 6 6-6"/>',
+  wave:'<path d="M2 9.5c2 0 2 1.8 4 1.8s2-1.8 4-1.8 2 1.8 4 1.8 2-1.8 4-1.8 2 1.8 4 1.8"/><path d="M2 15c2 0 2 1.8 4 1.8S8 15 10 15s2 1.8 4 1.8 2-1.8 4-1.8 2 1.8 4 1.8"/>',
+  tide:'<path d="M3 16.5c1.7 0 1.7 1.5 3.4 1.5s1.7-1.5 3.4-1.5 1.7 1.5 3.4 1.5 1.7-1.5 3.4-1.5 1.7 1.5 3.4 1.5"/><circle cx="17" cy="6" r="3"/><path d="M4 11c1.7 0 1.7 1.5 3.4 1.5S9.1 11 10.8 11"/>',
+  send:'<path d="M21.5 2.5 11 13"/><path d="M21.5 2.5 15 21.5l-4-8.5-8.5-4Z"/>',
+  anchor:'<circle cx="12" cy="5" r="2.6"/><path d="M12 7.6V21"/><path d="M8.5 10h7"/><path d="M3 14a9 9 0 0 0 18 0"/><path d="M3 14h3M18 14h3"/>',
+  bookmark:'<path d="M6.5 3h11a1 1 0 0 1 1 1v17l-6.5-4.6L5.5 21V4a1 1 0 0 1 1-1Z"/>',
+  reply:'<path d="M9 14 4 9l5-5"/><path d="M4 9h9.5A6.5 6.5 0 0 1 20 15.5V20"/>',
+  seal:'<circle cx="12" cy="12" r="8"/><path d="m12 7.6 1.5 2.9 3.2.4-2.3 2.3.6 3.2-3-1.6-3 1.6.6-3.2-2.3-2.3 3.2-.4Z"/>',
+  eye:'<path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/>',
+  grid:'<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/>',
+  listChecks:'<path d="M11 6h10M11 12h10M11 18h10"/><path d="m3 6 1.6 1.6L7.2 5M3 12l1.6 1.6 2.6-2.6M3 18l1.6 1.6 2.6-2.6"/>',
+  sail:'<path d="M3 18.5h18l-2.6 3.2H5.6Z"/><path d="M12.5 15V3.5L20 15Z"/><path d="M10.5 15 6 8.5 3.8 15Z"/>',
+  fog:'<path d="M4 9h16M3 13h18M5 17h14"/><path d="M7 5.5c1.6-1.6 3.4-1.6 5 0"/>',
+  rain:'<path d="M17.5 14a4 4 0 0 0-.6-7.9A5.5 5.5 0 0 0 6.3 7.4 3.8 3.8 0 0 0 7 14Z"/><path d="M9 17.5 8 20M13 17.5 12 20M17 17.5 16 20"/>',
+  hourglass:'<path d="M7 3h10M7 21h10"/><path d="M7 3c0 4 5 5.4 5 9s-5 5-5 9M17 3c0 4-5 5.4-5 9s5 5 5 9"/>',
+  gauge:'<path d="M12 20a8 8 0 1 1 8-8"/><path d="M12 12 16 9"/><circle cx="12" cy="12" r="1.2"/>',
+  paper:'<path d="M6 3h8l4 4v14H6Z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h4"/>',
+  splash:'<path d="M12 3v4M12 17v4M4.5 12h4M15.5 12h4M6.6 6.6l2.8 2.8M14.6 14.6l2.8 2.8M17.4 6.6l-2.8 2.8M9.4 14.6l-2.8 2.8"/>',
+  save:'<path d="M5 4h11l3 3v13H5Z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/>'
 };
 
 export const icon=name=>`<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]||''}</svg>`;
@@ -98,30 +116,31 @@ export function tagPicker(selected=[],tagsList=[]){
   </div>`;
 }
 
-export function counterSteppers(values={},counters=[],setup={}){
+export function counterSteppers(values={},counters=[],setup={},opts={}){
   const profile=getAgeProfile(setup);
   const activeSet=new Set(profile.activeCounterKeys||['water']);
-  const visibleCounters=counters.filter(c=>activeSet.has(c.key)||(Number(values?.[c.key])||0)>0);
+  /* los propios se ven siempre (los añadiste a propósito); los de siempre, según tu perfil */
+  const visibleCounters=counters.filter(c=>!c.builtin||activeSet.has(c.key)||(Number(values?.[c.key])||0)>0);
   const list=visibleCounters.length?visibleCounters:counters;
+  const prefix=opts.action?`${opts.action}-`:'';
 
   return `<div class="counters-grid">${list.map(c=>{
     const v=Number(values?.[c.key])||0;
-    const isWater=c.key==='water';
-    const goal=isWater?(setup.waterGoal||8):0;
+    const goal=counterGoal(c,setup);
     const pct=goal?Math.min(100,Math.round((v/goal)*100)):0;
     return `<div class="counter-row" data-counter="${c.key}">
       <div>
         <p class="field-title">${icon(c.icon)} ${c.label} ${goal?`<small class="counter-goal-pill ${v>=goal?'met':''}">Meta: ${v}/${goal}</small>`:''}</p>
-        <p class="field-caption" id="hint-${c.key}">${counterInterpretation(c.key,v)}</p>
+        <p class="field-caption" id="hint-${c.key}" data-counter-hint="${c.key}">${counterInterpretation(c.key,v,c)}</p>
         ${goal?`<div class="counter-progress"><i style="width:${pct}%"></i></div>`:''}
       </div>
       <div class="stepper">
-        <button type="button" class="icon-button" data-action="counter-minus" data-key="${c.key}" data-step="${c.step}" aria-label="Restar ${c.label}">${icon('minus')}</button>
+        <button type="button" class="icon-button" data-action="${prefix}counter-minus" data-key="${c.key}" data-step="${c.step}" aria-label="Restar ${c.label}">${icon('minus')}</button>
         <div class="stepper-value">
-          <input type="number" name="counter_${c.key}" min="0" max="${c.max}" step="${c.step}" value="${v}" aria-label="${c.label}">
+          <input type="number" name="counter_${c.key}" min="${c.min}" max="${c.max}" step="${c.step}" value="${v}" aria-label="${c.label}" data-counter-input="${c.key}">
           <span>${c.unit}</span>
         </div>
-        <button type="button" class="icon-button" data-action="counter-plus" data-key="${c.key}" data-step="${c.step}" aria-label="Sumar ${c.label}">${icon('plus')}</button>
+        <button type="button" class="icon-button" data-action="${prefix}counter-plus" data-key="${c.key}" data-step="${c.step}" aria-label="Sumar ${c.label}">${icon('plus')}</button>
       </div>
     </div>`;
   }).join('')}</div>`;
@@ -527,7 +546,7 @@ export function setupWizardModal(setup={},habits=[],step=1){
         <div class="setup-name-age-row">
           <div class="setup-field">
             <label for="setup-name">${icon('user')} ¿Cómo te llamas?</label>
-            <input id="setup-name" name="name" maxlength="50" placeholder="Tu nombre o apodo..." value="${escape(setup.name||'')}">
+            <input id="setup-name" name="name" maxlength="50" placeholder="Tu nombre o apodo…" value="${escape(setup.name||'')}">
           </div>
           <div class="setup-field">
             <label for="setup-age">¿Cuántos años tienes?</label>

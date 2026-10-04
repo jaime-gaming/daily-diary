@@ -1,4 +1,4 @@
-const CACHE = 'diario-v3';
+const CACHE = 'diario-v7';
 
 const APP_SHELL = ['./', './index.html', './favicon.svg', './manifest.webmanifest'];
 

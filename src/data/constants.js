@@ -12,12 +12,80 @@ export const TAGS = [
   'Productivo','Tranquilo','Ajetreado','Social','Solitario','Creativo',
   'Cansado','Motivado','Ansioso','Emocionado','Nostálgico','Aburrido'
 ];
+/* Los contadores de siempre; el usuario puede renombrarlos, quitarlos
+   y añadir los suyos (ver counterDefs). */
 export const COUNTERS = [
   {key:'water',label:'Agua',unit:'vasos',min:0,max:40,step:1,icon:'drop'},
   {key:'exercise',label:'Ejercicio',unit:'min',min:0,max:1440,step:5,icon:'run'},
   {key:'reading',label:'Lectura',unit:'min',min:0,max:1440,step:5,icon:'book'},
   {key:'mindfulness',label:'Pausa consciente',unit:'min',min:0,max:1440,step:5,icon:'leaf'}
 ];
+
+/* Iconos válidos para un contador propio: todos viven en components/ui.js */
+export const COUNTER_ICONS=['drop','run','book','leaf','moon','heart','bolt','sun','gauge','pen','paper','spark'];
+export const PART_TYPES=[{id:'text',label:'párrafo'},{id:'line',label:'una línea'}];
+/* Partes con las que se puede empezar, por si no quieres partir de cero */
+export const PART_PRESETS=[
+  {label:'Cómo responde el cuerpo',hint:'Tensión, digestión, sueño, energía.',type:'text'},
+  {label:'Una idea que no quiero olvidar',hint:'',type:'line'},
+  {label:'Con quién he hablado hoy',hint:'',type:'line'},
+  {label:'Qué me ha costado',hint:'Sin juzgarlo: solo nombrarlo.',type:'text'}
+];
+export const MAX_PARTS=8;
+export const MAX_COUNTERS=12;
+
+const cleanKey=value=>String(value??'').trim().toLowerCase().replace(/[^a-z0-9_-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,24);
+const clamped=(value,min,max,fallback)=>{
+  const n=Number(value);
+  return Number.isFinite(n)?Math.min(max,Math.max(min,n)):fallback;
+};
+
+/* Clave corta y legible para lo que añada el usuario. */
+export const makeKey=prefix=>`${prefix}_${Date.now().toString(36).slice(-5)}${Math.floor(Math.random()*1296).toString(36).padStart(2,'0')}`;
+
+export function normalizeCounter(row={}){
+  const base=COUNTERS.find(c=>c.key===row.key);
+  const key=cleanKey(row.key);
+  if(!key)return null;
+  const out={
+    key,
+    label:String(row.label??base?.label??'Contador').trim().slice(0,28)||base?.label||'Contador',
+    unit:String(row.unit??base?.unit??'').trim().slice(0,14),
+    min:clamped(row.min??base?.min,0,9999,0),
+    max:0,
+    step:clamped(row.step??base?.step,1,3600,base?base.step:1),
+    goal:clamped(row.goal,0,99999,0),
+    icon:COUNTER_ICONS.includes(row.icon)?row.icon:(base?.icon||'gauge'),
+    builtin:Boolean(base)
+  };
+  out.max=Math.max(clamped(row.max??base?.max,1,99999,base?base.max:99),out.min+out.step);
+  return out;
+}
+
+/* La meta del agua siempre vivió en los ajustes, así que manda ahí. */
+export const counterGoal=(counter,setup={})=>counter?.key==='water'
+  ?clamped(setup?.waterGoal,0,25,8)
+  :(Number(counter?.goal)||0);
+
+/* La lista de contadores que usa la app: la del usuario si la hay, los de siempre si no. */
+export function counterDefs(setup={}){
+  const rows=Array.isArray(setup?.counters)&&setup.counters.length?setup.counters:COUNTERS;
+  const seen=new Set();
+  return rows.map(normalizeCounter).filter(c=>c&&!seen.has(c.key)&&(seen.add(c.key),true)).slice(0,MAX_COUNTERS);
+}
+
+export function normalizePart(row={}){
+  const key=cleanKey(row.key);
+  const label=String(row.label||'').trim().slice(0,60);
+  if(!key||!label)return null;
+  return {key,label,hint:String(row.hint||'').trim().slice(0,140),type:row.type==='line'?'line':'text'};
+}
+
+export function partDefs(setup={}){
+  const rows=Array.isArray(setup?.parts)?setup.parts:[];
+  const seen=new Set();
+  return rows.map(normalizePart).filter(p=>p&&!seen.has(p.key)&&(seen.add(p.key),true)).slice(0,MAX_PARTS);
+}
 export const DEFAULT_HABITS = [];
 export const TEXT_FIELDS = ['bestOfDay','differentToday','generalDay','tomorrow','wordOfDay'];
 

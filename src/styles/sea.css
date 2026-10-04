@@ -1,0 +1,399 @@
+/* ============================================================
+   El mar: agua, botellas y papeles.
+   El color del agua sale de los tokens --sea-* de cada papel.
+   ============================================================ */
+
+/* ---------- el panel ---------- */
+.sea-panel{
+  --rise:calc((var(--water,50%) - 50%) * .16);
+  position:relative;overflow:hidden;margin-bottom:22px;
+  border:1px solid var(--ink);border-radius:5px;
+  background:linear-gradient(180deg,var(--sea-sky) 0%,color-mix(in srgb,var(--sea-sky) 70%,var(--sea-1)) 44%,var(--sea-1) 52%,var(--sea-2) 78%,var(--sea-deep) 100%);
+  color:var(--ink);
+}
+.sea-sky{position:relative;z-index:3;padding:clamp(22px,3vw,34px) clamp(18px,3vw,34px) 12px;max-width:56ch}
+.sea-sky>*:not(.sea-wash){position:relative;z-index:2}
+.sea-wash{position:absolute;border-radius:50%;filter:blur(26px);pointer-events:none;opacity:.5;mix-blend-mode:multiply}
+.sea-wash-1{width:42%;height:54%;left:-8%;top:-4%;background:radial-gradient(circle at 40% 40%,color-mix(in srgb,var(--ochre) 34%,transparent),transparent 68%);animation:washBreathe 15s var(--ease-ink) infinite}
+.sea-wash-2{width:36%;height:44%;right:6%;top:-10%;background:radial-gradient(circle at 60% 40%,color-mix(in srgb,var(--sea-foam) 72%,transparent),transparent 66%);animation:washBreathe 19s var(--ease-ink) infinite reverse}
+[data-theme="night"] .sea-wash{mix-blend-mode:screen}
+.sea-headline{
+  font-family:var(--font-display);font-size:clamp(1.35rem,2.7vw,1.95rem);font-weight:400;
+  line-height:1.2;letter-spacing:-.012em;margin:0
+}
+.sea-panel.has-shore .sea-headline{
+  text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--red) 50%,transparent);
+  text-decoration-thickness:1.5px;text-underline-offset:7px
+}
+.sea-sub{margin:9px 0 0;font-size:.92rem;line-height:1.6;color:color-mix(in srgb,var(--ink) 76%,transparent)}
+
+.sea-water{position:relative;height:clamp(150px,19vw,200px);z-index:2}
+.sea-water .sea-wave-svg,.sea-water .sea-horizon-line{transform:translateY(calc(var(--rise) * -1));transition:transform .6s var(--ease-ink)}
+.sea-wave-svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.sea-wave-svg .wave{transform-origin:0 50%;animation:waveShift var(--wave-dur,18s) linear var(--wave-delay,0s) infinite}
+.wave-1{fill:color-mix(in srgb,var(--sea-deep) 92%,var(--ink));--wp:150px;opacity:.95}
+.wave-2{fill:color-mix(in srgb,var(--sea-2) 88%,var(--sea-deep));--wp:190px;opacity:.8;animation-name:waveShiftBack}
+.wave-3{fill:color-mix(in srgb,var(--sea-1) 76%,var(--sea-2));--wp:240px;opacity:.62;animation-name:waveShiftBack}
+.wave-4{fill:color-mix(in srgb,var(--sea-foam) 60%,var(--sea-1));--wp:300px;opacity:.4}
+.sea-horizon-line{position:absolute;left:0;right:0;top:36%;border-top:1px dashed color-mix(in srgb,var(--paper-2) 34%,transparent)}
+.sea-lighthouse{position:absolute;left:clamp(12px,3vw,34px);bottom:40%;width:42px;opacity:.85}
+.sea-lighthouse svg{width:100%;display:block;filter:drop-shadow(0 5px 9px color-mix(in srgb,var(--ink) 26%,transparent))}
+.sea-beacon{animation:beacon 5.2s ease-in-out infinite}
+.is-casting .sea-water .wave{animation-duration:calc(var(--wave-dur,18s) * .45)}
+
+/* ---------- las botellas en el agua ---------- */
+.sea-fleet{position:absolute;inset:0;margin:0;padding:0;list-style:none}
+.sea-float{position:absolute;left:var(--x);bottom:var(--lift,52%);transform:translateX(-50%);transition:left .8s var(--ease-ink)}
+.sea-float-btn{
+  position:relative;display:grid;justify-items:center;padding:5px;border:none;background:none;cursor:pointer;
+  animation:swing var(--dur,6s) var(--ease-tide,cubic-bezier(.45,.05,.55,.95)) infinite;animation-delay:var(--delay,0s)
+}
+.sea-float-btn .bottle-glyph{width:28px;height:28px;filter:drop-shadow(0 4px 6px color-mix(in srgb,var(--ink) 34%,transparent));transition:transform .3s var(--ease-pop)}
+.sea-float-btn:hover .bottle-glyph,.sea-float-btn:focus-visible .bottle-glyph{transform:rotate(-9deg) scale(1.14)}
+.sea-float-btn:focus-visible{outline:none}
+.sea-float-btn:focus-visible .sea-float-whisper{opacity:1;transform:none}
+.sea-wake{
+  position:absolute;left:50%;bottom:0;width:30px;height:7px;transform:translateX(-50%);border-radius:50%;
+  background:radial-gradient(closest-side,color-mix(in srgb,var(--paper-2) 66%,transparent),transparent);
+  opacity:.3;transition:opacity .3s,width .3s
+}
+.sea-float-btn:hover .sea-wake{opacity:.75;width:46px}
+.sea-float-whisper{
+  position:absolute;bottom:calc(100% + 8px);left:50%;transform:translate(-50%,4px);
+  max-width:min(280px,44vw);padding:6px 10px;border-radius:3px;
+  background:color-mix(in srgb,var(--paper-2) 92%,transparent);border:1px solid color-mix(in srgb,var(--ink) 16%,transparent);
+  box-shadow:0 8px 18px -14px color-mix(in srgb,var(--ink) 70%,transparent);
+  font-family:var(--font-display);font-style:italic;font-size:.86rem;line-height:1.4;color:var(--ink);
+  opacity:0;pointer-events:none;transition:opacity .25s var(--ease-ink),transform .25s var(--ease-ink);
+  text-align:center;white-space:normal
+}
+.sea-float-btn:hover .sea-float-whisper{opacity:1;transform:translate(-50%,0)}
+@keyframes swing{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(calc(var(--bob,3px) * -1)) rotate(3deg)}}
+
+/* ---------- la orilla ---------- */
+.sea-shore{
+  position:relative;z-index:3;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:14px clamp(14px,2.4vw,24px) 15px;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--sand) 78%,var(--paper-2)),var(--sand));
+  border-top:1px solid color-mix(in srgb,var(--ink) 14%,transparent)
+}
+.sea-shore::before{
+  content:"";position:absolute;left:0;right:0;top:-1px;height:10px;pointer-events:none;opacity:.55;
+  background:radial-gradient(58% 100% at 22% 0,color-mix(in srgb,var(--paper-2) 86%,transparent),transparent 70%),
+             radial-gradient(46% 100% at 66% 0,color-mix(in srgb,var(--paper-2) 72%,transparent),transparent 72%);
+  animation:foam 7s var(--ease-ink) infinite
+}
+.shore-list{display:flex;gap:10px;flex-wrap:wrap;flex:1}
+.shore-bottle{
+  position:relative;display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer;
+  padding:7px 14px 7px 8px;border-radius:3px;max-width:min(340px,100%);
+  background:color-mix(in srgb,var(--paper-2) 84%,transparent);
+  border:1px solid color-mix(in srgb,var(--ink) 18%,transparent);
+  box-shadow:0 6px 14px -12px color-mix(in srgb,var(--ink) 80%,transparent);
+  transition:transform .22s var(--ease-ink),border-color .22s,background .22s
+}
+.shore-bottle:hover{transform:translateY(-2px);border-color:var(--ink);background:var(--paper-2)}
+.shore-bottle.is-new{border-color:color-mix(in srgb,var(--red) 70%,transparent)}
+.shore-bottle-glow{display:grid;place-items:center;width:32px;height:32px;flex:none}
+.shore-bottle .bottle-glyph{width:26px;height:26px}
+.shore-bottle-meta{min-width:0;display:flex;flex-direction:column;gap:1px}
+.shore-bottle-meta strong{
+  font-family:var(--font-mono);font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;
+  color:color-mix(in srgb,var(--ink) 66%,transparent)
+}
+.shore-bottle-meta small{
+  font-family:var(--font-display);font-style:italic;font-size:.9rem;color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+.shore-new-dot{position:absolute;top:6px;right:6px;width:6px;height:6px;border-radius:50%;background:var(--red)}
+.shore-more{font-family:var(--font-mono);font-size:.64rem;letter-spacing:.08em;color:color-mix(in srgb,var(--ink) 62%,transparent)}
+@keyframes washUp{
+  0%{opacity:0;transform:translateY(14px) rotate(-6deg)}
+  60%{opacity:1;transform:translateY(-2px) rotate(1.5deg)}
+  100%{opacity:1;transform:none}
+}
+.shore-bottle.is-washing{animation:washUp .8s var(--ease-ink) both;animation-delay:var(--wash-delay,0ms)}
+.is-rising .sea-shore{animation:shoreRise 2.6s var(--ease-ink)}
+@keyframes shoreRise{
+  0%,100%{box-shadow:inset 0 0 0 0 transparent}
+  45%{box-shadow:inset 0 14px 22px -16px color-mix(in srgb,var(--sea-1) 84%,transparent)}
+}
+
+/* ---------- la botella ---------- */
+.bottle-glyph{width:24px;height:24px;flex:none;display:block}
+.bottle-glyph .bottle-cork{transition:transform .3s var(--ease-pop)}
+.bottle-card:hover .bottle-glyph .bottle-cork,.shore-bottle:hover .bottle-glyph .bottle-cork{transform:translate(-1px,-2px) rotate(-8deg)}
+.bottle-shine{transition:opacity .4s var(--ease-ink)}
+.bottle-card:hover .bottle-shine{opacity:.8}
+.bottle-glyph.is-landed{animation:landedSettle .9s var(--ease-ink) both}
+@keyframes landedSettle{
+  0%{transform:rotate(-20deg) translateY(-5px)}
+  60%{transform:rotate(5deg) translateY(1px)}
+  100%{transform:none}
+}
+
+/* ---------- escribir y tirar ---------- */
+.bottle-composer{
+  border:1px solid var(--ink);border-left-width:3px;border-radius:3px;
+  background:var(--paper-2);
+  padding:20px 22px 16px
+}
+.bottle-text{
+  width:100%;min-height:96px;padding:0;border:none;background:none;resize:vertical;
+  font-family:var(--font-display);font-size:1.08rem;line-height:1.75;color:var(--ink)
+}
+.bottle-text::placeholder{color:color-mix(in srgb,var(--ink) 42%,transparent);font-style:italic}
+.bottle-text:focus{outline:none}
+.composer-bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px;padding-top:12px;border-top:1px solid var(--rule)}
+.composer-moods{display:flex;align-items:center;gap:4px}
+.mini-mood{position:relative;display:grid;place-items:center;width:30px;height:28px;border-radius:3px;cursor:pointer;transition:background .2s,transform .2s var(--ease-pop)}
+.mini-mood input{position:absolute;opacity:0;width:1px;height:1px}
+.mini-mood span{font-size:1rem;filter:grayscale(.5);opacity:.65;transition:filter .2s,opacity .2s,transform .2s var(--ease-pop)}
+.mini-mood:hover{background:var(--paper-3)}
+.mini-mood:active span{transform:scale(.86)}
+.mini-mood:has(input:checked) span{filter:none;opacity:1;transform:scale(1.14)}
+.mini-mood:has(input:checked){background:color-mix(in srgb,var(--mood-color) 16%,transparent);box-shadow:inset 0 -2px 0 var(--mood-color)}
+.word-count{font-family:var(--font-mono);font-size:.66rem;letter-spacing:.08em;color:var(--ink-faint);margin-right:auto}
+.cast-btn{display:inline-flex;align-items:center;gap:6px;font-size:.7rem;transition:opacity .22s var(--ease-out),color .22s,border-color .22s}
+.cast-btn:active:not(:disabled){transform:translateY(1px)}
+.cast-btn .icon{width:15px;height:15px;transition:transform .3s var(--ease-pop)}
+.cast-btn:hover .icon{transform:translateX(3px) rotate(-12deg)}
+.cast-btn:disabled{opacity:.35;cursor:default}
+
+.sea-picker{
+  display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:18px 0 0;padding:12px 0 0;
+  border-top:1px dashed var(--rule-strong)
+}
+.sea-picker-label{
+  font-family:var(--font-mono);font-size:.64rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-soft);margin-right:4px
+}
+.sea-option{
+  position:relative;display:inline-flex;align-items:baseline;gap:7px;padding:7px 12px;cursor:pointer;
+  border:1px solid var(--rule-strong);border-radius:3px;background:var(--paper-3);
+  font-size:.86rem;transition:background .2s,border-color .2s,color .2s,transform .2s var(--ease-ink)
+}
+.sea-option:hover{transform:translateY(-1px);border-color:var(--ink)}
+.sea-option:active{transform:translateY(0) scale(.985)}
+.sea-option input{position:absolute;opacity:0;width:1px;height:1px}
+.sea-option-name{font-family:var(--font-display);color:var(--ink)}
+.sea-option-days{font-family:var(--font-mono);font-size:.62rem;letter-spacing:.06em;color:var(--ink-faint)}
+.sea-option:has(input:checked){background:var(--ink);border-color:var(--ink)}
+.sea-option:has(input:checked) .sea-option-name{color:var(--paper-2)}
+.sea-option:has(input:checked) .sea-option-days{color:color-mix(in srgb,var(--paper-2) 72%,transparent)}
+.sea-option:focus-within{box-shadow:0 0 0 2px color-mix(in srgb,var(--red) 45%,transparent)}
+
+/* ---------- la lista ---------- */
+.ocean-layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(240px,.75fr);gap:22px;align-items:start}
+.ocean-main,.ocean-aside{min-width:0;display:flex;flex-direction:column;gap:18px}
+.ocean-aside{position:sticky;top:84px}
+.ocean-tabs{margin-bottom:2px}
+.seg-count{
+  font-family:var(--font-mono);font-size:.6rem;letter-spacing:.04em;opacity:.65;margin-left:5px;vertical-align:1px
+}
+.bottle-grid{display:grid;gap:14px}
+.bottle-card{
+  position:relative;padding:18px 20px;border:1px solid var(--rule-strong);border-radius:4px;background:var(--paper-2);
+  transition:transform .26s var(--ease-ink),box-shadow .26s var(--ease-ink),border-color .26s
+}
+/* que no queden perfectamente alineadas: las colocas tú, no una rejilla */
+.bottle-grid .bottle-card:nth-child(3n+2){rotate:-.14deg}
+.bottle-grid .bottle-card:nth-child(3n){rotate:.1deg}
+.bottle-card::after{
+  content:"";position:absolute;left:-1px;top:14px;bottom:14px;width:2px;border-radius:2px;
+  background:var(--tint,var(--sea-2));opacity:.55;transition:opacity .26s
+}
+.bottle-card:hover{
+  transform:translateY(-2px);rotate:0deg;box-shadow:3px 3.5px 0 -1px color-mix(in srgb,var(--ink) 16%,transparent);border-color:var(--ink)
+}
+.bottle-card:hover::after{opacity:1}
+.bottle-card-head{display:flex;align-items:flex-start;gap:11px}
+.bottle-card-mark{display:grid;place-items:center;width:34px;height:34px;flex:none;margin-top:2px}
+.bottle-card-who{flex:1;min-width:0}
+.bottle-card-who h3{margin:2px 0 0;font-family:var(--font-display);font-size:1.04rem;font-weight:500;letter-spacing:-.01em}
+.bottle-card-who .field-caption{margin:0}
+.kept-mark{display:grid;place-items:center;color:var(--red);flex:none}
+.kept-mark .icon{width:16px;height:16px}
+.bottle-card-text{
+  margin:12px 0 0;font-family:var(--font-display);font-size:1.02rem;line-height:1.7;color:var(--ink);
+  overflow-wrap:anywhere
+}
+.bottle-card-text.is-short{font-size:1.14rem}
+.bottle-card-quiet{margin:9px 0 0;font-family:var(--font-display);font-style:italic;font-size:.9rem;color:var(--ink-soft)}
+.bottle-card-reply{
+  margin:12px 0 0;padding:10px 12px;border-left:2px solid var(--red);background:color-mix(in srgb,var(--red) 6%,transparent);
+  font-size:.9rem;line-height:1.6;color:var(--ink-soft)
+}
+.bottle-card-reply span{
+  display:block;margin-bottom:3px;font-family:var(--font-mono);font-size:.6rem;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--red)
+}
+.bottle-card-foot{display:flex;align-items:center;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid var(--rule)}
+.bottle-card-foot .delete-button{margin-left:auto}
+.bottle-card.is-lost{background:color-mix(in srgb,var(--sea-deep) 5%,var(--paper-2))}
+.bottle-card.is-lost::after{background:var(--rule-strong);opacity:.8}
+.bottle-card.is-lost .bottle-card-text{color:var(--ink-soft)}
+.bottle-card.is-lost .bottle-glyph{opacity:.6}
+
+/* ---------- la tarjeta de reglas ---------- */
+.sea-rules{border-top:1px solid var(--ink);background:transparent;box-shadow:none}
+.sea-rules .field-title{margin-bottom:10px}
+.sea-rules-list{margin:0;padding-left:18px;display:grid;gap:7px;font-size:.88rem;line-height:1.55;color:var(--ink-soft)}
+.sea-rules-list li::marker{font-family:var(--font-mono);font-size:.72rem;color:var(--red)}
+.sea-rules-now{
+  margin:14px 0 0;padding-top:12px;border-top:1px dashed var(--rule-strong);
+  font-family:var(--font-display);font-style:italic;font-size:.92rem;color:var(--ink-soft)
+}
+
+/* ---------- abrir una botella ---------- */
+.bottle-modal{position:relative;overflow:hidden;padding:30px clamp(22px,3vw,38px) 24px;max-width:620px}
+.bottle-wax{
+  position:absolute;right:18px;top:16px;width:46px;height:46px;display:grid;place-items:center;
+  border-radius:50%;background:radial-gradient(circle at 38% 34%,color-mix(in srgb,var(--red) 82%,#fff),var(--red) 70%);
+  box-shadow:0 4px 10px -6px color-mix(in srgb,var(--ink) 70%,transparent);transform:rotate(-8deg)
+}
+.bottle-wax .bottle-glyph{width:24px;height:24px}
+.bottle-wax .bottle-glyph path{stroke:color-mix(in srgb,#fff 78%,transparent)}
+.wax-crack{position:absolute;inset:0;pointer-events:none;opacity:0}
+.tale{
+  margin:0 60px 0 0;font-family:var(--font-mono);font-size:.68rem;letter-spacing:.06em;line-height:1.7;
+  text-transform:lowercase;color:var(--ink-faint)
+}
+.bottle-note{
+  position:relative;margin:20px 0;padding:22px 24px;
+  background:
+    repeating-linear-gradient(0deg,transparent 0 27px,color-mix(in srgb,var(--rule) 60%,transparent) 27px 28px),
+    var(--paper-2);
+  border:1px solid var(--rule-strong);border-radius:2px;
+  box-shadow:0 12px 26px -22px color-mix(in srgb,var(--ink) 70%,transparent);
+  transform-origin:top center
+}
+.bottle-note::before{
+  content:"";position:absolute;left:14px;right:14px;top:-9px;height:18px;
+  background:color-mix(in srgb,var(--ochre) 26%,transparent);border:1px solid color-mix(in srgb,var(--ochre) 34%,transparent);
+  transform:rotate(-.5deg);opacity:.65
+}
+.bottle-modal-text{margin:0;font-family:var(--font-display);font-size:1.16rem;line-height:1.72;color:var(--ink);overflow-wrap:anywhere}
+.bottle-modal-mood{margin:14px 0 0;font-size:.82rem;color:var(--ink-faint)}
+.modal-quiet{margin:-6px 0 16px;font-size:.84rem;color:var(--ink-faint)}
+.bottle-reply-box{margin:0 0 18px;padding:12px 14px;border-left:2px solid var(--red);background:color-mix(in srgb,var(--red) 6%,transparent)}
+.bottle-reply-box span{display:block;margin-bottom:4px;font-family:var(--font-mono);font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;color:var(--red)}
+.bottle-reply-box p{margin:0;font-family:var(--font-display);font-size:1rem;line-height:1.65}
+.bottle-reply-form{margin:0 0 20px}
+.bottle-reply-form label{display:block;margin-bottom:6px;font-family:var(--font-mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
+.bottle-reply-form textarea{width:100%;font-family:var(--font-display);font-size:1rem;line-height:1.7}
+.bottle-modal.is-fresh .bottle-wax{animation:sealPop .6s var(--ease-pop) both}
+.is-uncorking .bottle-wax{animation:uncork .9s var(--ease-ink) both}
+.is-uncorking .bottle-note{animation:unfold .75s var(--ease-ink) .16s both}
+.is-uncorking .bottle-modal-text{animation:inkIn .9s var(--ease-ink) .45s both}
+@keyframes uncork{
+  0%{transform:rotate(-8deg);opacity:1}
+  30%{transform:translateY(-4px) rotate(-14deg) scale(1.05)}
+  100%{transform:translate(-22px,-52px) rotate(-42deg) scale(.8);opacity:.12}
+}
+@keyframes unfold{
+  0%{transform:rotateX(-70deg) translateY(-8px);opacity:0}
+  55%{transform:rotateX(7deg);opacity:1}
+  100%{transform:none;opacity:1}
+}
+@keyframes inkIn{from{opacity:0;filter:blur(3px)}to{opacity:1;filter:none}}
+@keyframes sealPop{0%{transform:scale(.4) rotate(-24deg);opacity:0}60%{transform:scale(1.1) rotate(4deg);opacity:1}100%{transform:scale(1) rotate(-8deg);opacity:1}}
+
+/* ---------- desde la portada ---------- */
+.sea-teaser{
+  position:relative;overflow:hidden;padding:22px 24px 20px;border:1px solid var(--rule-strong);border-radius:3px;
+  background:var(--paper-2)
+}
+.sea-teaser h2{margin:0;font-family:var(--font-display);font-size:1.3rem;font-weight:500;letter-spacing:-.01em;line-height:1.25}
+.sea-teaser.is-arrival{border-color:color-mix(in srgb,var(--red) 45%,var(--rule-strong))}
+.sea-teaser.is-arrival h2{text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--red) 55%,transparent);text-underline-offset:6px;text-decoration-thickness:1.5px}
+.sea-teaser-quote{margin:9px 0 0;font-family:var(--font-display);font-style:italic;font-size:1rem;line-height:1.6;color:var(--ink-soft);max-width:52ch}
+.sea-teaser-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px}
+.sea-teaser-count{font-family:var(--font-mono);font-size:.66rem;letter-spacing:.06em;color:var(--ink-faint)}
+.sea-teaser-waves{position:absolute;left:0;right:0;bottom:-10px;height:64px;opacity:.34;pointer-events:none}
+.sea-teaser-waves .sea-wave-svg{position:static;width:100%;height:100%}
+
+.sea-empty{text-align:center;padding:34px 20px}
+.sea-empty-art{position:relative;display:inline-grid;place-items:center;width:64px;height:64px;margin-bottom:8px}
+.sea-empty-art .bottle-glyph{width:38px;height:38px;opacity:.7;animation:bobSlow 5.5s var(--ease-tide) infinite}
+@keyframes bobSlow{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-5px) rotate(4deg)}}
+.sea-empty-ripple{position:absolute;inset:-6px;border-radius:50%;border:1px dashed var(--rule-strong);opacity:0;animation:ripple 4s var(--ease-ink) infinite}
+.sea-empty h3{margin:6px 0 4px;font-family:var(--font-display);font-size:1.15rem;font-weight:500}
+.sea-empty p{margin:0;font-size:.9rem;color:var(--ink-soft)}
+
+/* ---------- el chapuzón ---------- */
+#ocean-fx{position:fixed;inset:0;pointer-events:none;z-index:80}
+.splash-arc{
+  position:fixed;left:24vw;top:62vh;display:grid;place-items:center;translate:-50% -50%;
+  animation:splashArc 1.2s cubic-bezier(.3,.7,.4,1) forwards
+}
+.splash-arc .bottle-glyph{width:46px;height:46px;filter:drop-shadow(0 9px 12px color-mix(in srgb,var(--ink) 30%,transparent))}
+@keyframes splashArc{
+  0%{transform:translate(0,0) rotate(0) scale(.6);opacity:0}
+  12%{opacity:1}
+  45%{transform:translate(calc(var(--to-x,50vw) * .55 - 24vw),-160px) rotate(210deg) scale(1.04)}
+  100%{transform:translate(calc(var(--to-x,50vw) - 24vw),calc(var(--to-y,50vh) - 62vh)) rotate(400deg) scale(.7);opacity:.05}
+}
+.splash-ring{
+  position:fixed;left:var(--to-x,50vw);top:var(--to-y,50vh);width:20px;height:20px;margin:-10px 0 0 -10px;
+  border-radius:50%;border:1.5px solid color-mix(in srgb,var(--paper-2) 78%,transparent);
+  animation:splashRing 1s var(--ease-ink) .5s both
+}
+.splash-ring.is-2{animation-delay:.66s}
+@keyframes splashRing{0%{transform:scale(.2);opacity:.85}100%{transform:scale(6);opacity:0}}
+.splash-drop{
+  position:fixed;left:var(--to-x,50vw);top:var(--to-y,50vh);width:5px;height:5px;border-radius:50%;
+  background:color-mix(in srgb,var(--tint,var(--sea-1)) 66%,var(--paper-2));
+  animation:dropFly .75s var(--ease-ink) .56s both
+}
+.splash-drop.is-2{animation-delay:.64s;--dx:-24px}
+.splash-drop.is-3{animation-delay:.7s;--dx:26px}
+@keyframes dropFly{
+  0%{transform:translate(0,0) scale(.4);opacity:0}
+  30%{opacity:1}
+  100%{transform:translate(var(--dx,12px),-38px) scale(.2);opacity:0}
+}
+
+/* ---------- regla de marea y línea de agua ---------- */
+.tide-rule-wrap{margin:2px 0 20px;opacity:.5}
+.tide-rule{display:block;width:100%;height:26px}
+.tide-rule-path{fill:none;stroke:var(--rule-strong);stroke-width:1.4;animation:tideSlide 16s linear infinite}
+.is-after-sea .tide-rule-path{stroke:color-mix(in srgb,var(--sea-deep) 40%,transparent)}
+@keyframes waveShift{to{transform:translateX(calc(-1 * var(--wp,240px)))}}
+@keyframes waveShiftBack{to{transform:translateX(var(--wp,240px))}}
+@keyframes tideSlide{to{transform:translateX(-120px)}}
+@keyframes beacon{0%,74%{opacity:.2}84%,100%{opacity:1}}
+@keyframes foam{0%,100%{transform:translateX(-1.5%) scaleY(1);opacity:.45}50%{transform:translateX(1.5%) scaleY(1.3);opacity:.75}}
+@keyframes washBreathe{0%,100%{transform:scale(1);opacity:.44}50%{transform:scale(1.1) translateY(-2%);opacity:.62}}
+@keyframes ripple{0%{transform:scale(.7);opacity:.5}100%{transform:scale(1.8);opacity:0}}
+
+/* ---------- responsive ---------- */
+@media (max-width:1120px){
+  .ocean-layout{grid-template-columns:1fr}
+  .ocean-aside{position:static}
+}
+@media (max-width:980px){
+  .sea-water{height:146px}
+  .sea-float-whisper{display:none}
+  .sea-picker{gap:5px}
+  .sea-option{padding:6px 10px;font-size:.82rem}
+}
+@media (max-width:560px){
+  .sea-sky{padding:20px 16px 10px}
+  .sea-panel{margin-bottom:18px}
+  .sea-float-btn .bottle-glyph{width:24px;height:24px}
+  .shore-bottle{max-width:100%}
+  .bottle-modal{padding:24px 18px 18px}
+  .bottle-wax{width:38px;height:38px;right:12px;top:12px}
+  .tale{margin-right:48px}
+}
+
+/* ---------- poco movimiento ---------- */
+@media (prefers-reduced-motion:reduce){
+  .sea-wave-svg .wave,.sea-float-btn,.sea-beacon,.sea-wash,.sea-empty-art .bottle-glyph,.sea-empty-ripple,
+  .sea-shore::before,.shore-bottle.is-washing,.is-rising .sea-shore,.bottle-glyph.is-landed,
+  .splash-arc,.splash-ring,.splash-drop,.is-uncorking .bottle-wax,.is-uncorking .bottle-note,.is-uncorking .bottle-modal-text,
+  .tide-rule-path{animation:none!important}
+  .sea-float,.shore-bottle,.bottle-card{transition:none}
+  .bottle-modal-text{opacity:1;filter:none}
+}
