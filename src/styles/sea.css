@@ -150,6 +150,7 @@
 .mini-mood input{position:absolute;opacity:0;width:1px;height:1px}
 .mini-mood span{font-size:1rem;filter:grayscale(.5);opacity:.65;transition:filter .2s,opacity .2s,transform .2s var(--ease-pop)}
 .mini-mood:hover{background:var(--paper-3)}
+.mini-mood:focus-within{outline:2px solid var(--red);outline-offset:2px}
 .mini-mood:active span{transform:scale(.86)}
 .mini-mood:has(input:checked) span{filter:none;opacity:1;transform:scale(1.14)}
 .mini-mood:has(input:checked){background:color-mix(in srgb,var(--mood-color) 16%,transparent);box-shadow:inset 0 -2px 0 var(--mood-color)}
@@ -160,51 +161,25 @@
 .cast-btn:hover .icon{transform:translateX(3px) rotate(-12deg)}
 .cast-btn:disabled{opacity:.35;cursor:default}
 
-.sea-picker{
-  display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:18px 0 0;padding:12px 0 0;
-  border-top:1px dashed var(--rule-strong)
-}
-.sea-picker-label{
-  font-family:var(--font-mono);font-size:.64rem;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--ink-soft);margin-right:4px
-}
-.sea-option{
-  position:relative;display:inline-flex;align-items:baseline;gap:7px;padding:7px 12px;cursor:pointer;
-  border:1px solid var(--rule-strong);border-radius:3px;background:var(--paper-3);
-  font-size:.86rem;transition:background .2s,border-color .2s,color .2s,transform .2s var(--ease-ink)
-}
-.sea-option:hover{transform:translateY(-1px);border-color:var(--ink)}
-.sea-option:active{transform:translateY(0) scale(.985)}
-.sea-option input{position:absolute;opacity:0;width:1px;height:1px}
-.sea-option-name{font-family:var(--font-display);color:var(--ink)}
-.sea-option-days{font-family:var(--font-mono);font-size:.62rem;letter-spacing:.06em;color:var(--ink-faint)}
-.sea-option:has(input:checked){background:var(--ink);border-color:var(--ink)}
-.sea-option:has(input:checked) .sea-option-name{color:var(--paper-2)}
-.sea-option:has(input:checked) .sea-option-days{color:color-mix(in srgb,var(--paper-2) 72%,transparent)}
-.sea-option:focus-within{box-shadow:0 0 0 2px color-mix(in srgb,var(--red) 45%,transparent)}
-
 /* ---------- la lista ---------- */
-.ocean-layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(240px,.75fr);gap:22px;align-items:start}
-.ocean-main,.ocean-aside{min-width:0;display:flex;flex-direction:column;gap:18px}
-.ocean-aside{position:sticky;top:84px}
 .ocean-tabs{margin-bottom:2px}
 .seg-count{
   font-family:var(--font-mono);font-size:.6rem;letter-spacing:.04em;opacity:.65;margin-left:5px;vertical-align:1px
 }
 .bottle-grid{display:grid;gap:14px}
 .bottle-card{
-  position:relative;padding:18px 20px;border:1px solid var(--rule-strong);border-radius:4px;background:var(--paper-2);
-  transition:transform .26s var(--ease-ink),box-shadow .26s var(--ease-ink),border-color .26s
+  position:relative;padding:18px 20px;border:1px solid var(--rule-strong);border-radius:5px;background:var(--paper-2);
+  box-shadow:var(--shadow);transition:transform .26s var(--ease-ink),box-shadow .26s var(--ease-ink),border-color .26s
 }
 /* que no queden perfectamente alineadas: las colocas tú, no una rejilla */
 .bottle-grid .bottle-card:nth-child(3n+2){rotate:-.14deg}
 .bottle-grid .bottle-card:nth-child(3n){rotate:.1deg}
 .bottle-card::after{
   content:"";position:absolute;left:-1px;top:14px;bottom:14px;width:2px;border-radius:2px;
-  background:var(--tint,var(--sea-2));opacity:.55;transition:opacity .26s
+  border-radius:2px;background:var(--tint,var(--sea-1));opacity:.55;transition:opacity .26s
 }
 .bottle-card:hover{
-  transform:translateY(-2px);rotate:0deg;box-shadow:3px 3.5px 0 -1px color-mix(in srgb,var(--ink) 16%,transparent);border-color:var(--ink)
+  transform:translateY(-1px);rotate:0deg;box-shadow:var(--shadow-hover);border-color:var(--rule-strong)
 }
 .bottle-card:hover::after{opacity:1}
 .bottle-card-head{display:flex;align-items:flex-start;gap:11px}
@@ -230,10 +205,267 @@
 }
 .bottle-card-foot{display:flex;align-items:center;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid var(--rule)}
 .bottle-card-foot .delete-button{margin-left:auto}
-.bottle-card.is-lost{background:color-mix(in srgb,var(--sea-deep) 5%,var(--paper-2))}
 .bottle-card.is-lost::after{background:var(--rule-strong);opacity:.8}
 .bottle-card.is-lost .bottle-card-text{color:var(--ink-soft)}
 .bottle-card.is-lost .bottle-glyph{opacity:.6}
+
+.bottle-card.is-locked{cursor:default;background:var(--paper-3)}
+.bottle-grid .bottle-card.is-locked,.bottle-grid .bottle-card.is-locked:hover{rotate:0deg}
+.bottle-card.is-locked:hover{transform:none;border-color:var(--rule-strong);box-shadow:var(--shadow)}
+.bottle-card.is-locked .bottle-card-mark{
+  width:42px;height:42px;border:1px solid color-mix(in srgb,var(--tint) 34%,var(--rule-strong));
+  border-radius:50%;background:var(--paper-2)
+}
+.bottle-card.is-locked .bottle-glyph{opacity:.86}
+.bottle-card.is-lost{background:color-mix(in srgb,var(--paper-3) 76%,var(--sea-deep) 24%)}
+.bottle-card.is-returned{background:color-mix(in srgb,var(--paper-2) 96%,var(--tint) 4%)}
+
+/* ---------- Pensamientos: una isla fuera de la carcasa ---------- */
+#app.is-thoughts-immersive{
+  position:relative;display:block;isolation:isolate;min-height:100vh;min-height:100svh;overflow-x:clip;
+  background:linear-gradient(180deg,var(--sea-sky) 0%,color-mix(in srgb,var(--sea-sky) 55%,var(--sea-1)) 42%,var(--sea-1) 65%,var(--sea-2) 82%,var(--sea-deep) 100%)
+}
+#app.is-thoughts-immersive .sidebar,
+#app.is-thoughts-immersive .sidebar-backdrop,
+#app.is-thoughts-immersive .topbar,
+#app.is-thoughts-immersive .tabbar-wrap,
+#app.is-thoughts-immersive .page-footer{display:none!important}
+#app.is-thoughts-immersive .shell{display:block;width:100%;min-height:100vh;min-height:100svh}
+#app.is-thoughts-immersive main{position:relative;z-index:1;max-width:none;width:100%;margin:0;padding:0}
+.thoughts-world{position:relative;isolation:isolate;min-height:100vh;min-height:100svh;overflow-x:clip;color:var(--ink)}
+.thoughts-world-tide{
+  position:fixed;left:-4%;right:-4%;bottom:-5vh;z-index:0;height:44vh;min-height:250px;max-height:480px;
+  opacity:.48;pointer-events:none;overflow:hidden
+}
+.thoughts-world-tide .sea-wave-svg{position:absolute;inset:0;left:-2%;width:104%;height:100%}
+.thoughts-exit{
+  position:fixed;top:calc(env(safe-area-inset-top,0px) + 18px);right:clamp(16px,3.8vw,42px);z-index:40;
+  display:grid;place-items:center;width:46px;height:46px;border:1px solid color-mix(in srgb,var(--paper-2) 66%,var(--sea-2));
+  border-radius:50%;background:color-mix(in srgb,var(--paper-2) 60%,transparent);color:var(--ink);
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--paper-2) 82%,transparent),0 12px 28px -20px var(--ink);
+  -webkit-backdrop-filter:blur(14px) saturate(130%);backdrop-filter:blur(14px) saturate(130%);
+  transition:transform .22s var(--ease-spring),background .22s,border-color .22s
+}
+.thoughts-exit .icon{width:20px;height:20px}
+.thoughts-exit:hover{transform:translateX(-2px);border-color:var(--red);background:var(--paper-2)}
+.thoughts-ocean-stage{
+  position:relative;z-index:1;isolation:isolate;display:flex;flex-direction:column;align-items:flex-start;
+  min-height:100vh;min-height:100svh;margin:0;padding:clamp(100px,13vh,142px) clamp(24px,8.5vw,132px) 36px;
+  overflow:hidden;border:0;border-radius:0;background:linear-gradient(180deg,var(--sea-sky) 0%,color-mix(in srgb,var(--sea-sky) 53%,var(--sea-1)) 48%,var(--sea-1) 64%,var(--sea-2) 100%);
+  color:var(--ink);box-shadow:none;scroll-margin-top:0
+}
+.thoughts-ocean-stage[data-dayphase="morning"]{background:linear-gradient(180deg,color-mix(in srgb,var(--ochre) 12%,var(--sea-sky)),color-mix(in srgb,var(--sea-sky) 48%,var(--sea-1)) 49%,var(--sea-1) 65%,var(--sea-2))}
+.thoughts-ocean-stage[data-dayphase="evening"]{background:linear-gradient(180deg,color-mix(in srgb,var(--red) 18%,var(--sea-sky)),color-mix(in srgb,var(--sea-sky) 48%,var(--sea-1)) 48%,var(--sea-1) 65%,var(--sea-2))}
+.thoughts-ocean-stage[data-dayphase="night"]{background:linear-gradient(180deg,color-mix(in srgb,var(--sea-deep) 92%,var(--ink)),color-mix(in srgb,var(--sea-deep) 48%,var(--sea-sky)) 58%,var(--sea-deep) 100%);color:color-mix(in srgb,var(--sea-foam) 70%,white)}
+.thoughts-sky-glow{
+  position:absolute;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(circle at var(--sun-x,50%) var(--sun-y,24%),color-mix(in srgb,var(--ochre) 31%,transparent),transparent 27%),
+    linear-gradient(180deg,color-mix(in srgb,var(--paper-2) 17%,transparent),transparent 54%)
+}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-sky-glow{
+  background:radial-gradient(circle at var(--moon-x,50%) var(--moon-y,40%),color-mix(in srgb,var(--sea-foam) 16%,transparent),transparent 30%),
+    radial-gradient(circle at 15% 17%,color-mix(in srgb,var(--sea-foam) 84%,white) 0 1px,transparent 2px),
+    radial-gradient(circle at 72% 22%,color-mix(in srgb,var(--sea-foam) 74%,white) 0 1px,transparent 2px)
+}
+.thoughts-sun,.thoughts-moon{
+  position:absolute;z-index:1;left:var(--sun-x,50%);top:var(--sun-y,25%);transform:translate(-50%,-50%);
+  border-radius:50%;pointer-events:none;transition:left .8s ease,top .8s ease,opacity .5s
+}
+.thoughts-sun{
+  width:68px;height:68px;
+  background:radial-gradient(circle at 34% 30%,#fff9d8 0%,color-mix(in srgb,var(--ochre) 88%,#fff) 35%,var(--ochre) 78%);
+  box-shadow:0 0 0 10px color-mix(in srgb,var(--ochre) 10%,transparent),0 0 46px 10px color-mix(in srgb,var(--ochre) 40%,transparent)
+}
+.thoughts-moon{display:none;left:var(--moon-x,50%);top:var(--moon-y,40%);width:42px;height:42px;background:var(--paper-2);box-shadow:0 0 0 8px color-mix(in srgb,var(--paper-2) 9%,transparent),0 0 40px color-mix(in srgb,var(--paper-2) 30%,transparent)}
+.thoughts-moon::after{content:"";position:absolute;width:36px;height:36px;left:12px;top:-5px;border-radius:50%;background:color-mix(in srgb,var(--sea-deep) 82%,var(--sea-sky))}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-sun{opacity:0}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-moon{display:block;background:color-mix(in srgb,var(--sea-foam) 74%,white);box-shadow:0 0 0 8px color-mix(in srgb,var(--sea-foam) 12%,transparent),0 0 40px color-mix(in srgb,var(--sea-foam) 40%,transparent)}
+.thoughts-hero-copy{
+  position:relative;z-index:6;width:min(100%,620px);max-width:620px;margin:0;padding:0;border:0;border-radius:0;
+  background:transparent;color:var(--ink);box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none
+}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-hero-copy{color:color-mix(in srgb,var(--sea-foam) 70%,white)}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-kicker{color:color-mix(in srgb,var(--red) 62%,white)}
+.thoughts-kicker{display:flex;align-items:center;gap:9px;font-family:var(--font-mono);font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;color:var(--red);text-shadow:0 1px 16px color-mix(in srgb,var(--paper-2) 55%,transparent)}
+.thoughts-kicker .icon{width:17px;height:17px}
+.thoughts-hero-copy h1{margin-top:12px;font-size:clamp(3.2rem,8.5vw,6.3rem);letter-spacing:-.055em;line-height:.94;text-shadow:0 8px 34px color-mix(in srgb,var(--paper-2) 32%,transparent)}
+.thoughts-lead{margin-top:16px;font-family:var(--font-display);font-size:clamp(1.08rem,2vw,1.35rem);font-style:italic;color:var(--ink-soft);text-shadow:0 2px 16px color-mix(in srgb,var(--paper-2) 38%,transparent)}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-lead{color:color-mix(in srgb,var(--sea-foam) 74%,white)}
+.thoughts-state-pill{
+  display:inline-flex;align-items:center;min-height:34px;margin-top:22px;padding:6px 13px;border:1px solid color-mix(in srgb,var(--paper-2) 65%,var(--rule-strong));border-radius:999px;
+  background:color-mix(in srgb,var(--paper-2) 56%,transparent);color:var(--ink-soft);font-family:var(--font-mono);font-size:.65rem;letter-spacing:.08em;
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--paper-2) 88%,transparent);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)
+}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-state-pill{color:color-mix(in srgb,var(--sea-foam) 74%,white);border-color:color-mix(in srgb,var(--sea-foam) 24%,transparent);background:color-mix(in srgb,var(--sea-deep) 70%,transparent)}
+.thoughts-ocean-stage .vault-water{
+  position:absolute;left:-1%;right:-1%;bottom:0;z-index:2;width:102%;height:var(--water-level,45%);overflow:hidden;
+  border:0;border-top:1px solid color-mix(in srgb,var(--paper-2) 48%,transparent);border-radius:49% 51% 0 0 / 10% 13% 0 0;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--sea-1) 88%,var(--sea-foam)),var(--sea-2) 48%,var(--sea-deep));
+  box-shadow:inset 0 14px 32px -28px var(--paper-2);transition:height .7s var(--ease-ink)
+}
+.thoughts-ocean-stage[data-dayphase="night"] .vault-water{background:linear-gradient(180deg,var(--sea-2),var(--sea-deep) 68%)}
+.thoughts-ocean-stage .vault-water::before,.thoughts-ocean-stage .vault-water::after{
+  content:"";position:absolute;left:-8%;right:-8%;height:42px;border-top:1px solid color-mix(in srgb,var(--paper-2) 58%,transparent);
+  border-radius:50%;transform:rotate(-3deg);opacity:.56;pointer-events:none
+}
+.thoughts-ocean-stage .vault-water::before{top:14%}
+.thoughts-ocean-stage .vault-water::after{top:29%;left:10%;right:-20%;opacity:.27;transform:rotate(4deg)}
+.thoughts-ocean-stage .sea-wave-svg{z-index:1}
+.thoughts-ocean-stage .vault-fleet{position:absolute;inset:0;z-index:3;margin:0;padding:0;list-style:none}
+.thoughts-ocean-stage .vault-float{position:absolute;left:var(--x,50%);bottom:var(--lift,24%);transform:translateX(-50%);animation:bottleDrift 5.8s var(--ease-tide) var(--float-delay,0s) infinite}
+.thoughts-ocean-stage .vault-float .bottle-glyph{width:30px;height:30px;filter:drop-shadow(0 5px 7px color-mix(in srgb,var(--ink) 25%,transparent))}
+@keyframes bottleDrift{0%,100%{transform:translate3d(-50%,0,0) rotate(-7deg)}50%{transform:translate3d(-50%,-7px,0) rotate(5deg)}}
+.thoughts-island-scenery{
+  position:absolute;left:-5%;bottom:-1%;z-index:4;width:110%;height:clamp(380px,60vh,650px);overflow:visible;pointer-events:none
+}
+.scene-island-shadow{fill:color-mix(in srgb,var(--sea-deep) 28%,transparent);filter:blur(10px)}
+.scene-island-base{fill:color-mix(in srgb,var(--sea-deep) 38%,var(--sand))}
+.scene-island-beach{fill:color-mix(in srgb,var(--sand) 62%,var(--ochre) 38%)}
+.scene-island-top{fill:color-mix(in srgb,var(--green) 52%,var(--sand))}
+.scene-island-shoreline{fill:none;stroke:color-mix(in srgb,var(--sea-foam) 76%,transparent);stroke-width:4;stroke-linecap:round;opacity:.72;vector-effect:non-scaling-stroke;animation:shoreGlitter 5.6s ease-in-out infinite}
+.scene-palm-trunk{fill:none;stroke:color-mix(in srgb,var(--sea-deep) 76%,var(--ink));stroke-width:17;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.scene-palm-crown{transform-box:fill-box;transform-origin:10% 95%;animation:palmSway 6.8s ease-in-out infinite}
+.scene-palm-leaf{fill:color-mix(in srgb,var(--green) 82%,var(--sea-deep));stroke:color-mix(in srgb,var(--green) 82%,var(--sea-deep));stroke-width:1.5;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.scene-palm-leaf.leaf-b,.scene-palm-leaf.leaf-e{animation:palmLeaf 5.2s ease-in-out infinite;transform-box:fill-box;transform-origin:0 100%}
+.scene-palm-leaf.leaf-d{animation:palmLeaf 6.4s ease-in-out -1.8s infinite reverse;transform-box:fill-box;transform-origin:0 100%}
+.scene-island-grass{fill:color-mix(in srgb,var(--green) 70%,var(--sea-deep))}
+.scene-birds{fill:none;stroke:color-mix(in srgb,var(--ink) 60%,transparent);stroke-width:3;stroke-linecap:round;animation:birdsDrift 9s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+@keyframes shoreGlitter{0%,100%{opacity:.48}50%{opacity:.86}}
+@keyframes palmSway{0%,100%{transform:rotate(-2deg)}50%{transform:rotate(2.2deg)}}
+@keyframes palmLeaf{0%,100%{transform:rotate(-1deg)}50%{transform:rotate(2deg)}}
+@keyframes birdsDrift{0%,100%{transform:translateX(0)}50%{transform:translateX(12px)}}
+.thoughts-stage-actions{
+  position:absolute;left:clamp(24px,6vw,92px);right:clamp(24px,6vw,92px);bottom:clamp(22px,4vh,42px);z-index:8;
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  transition:opacity .28s var(--ease-ink),transform .28s var(--ease-ink),visibility .28s linear
+}
+.thoughts-world.island-in-view .thoughts-stage-actions{opacity:0;visibility:hidden;pointer-events:none;transform:translateY(8px)}
+.thoughts-stage-note{color:color-mix(in srgb,var(--sea-foam) 72%,white);font-family:var(--font-mono);font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;text-shadow:0 1px 7px color-mix(in srgb,var(--ink) 55%,transparent)}
+.thoughts-scroll-button,.island-back-top{
+  display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:44px;padding:10px 16px;
+  border:1px solid color-mix(in srgb,var(--paper-2) 68%,var(--rule-strong));border-radius:999px;
+  background:color-mix(in srgb,var(--paper-2) 72%,transparent);color:var(--ink);
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--paper-2) 86%,transparent),0 8px 18px -14px var(--ink);
+  -webkit-backdrop-filter:blur(12px) saturate(125%);backdrop-filter:blur(12px) saturate(125%);
+  font-family:var(--font-mono);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;
+  cursor:pointer;transition:transform .2s var(--ease-ink),border-color .2s,background .2s
+}
+.thoughts-scroll-button:hover,.island-back-top:hover{transform:translateY(-2px);border-color:var(--red)}
+.thoughts-scroll-button .icon{width:16px;height:16px}
+.thoughts-ocean-stage .vault-arrivals{
+  position:absolute;top:54%;right:clamp(18px,4vw,46px);z-index:8;display:flex;gap:7px;
+  max-width:calc(100% - 36px);overflow-x:auto;scrollbar-width:none
+}
+.thoughts-ocean-stage .vault-arrivals::-webkit-scrollbar{display:none}
+.thoughts-ocean-stage .vault-arrival{
+  display:grid;place-items:center;flex:0 0 42px;width:42px;height:42px;padding:5px;
+  border:1px solid color-mix(in srgb,var(--paper-2) 68%,var(--sea-2));border-radius:50%;color:var(--ink);
+  background:color-mix(in srgb,var(--paper-2) 78%,transparent);box-shadow:0 8px 20px -16px var(--ink);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);cursor:pointer;
+  transition:transform .22s var(--ease-spring),border-color .22s,box-shadow .22s
+}
+.thoughts-ocean-stage .vault-arrival:hover{transform:translateY(-3px);border-color:var(--red)}
+.thoughts-ocean-stage .vault-arrival.is-new{border-color:var(--red)}
+.thoughts-ocean-stage .vault-arrival .bottle-glyph{width:26px;height:26px}
+.thoughts-ocean-stage .vault-arrival.is-washing{animation:bottleArrive .62s var(--ease-ink) both;animation-delay:var(--wash-delay,0ms)}
+@keyframes bottleArrive{0%{opacity:0;transform:translateY(9px) scale(.88)}75%{opacity:1;transform:translateY(-2px) scale(1.04)}100%{opacity:1;transform:none}}
+.thoughts-ocean-stage.is-rising .vault-water{animation:waterLift .72s var(--ease-ink) both}
+@keyframes waterLift{0%{transform:translateY(5px)}65%{transform:translateY(-3px)}100%{transform:none}}
+
+/* El contenido se posa en la arena: sin panel de aplicación ni marco de tarjeta. */
+.thoughts-island{
+  position:relative;z-index:2;isolation:isolate;overflow:hidden;width:min(1180px,calc(100% - clamp(28px,7vw,116px)));
+  margin:0 auto 120px;padding:clamp(126px,12vw,164px) clamp(22px,5vw,70px) 58px;
+  border:1px solid color-mix(in srgb,var(--sand) 66%,var(--rule-strong));border-radius:43% 43% 30px 30px / 5.5% 5.5% 30px 30px;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--sand) 64%,var(--paper-2)) 0%,color-mix(in srgb,var(--paper-2) 90%,var(--sand)) 24%,color-mix(in srgb,var(--paper-2) 96%,var(--sand)) 100%);
+  color:var(--ink);box-shadow:0 30px 74px -54px color-mix(in srgb,var(--sea-deep) 75%,transparent),inset 0 1px 0 color-mix(in srgb,var(--paper-2) 75%,transparent);
+  opacity:0;transform:translateY(24px);transition:opacity .65s var(--ease-ink),transform .65s var(--ease-ink);scroll-margin-top:78px
+}
+.thoughts-island.is-visible{opacity:1;transform:none}
+.thoughts-island-art{position:absolute;top:-12px;left:0;width:100%;height:230px;z-index:0;pointer-events:none;opacity:.88}
+.island-art-water{fill:color-mix(in srgb,var(--sea-1) 38%,transparent)}
+.island-art-sand{fill:color-mix(in srgb,var(--sand) 78%,var(--ochre) 22%)}
+.island-art-beach{fill:color-mix(in srgb,var(--paper-2) 56%,var(--sand) 44%)}
+.island-art-trunk{fill:none;stroke:color-mix(in srgb,var(--sea-deep) 82%,var(--ink));stroke-width:7;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.island-art-leaf{fill:color-mix(in srgb,var(--green) 77%,var(--sea-2));stroke:color-mix(in srgb,var(--green) 77%,var(--sea-2));stroke-width:1;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.shore-palm-crown{transform-box:fill-box;transform-origin:10% 95%;animation:palmSway 7.5s ease-in-out infinite}
+.shore-palm-crown .leaf-b,.shore-palm-crown .leaf-e{animation:palmLeaf 5.8s ease-in-out infinite;transform-box:fill-box;transform-origin:0 100%}
+.thoughts-island-header{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:30px}
+.island-kicker{font-family:var(--font-mono);font-size:.66rem;letter-spacing:.18em;text-transform:uppercase;color:var(--red)}
+.thoughts-island-header h2{margin-top:4px;font-size:clamp(1.9rem,3.2vw,2.65rem)}
+.island-back-top{flex:none;min-height:42px}
+.island-back-top .icon{width:15px;height:15px;transform:rotate(-90deg)}
+.thoughts-island-workspace{display:grid;grid-template-columns:minmax(260px,.82fr) minmax(0,1.18fr);gap:clamp(20px,3.4vw,42px);position:relative;z-index:1}
+.thoughts-island-compose,.thoughts-island-bottles{min-width:0}
+.island-section-heading{display:flex;align-items:center;gap:10px;margin:0 0 13px}
+.island-section-heading h3{font-family:var(--font-display);font-size:1.35rem;font-weight:500}
+.thoughts-island .bottle-composer{
+  margin:0;border:1px solid color-mix(in srgb,var(--sea-2) 24%,var(--sand));border-left:3px solid var(--sea-2);border-radius:16px;
+  background:color-mix(in srgb,var(--paper-2) 79%,transparent);box-shadow:0 12px 28px -26px var(--sea-deep);
+  -webkit-backdrop-filter:blur(10px) saturate(115%);backdrop-filter:blur(10px) saturate(115%)
+}
+.thoughts-island .ocean-tabs{width:100%;margin:0 0 14px}
+.thoughts-island .ocean-tabs button{white-space:nowrap}
+.thoughts-island .bottle-card{background:color-mix(in srgb,var(--paper-2) 86%,var(--sand));border-color:color-mix(in srgb,var(--sand) 76%,var(--rule-strong))}
+.thoughts-island .bottle-card.is-locked{background:color-mix(in srgb,var(--sea-1) 17%,var(--paper-2))}
+.thoughts-island .empty-state{padding:34px 18px;background:color-mix(in srgb,var(--paper-2) 48%,transparent);border:1px solid color-mix(in srgb,var(--sand) 62%,transparent);border-radius:18px}
+.thoughts-island .empty-state .icon{width:36px;height:36px}
+.thoughts-island .empty-state h3{font-size:1.25rem}
+
+@media(max-width:980px){
+  .thoughts-ocean-stage{padding-inline:clamp(28px,7vw,72px)}
+}
+@media(max-width:760px){
+  #app.is-thoughts-immersive{min-height:100vh;min-height:100svh}
+  .thoughts-world-tide{height:38vh;min-height:220px;bottom:-3vh;opacity:.34}
+  .thoughts-exit{width:44px;height:44px;right:15px;top:calc(env(safe-area-inset-top,0px) + 13px)}
+  .thoughts-ocean-stage{
+    min-height:100vh;min-height:100svh;padding:calc(env(safe-area-inset-top,0px) + 88px) 21px 24px;
+    background:linear-gradient(180deg,var(--sea-sky) 0%,color-mix(in srgb,var(--sea-sky) 48%,var(--sea-1)) 47%,var(--sea-1) 66%,var(--sea-2) 100%)
+  }
+  .thoughts-ocean-stage[data-dayphase="night"]{background:linear-gradient(180deg,color-mix(in srgb,var(--sea-deep) 92%,var(--ink)),color-mix(in srgb,var(--sea-deep) 48%,var(--sea-sky)) 59%,var(--sea-deep))}
+  .thoughts-hero-copy{width:min(100%,480px);margin:0}
+  .thoughts-hero-copy h1{font-size:clamp(2.9rem,13vw,4.7rem);letter-spacing:-.06em}
+  .thoughts-lead{margin-top:12px;font-size:1.06rem}
+  .thoughts-state-pill{margin-top:17px;min-height:32px}
+  .thoughts-sun{width:52px;height:52px}
+  .thoughts-moon{width:36px;height:36px}
+  .thoughts-moon::after{width:30px;height:30px;left:10px;top:-4px}
+  .thoughts-ocean-stage .vault-water{height:52%}
+  .thoughts-ocean-stage .vault-float .bottle-glyph{width:24px;height:24px}
+  .thoughts-island-scenery{left:-25%;width:150%;height:clamp(390px,62svh,540px)}
+  .thoughts-stage-actions{left:20px;right:20px;bottom:18px;align-items:flex-start;flex-direction:column;gap:8px}
+  .thoughts-stage-note{font-size:.58rem}
+  .thoughts-scroll-button{min-height:44px}
+  .thoughts-ocean-stage .vault-arrivals{top:auto;right:15px;bottom:112px;left:15px;gap:5px;justify-content:flex-end}
+  .thoughts-ocean-stage .vault-arrival{flex-basis:42px;width:42px;height:42px}
+  .thoughts-island{width:calc(100% - 22px);margin:0 auto 96px;padding:118px 16px 40px;border-radius:42% 42% 23px 23px / 4.8% 4.8% 23px 23px}
+  .thoughts-island-art{top:-8px;height:178px;opacity:.82}
+  .thoughts-island-header{align-items:flex-start;gap:8px;margin-bottom:23px}
+  .thoughts-island-header h2{font-size:1.9rem}
+  .thoughts-island-workspace{grid-template-columns:minmax(0,1fr);gap:30px}
+  .thoughts-island .bottle-composer{padding:17px 15px 14px}
+  .thoughts-island .composer-bar{align-items:center;gap:9px}
+  .thoughts-island .composer-moods{gap:2px}
+  .thoughts-island .mini-mood{width:40px;height:40px}
+  .thoughts-island .cast-btn{min-height:44px;margin-left:auto}
+  .thoughts-island .text-button{min-height:42px}
+  .thoughts-island .ocean-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));overflow:hidden}
+  .thoughts-island .ocean-tabs button{justify-content:center;min-width:0;min-height:44px;padding:8px 5px;gap:5px;font-size:.58rem;letter-spacing:.035em}
+  .thoughts-island .ocean-tabs button .icon{width:12px;height:12px}
+  .thoughts-island .ocean-tabs button:nth-child(odd){border-right:1px solid var(--rule-strong)}
+  .thoughts-island .ocean-tabs button:nth-child(even){border-right:0}
+  .thoughts-island .ocean-tabs button:nth-child(-n+2){border-bottom:1px solid var(--rule-strong)}
+  .thoughts-island .ocean-tabs .seg-count{margin-left:1px;font-size:.55rem}
+}
+@media(max-width:420px){
+  .thoughts-ocean-stage{padding-inline:17px}
+  .thoughts-hero-copy h1{font-size:clamp(2.75rem,13.5vw,4rem)}
+  .thoughts-stage-actions{left:16px;right:16px}
+  .thoughts-island{width:calc(100% - 14px);padding-inline:13px;border-radius:40% 40% 19px 19px / 4.5% 4.5% 19px 19px}
+  .thoughts-island-header{gap:7px}
+  .island-back-top{padding:9px 11px;font-size:.58rem}
+}
 
 /* ---------- la tarjeta de reglas ---------- */
 .sea-rules{border-top:1px solid var(--ink);background:transparent;box-shadow:none}
@@ -368,15 +600,12 @@
 @keyframes ripple{0%{transform:scale(.7);opacity:.5}100%{transform:scale(1.8);opacity:0}}
 
 /* ---------- responsive ---------- */
-@media (max-width:1120px){
-  .ocean-layout{grid-template-columns:1fr}
-  .ocean-aside{position:static}
-}
 @media (max-width:980px){
   .sea-water{height:146px}
-  .sea-float-whisper{display:none}
-  .sea-picker{gap:5px}
-  .sea-option{padding:6px 10px;font-size:.82rem}
+}
+@media (max-width:760px){
+  .bottle-card{padding:16px 15px;border-radius:6px}
+  .bottle-card.is-locked .bottle-card-foot{margin-top:11px;padding-top:9px}
 }
 @media (max-width:560px){
   .sea-sky{padding:20px 16px 10px}
@@ -392,8 +621,166 @@
 @media (prefers-reduced-motion:reduce){
   .sea-wave-svg .wave,.sea-float-btn,.sea-beacon,.sea-wash,.sea-empty-art .bottle-glyph,.sea-empty-ripple,
   .sea-shore::before,.shore-bottle.is-washing,.is-rising .sea-shore,.bottle-glyph.is-landed,
+  .thoughts-entry-water,.thoughts-island-scenery,.scene-island-shoreline,.scene-palm-crown,.scene-palm-leaf,.scene-birds,.shore-palm-crown,
+  .shore-palm-crown .leaf-b,.shore-palm-crown .leaf-e,.scene-shore-foam,.thoughts-ocean-stage .vault-float,.thoughts-ocean-stage .vault-arrival.is-washing,
   .splash-arc,.splash-ring,.splash-drop,.is-uncorking .bottle-wax,.is-uncorking .bottle-note,.is-uncorking .bottle-modal-text,
   .tide-rule-path{animation:none!important}
-  .sea-float,.shore-bottle,.bottle-card{transition:none}
+  .sea-float,.shore-bottle,.bottle-card,.thoughts-island{transition:none}
+  .thoughts-island{opacity:1;transform:none}
   .bottle-modal-text{opacity:1;filter:none}
+}
+
+/* Escena de Pensamientos: cielo nocturno, costa y una isla a pantalla completa. */
+.thoughts-ocean-stage{
+  padding:clamp(94px,13vh,132px) clamp(24px,4.8vw,70px) 36px;
+  background:linear-gradient(180deg,#b9d0d8 0%,#b0ced6 48%,#78aebb 68%,#326c7d 100%);
+}
+.thoughts-ocean-stage[data-dayphase="morning"]{
+  background:linear-gradient(180deg,#f3dcb9 0%,#e5d9c7 37%,#93bdc7 62%,#367487 100%);
+}
+.thoughts-ocean-stage[data-dayphase="evening"]{
+  background:linear-gradient(180deg,#5c5268 0%,#8d6371 36%,#547988 62%,#244b60 100%);
+}
+.thoughts-ocean-stage[data-dayphase="night"]{
+  background:linear-gradient(180deg,#0b1727 0%,#102338 49%,#1c394c 100%);
+  color:#f3f0e7;
+}
+.thoughts-sky-glow{background:radial-gradient(circle at var(--sun-x,50%) var(--sun-y,24%),rgba(255,223,151,.38),transparent 26%)}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-sky-glow{
+  background:
+    radial-gradient(circle at 8% 13%,rgba(248,246,228,.86) 0 1px,transparent 1.6px),
+    radial-gradient(circle at 18% 31%,rgba(231,238,239,.72) 0 .8px,transparent 1.5px),
+    radial-gradient(circle at 30% 8%,rgba(248,246,228,.9) 0 1.15px,transparent 1.8px),
+    radial-gradient(circle at 42% 28%,rgba(231,238,239,.78) 0 .9px,transparent 1.7px),
+    radial-gradient(circle at 58% 12%,rgba(248,246,228,.88) 0 1px,transparent 1.7px),
+    radial-gradient(circle at 69% 34%,rgba(231,238,239,.8) 0 .8px,transparent 1.5px),
+    radial-gradient(circle at 83% 13%,rgba(248,246,228,.8) 0 1px,transparent 1.6px),
+    radial-gradient(circle at 93% 29%,rgba(231,238,239,.7) 0 .8px,transparent 1.5px),
+    radial-gradient(circle at var(--moon-x,50%) var(--moon-y,40%),rgba(224,230,229,.15),transparent 27%),
+    linear-gradient(180deg,#0b1727 0%,#102338 55%,rgba(22,49,67,.35) 100%);
+}
+.thoughts-cloud{
+  position:absolute;z-index:1;height:22px;border-radius:30px;background:rgba(170,190,202,.2);
+  filter:blur(.3px);pointer-events:none;animation:thoughtCloudDrift 25s ease-in-out infinite alternate
+}
+.thoughts-cloud::before,.thoughts-cloud::after{
+  content:"";position:absolute;bottom:6px;border-radius:50%;background:inherit
+}
+.thoughts-cloud::before{left:20%;width:42%;height:32px}
+.thoughts-cloud::after{left:48%;width:30%;height:25px}
+.thoughts-cloud-left{top:27%;left:3.5%;width:148px}
+.thoughts-cloud-right{top:18%;right:21%;width:94px;height:15px;opacity:.76;animation-delay:-9s;transform:scale(.83)}
+@keyframes thoughtCloudDrift{0%{translate:0 0}100%{translate:12px 3px}}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-cloud{background:rgba(127,150,169,.22)}
+.thoughts-ocean-stage[data-dayphase="morning"] .thoughts-cloud{background:rgba(255,244,220,.48)}
+.thoughts-ocean-stage[data-dayphase="evening"] .thoughts-cloud{background:rgba(238,194,197,.25)}
+.thoughts-exit{
+  top:calc(env(safe-area-inset-top,0px) + 4px);right:auto;left:calc(env(safe-area-inset-left,0px) + 4px);
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;width:auto;height:36px;padding:0 13px;
+  border:1px solid rgba(230,239,243,.36);border-radius:999px;background:rgba(13,27,43,.3);color:#e9eff0;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12);font-family:var(--font-mono);font-size:.64rem;letter-spacing:.09em;text-transform:uppercase;
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)
+}
+.thoughts-exit .icon{width:15px;height:15px}
+.thoughts-exit:hover{transform:translateX(-2px);border-color:rgba(246,206,129,.85);background:rgba(13,27,43,.55)}
+.thoughts-hero-copy{width:min(100%,660px);max-width:660px}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-hero-copy{color:#f3f0e7}
+.thoughts-kicker{gap:9px;color:#e9b95d;font-size:.68rem;letter-spacing:.19em;text-shadow:none}
+.thoughts-kicker .icon{width:16px;height:16px;color:currentColor}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-kicker{color:#efc66f}
+.thoughts-hero-copy h1{
+  margin-top:12px;font-size:clamp(3.1rem,7.6vw,4.7rem);font-weight:650;letter-spacing:-.052em;line-height:.99;
+  text-shadow:0 2px 22px rgba(4,14,25,.18)
+}
+.thoughts-lead{margin-top:12px;font-family:var(--font-body);font-size:1rem;font-style:normal;line-height:1.5;color:rgba(20,43,57,.76);text-shadow:none}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-lead{color:rgba(240,242,238,.78)}
+.thoughts-state-pill{
+  display:block;min-height:0;margin-top:30px;padding:0;border:0;border-radius:0;background:none;color:rgba(30,49,63,.75);
+  font-family:var(--font-mono);font-size:.67rem;font-weight:500;letter-spacing:.15em;text-transform:uppercase;box-shadow:none;
+  -webkit-backdrop-filter:none;backdrop-filter:none
+}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-state-pill{color:rgba(238,241,236,.75);border:0;background:none}
+.thoughts-moon{width:44px;height:44px;background:#fff4cf;box-shadow:0 0 0 9px rgba(255,243,203,.09),0 0 44px rgba(255,242,204,.32)}
+.thoughts-moon::after{background:#101f30}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-moon{background:#fff4cf;box-shadow:0 0 0 9px rgba(255,243,203,.09),0 0 44px rgba(255,242,204,.32)}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-moon::after{background:#101f30}
+.thoughts-ocean-stage .vault-water{
+  height:var(--water-level,51%);border-radius:48% 52% 0 0 / 7% 9% 0 0;
+  border-top:1px solid rgba(226,239,241,.36);background:linear-gradient(180deg,#498093 0%,#2f687a 48%,#1b4a61 100%);
+  box-shadow:inset 0 13px 30px -28px rgba(240,247,244,.8)
+}
+.thoughts-ocean-stage[data-dayphase="night"] .vault-water{background:linear-gradient(180deg,#24485b 0%,#1c3d51 55%,#132f44 100%)}
+.thoughts-ocean-stage .vault-water::before,.thoughts-ocean-stage .vault-water::after{border-color:rgba(226,239,241,.48)}
+.thoughts-ocean-stage .vault-fleet{z-index:5;pointer-events:none}
+.thoughts-ocean-stage .vault-float{pointer-events:none}
+.thoughts-ocean-stage .vault-float .bottle-glyph{width:27px;height:27px;filter:drop-shadow(0 5px 5px rgba(8,24,37,.42))}
+.thoughts-island-scenery{left:-5%;bottom:-1%;z-index:4;width:110%;height:clamp(520px,82vh,840px)}
+.scene-island-shadow{fill:rgba(7,23,35,.24);filter:blur(12px)}
+.scene-island-foliage-back{fill:#194f4c}
+.scene-island-foliage-front{fill:#24645a}
+.scene-island-beach{fill:#dce8ed}
+.scene-island-beach-highlight{fill:none;stroke:rgba(247,249,244,.86);stroke-width:3;stroke-linecap:round;vector-effect:non-scaling-stroke;opacity:.68}
+.scene-island-grass{fill:#2f7567}
+.scene-palm-trunk{stroke:#536b70;stroke-width:15}
+.scene-palm-leaf{fill:#246a5e;stroke:#246a5e}
+.scene-palm-left .scene-palm-leaf.leaf-a,.scene-palm-left .scene-palm-leaf.leaf-d{fill:#2d7968;stroke:#2d7968}
+.scene-palm-right .scene-palm-leaf.leaf-b,.scene-palm-right .scene-palm-leaf.leaf-e{fill:#2d7968;stroke:#2d7968}
+.scene-house-shadow{fill:rgba(12,29,43,.16);filter:blur(5px)}
+.scene-house-wall{fill:#d9e1d8;stroke:#647983;stroke-width:3;stroke-linejoin:round}
+.scene-house-roof{fill:#496a79;stroke:#365769;stroke-width:4;stroke-linejoin:round}
+.scene-house-roof-shadow{fill:rgba(13,37,50,.35)}
+.scene-house-door{fill:#466174}
+.scene-house-window{fill:#aecbd0;stroke:#587481;stroke-width:3}
+.scene-house-window path:last-child{fill:none;stroke:#587481;stroke-width:2}
+.scene-shore-foam{fill:none;stroke:rgba(244,249,248,.58);stroke-width:2.2;stroke-linecap:round;vector-effect:non-scaling-stroke;animation:shoreGlitter 5.6s ease-in-out infinite}
+.scene-birds{stroke:rgba(232,240,238,.52);stroke-width:2.4}
+.thoughts-ocean-stage .vault-arrivals{
+  position:absolute;inset:0;z-index:7;display:block;max-width:none;overflow:visible;pointer-events:none
+}
+.thoughts-ocean-stage .vault-arrival{
+  position:absolute;left:var(--arrival-x,50%);right:auto;bottom:29%;transform:translateX(-50%);pointer-events:auto;
+  width:40px;height:40px;flex-basis:40px;padding:5px;border:0;border-radius:0;background:transparent;box-shadow:none;
+  -webkit-backdrop-filter:none;backdrop-filter:none
+}
+.thoughts-ocean-stage .vault-arrival:hover{transform:translate(-50%,-3px);border-color:transparent;background:transparent}
+.thoughts-ocean-stage .vault-arrival.is-new{border-color:transparent}
+.thoughts-ocean-stage .vault-arrival .bottle-glyph{width:30px;height:30px;filter:drop-shadow(0 5px 5px rgba(8,24,37,.38))}
+.thoughts-stage-actions{left:clamp(24px,4.8vw,70px);right:clamp(24px,4.8vw,70px);bottom:clamp(18px,3.2vh,32px);gap:14px}
+.thoughts-stage-note{color:rgba(240,244,239,.82);font-size:.65rem;letter-spacing:.12em;text-shadow:0 1px 8px rgba(7,22,34,.42)}
+.thoughts-scroll-button{
+  min-height:42px;padding:6px 0;border:0;border-bottom:1px solid rgba(237,244,240,.64);border-radius:0;
+  background:transparent;color:#f1f2eb;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;
+  font-family:var(--font-mono);font-size:.67rem;letter-spacing:.12em
+}
+.thoughts-scroll-button:hover{transform:translateY(-2px);border-color:#f0c66d;background:transparent}
+@media(max-width:760px){
+  .thoughts-exit{top:calc(env(safe-area-inset-top,0px) + 5px);left:calc(env(safe-area-inset-left,0px) + 5px);right:auto;height:36px;padding-inline:11px}
+  .thoughts-ocean-stage{padding:calc(env(safe-area-inset-top,0px) + 91px) 21px 24px}
+  .thoughts-ocean-stage[data-dayphase="night"]{background:linear-gradient(180deg,#0b1727 0%,#102338 51%,#1a374a 100%)}
+  .thoughts-hero-copy h1{font-size:clamp(2.9rem,12.8vw,4.55rem)}
+  .thoughts-lead{margin-top:11px;font-size:.98rem}
+  .thoughts-state-pill{margin-top:22px;font-size:.6rem}
+  .thoughts-cloud-left{top:30%;left:2%;transform:scale(.76);transform-origin:left center}
+  .thoughts-cloud-right{top:18%;right:8%;transform:scale(.72);transform-origin:right center}
+  .thoughts-ocean-stage .vault-water{height:54%}
+  .thoughts-island-scenery{left:-25%;width:150%;height:clamp(520px,78svh,700px)}
+  .thoughts-ocean-stage .vault-float .bottle-glyph{width:24px;height:24px}
+  .thoughts-ocean-stage .vault-arrival{bottom:28%;width:34px;height:34px;flex-basis:34px;padding:4px}
+  .thoughts-ocean-stage .vault-arrival .bottle-glyph{width:26px;height:26px}
+  .thoughts-stage-actions{left:16px;right:16px;bottom:14px;align-items:center;flex-direction:row;gap:8px}
+  .thoughts-stage-note{font-size:.53rem;letter-spacing:.08em;white-space:nowrap}
+  .thoughts-scroll-button{min-height:42px;padding:6px 0;font-size:.56rem;letter-spacing:.08em;gap:5px;white-space:nowrap}
+  .thoughts-scroll-button .icon{width:14px;height:14px}
+}
+@media(max-width:420px){
+  .thoughts-ocean-stage{padding-inline:17px}
+  .thoughts-hero-copy h1{font-size:clamp(2.7rem,12.7vw,3.5rem)}
+  .thoughts-stage-actions{left:13px;right:13px;gap:6px}
+  .thoughts-stage-note{font-size:.49rem;letter-spacing:.06em}
+  .thoughts-scroll-button{font-size:.53rem;letter-spacing:.065em;gap:4px}
+  .thoughts-scroll-button .icon{width:13px;height:13px}
+}
+@media(prefers-reduced-motion:reduce){
+  .thoughts-cloud{animation:none!important}
+  .thoughts-sun,.thoughts-moon,.thoughts-ocean-stage .vault-water{transition:none!important}
 }

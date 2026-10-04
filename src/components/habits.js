@@ -65,7 +65,7 @@ export function momentumGrid(entries=[],habits=[],{days=28,end=dateKey(),today=d
       </div>
       <span class="field-caption">${esc(monthLabel)} → ${esc(longDate(dates[dates.length-1],{day:'numeric',month:'short'}))}</span>
     </div>
-    <p class="momentum-hint">Toca cualquier casilla para anotar o quitar un hábito de ese día. Solo días pasados o el de hoy.</p>
+    <p class="momentum-hint">Marca o quita un hábito.</p>
     <div class="momentum-scroll">
       <div class="momentum-grid" style="--cols:${days}">
         <span class="momentum-corner"></span>
@@ -130,15 +130,15 @@ export function habitComposer(profile={},habits=[]){
   return `<section class="card habit-composer">
     <div class="section-heading"><div><p class="eyebrow">${icon('plus')}Nueva rutina</p><h2>Añade un hábito</h2></div><span class="field-caption">${habits.length}/30</span></div>
     <div class="habit-add">
-      <input id="new-habit" maxlength="40" placeholder="Nombre del hábito (ej. Leer 20 minutos)" aria-label="Nuevo hábito">
+      <input id="new-habit" maxlength="40" placeholder="Nombre del hábito" aria-label="Nuevo hábito">
       <button type="button" class="button solid small-btn" data-action="add-habit">${icon('plus')} Añadir</button>
     </div>
     ${suggestions.length?`
-      <p class="field-caption" style="margin-top:16px">Sugerencias para tu etapa · toca para añadir</p>
+      <p class="field-caption" style="margin-top:16px">Sugerencias</p>
       <div class="tag-picker">
         ${suggestions.map(s=>`<button type="button" class="tag-chip" data-action="add-suggested-habit" data-name="${esc(s)}"><span>+ ${esc(s)}</span></button>`).join('')}
       </div>`:''}
-    ${!habits.length?`<p class="habit-empty">Aún no tienes hábitos. Añade uno, o marca algunos en tu perfil y aparecerán aquí.</p>`:''}
+    ${!habits.length?`<p class="habit-empty">Sin hábitos.</p>`:''}
   </section>`;
 }
 
@@ -147,7 +147,7 @@ export function countersBoard(entry={},setup={},visible=[],counters=null){
   return `<section class="card counters-board">
     <div class="section-heading">
       <div><p class="eyebrow">${icon('drop')} Contadores</p><h2>Lo de hoy, en cifras</h2></div>
-      <span class="field-caption">se guarda al instante</span>
+
     </div>
     ${counterSteppers(entry?.counters||{},counters||counterDefs(setup),setup,{action:'routine'})}
     ${visible.length?`<p class="sleep-mood-insight">${icon('spark')} ${esc(visible[0])}</p>`:''}
@@ -159,18 +159,18 @@ export function tomorrowBoard(entry={},date=dateKey()){
   const goals=entry?.goals||[];
   return `<section class="card tomorrow-board">
     <div class="section-heading">
-      <div><p class="eyebrow">${icon('sail')} Para mañana</p><h2>La lista de la próxima marea</h2></div>
+      <div><p class="eyebrow">${icon('sail')} Para mañana</p><h2>Tareas de mañana</h2></div>
       <button type="button" class="text-button" data-action="add-goal-routine">${icon('plus')} Añadir tarea</button>
     </div>
     <label class="sr-only" for="routine-tomorrow">Intención para mañana</label>
     <textarea id="routine-tomorrow" class="tomorrow-intent" name="tomorrow" maxlength="600" rows="2"
-      placeholder="Mañana quiero... (una frase basta)">${esc(entry?.tomorrow||'')}</textarea>
+      placeholder="Mañana quiero…">${esc(entry?.tomorrow||'')}</textarea>
     <div class="task-list" id="routine-goals">
       ${goals.length?goals.map((g,i)=>`<div class="task-row">
         <span class="task-index">${String(i+1).padStart(2,'0')}</span>
         <input class="task-input" data-index="${i}" value="${esc(g)}" maxlength="200" aria-label="Tarea ${i+1}">
         <button type="button" class="icon-button ghost delete-button" data-action="remove-goal-routine" data-index="${i}" aria-label="Quitar tarea">${icon('close')}</button>
-      </div>`).join(''):`<p class="habit-empty">Nada apuntado para mañana. Tres tareas concretas suelen funcionar mejor que diez genéricas.</p>`}
+      </div>`).join(''):`<p class="habit-empty">Sin tareas para mañana.</p>`}
     </div>
   </section>`;
 }
@@ -186,9 +186,7 @@ export function routineTeaser(habits=[],entry=null,entries=[],date=dateKey()){
       <div><p class="eyebrow">${icon('listChecks')} Rutina de hoy</p><h2>${done}/${habits.length||0} ${habits.length===1?'hábito':'hábitos'}</h2></div>
       ${progressRing(pct,`${pct}%`)}
     </div>
-    <p class="routine-teaser-note">${habits.length
-      ?`La lista completa, los contadores y tus rachas viven ahora en su propia pestaña. Semana del ${esc(weekStartLabel)}.`
-      :'Todavía no hay hábitos: crea tu lista en la pestaña Rutina.'}</p>
+    <p class="routine-teaser-note">${habits.length?`Semana del ${esc(weekStartLabel)}.`:'Sin hábitos.'}</p>
     <button type="button" class="text-button full-link" data-view="routine">Ir a Rutina ${icon('arrow')}</button>
     ${todayStreak?`<span class="routine-teaser-flame">${icon('flame')} racha de ${todayStreak} días</span>`:''}
   </section>`;

@@ -27,6 +27,7 @@ export const DEFAULT_SETUP = {
   trustedContactName: '',
   trustedContactPhone: '',
   sidebarCollapsed: false,
+  reduceMotion: false,
   /* listas resueltas por validateSetup: [] significa «los de siempre» */
   counters: [],
   parts: [],
@@ -310,6 +311,7 @@ export function validateSetup(s = {}){
     trustedContactName: String(raw.trustedContactName ?? '').trim().slice(0, 60),
     trustedContactPhone: String(raw.trustedContactPhone ?? '').trim().slice(0, 30),
     sidebarCollapsed: Boolean(raw.sidebarCollapsed),
+    reduceMotion: Boolean(raw.reduceMotion),
     /* los contadores y las partes del diario quedan materializados: el editor
        de Personalizar trabaja siempre sobre una lista concreta */
     counters: counterDefs(raw).slice(0, MAX_COUNTERS),

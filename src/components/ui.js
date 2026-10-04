@@ -188,55 +188,87 @@ export function calendar(monthDate,entries,{mini=false,selected=dateKey()}={}){
 }
 
 export function moodChart(entries,start,days,setup={}){
+  const period=Math.max(1,Math.floor(Number(days)||1));
   const byDate=new Map(entries.map(e=>[e.date,e]));
-  const width=680,height=230,padX=36,padY=26,innerW=width-padX*2,innerH=height-padY*2;
-  const x=i=>padX+(days===1?innerW/2:i*innerW/(days-1));
-  const y=m=>padY+(5-m)*innerH/4;
-  const sleepY=h=>padY+innerH-Math.min(12,Math.max(0,h||0))/12*innerH;
-  const pts=[];
-  const sleepBars=[];
-  const barW=Math.max(6,Math.min(18,Math.floor(innerW/days)-6));
-
-  for(let i=0;i<days;i++){
-    const d=addDays(start,i),e=byDate.get(d);
-    if(e){
-      pts.push({x:x(i),y:y(e.mood),e,d});
-      const sy=sleepY(e.sleepHours);
-      const bh=Math.max(2,padY+innerH-sy);
-      sleepBars.push(`<rect x="${(x(i)-barW/2).toFixed(1)}" y="${sy.toFixed(1)}" width="${barW}" height="${bh.toFixed(1)}" rx="2" fill="color-mix(in srgb,var(--green) 22%,transparent)"><title>${longDate(d)}: ${formatNumber(e.sleepHours)} h de sueño</title></rect>`);
-    }
+  const width=760,height=260,padLeft=42,padRight=48,padTop=22,plotBottom=208;
+  const plotWidth=width-padLeft-padRight,plotHeight=plotBottom-padTop;
+  const x=i=>padLeft+(period===1?plotWidth/2:i*plotWidth/(period-1));
+  const moodY=value=>padTop+(5-value)*plotHeight/4;
+  const sleepY=value=>plotBottom-Math.max(0,Math.min(12,Number(value)||0))*plotHeight/12;
+  const slots=Array.from({length:period},(_,i)=>{
+    const date=addDays(start,i),entry=byDate.get(date);
+    return {date,entry,index:i,x:x(i),y:entry&&Number.isFinite(entry.mood)?moodY(entry.mood):null};
+  });
+  const points=slots.filter(point=>point.entry&&point.y!==null);
+  const barWidth=Math.max(3,Math.min(14,plotWidth/period*.56));
+  const bars=points.filter(point=>Number.isFinite(point.entry.sleepHours)).map(point=>{
+    const top=sleepY(point.entry.sleepHours),barHeight=Math.max(2,plotBottom-top);
+    return `<rect class="sleep-bar" x="${(point.x-barWidth/2).toFixed(1)}" y="${top.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="2"><title>${longDate(point.date)}: ${formatNumber(point.entry.sleepHours)} h de sueño</title></rect>`;
+  });
+  const segments=[];
+  let segment=[];
+  for(const point of slots){
+    if(point.y===null){if(segment.length)segments.push(segment);segment=[];continue;}
+    segment.push(point);
   }
-  const line=pts.map((p,i)=>`${i?'L':'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const area=pts.length>1?`${line} L${pts[pts.length-1].x.toFixed(1)},${height-padY} L${pts[0].x.toFixed(1)},${height-padY} Z`:'';
-  const sleepGoal=setup?.sleepGoal||7.5;
-  const goalLineY=sleepY(sleepGoal);
+  if(segment.length)segments.push(segment);
+  const connected=segments.filter(pointsInLine=>pointsInLine.length>1);
+  const moodLines=connected.map(pointsInLine=>
+    `<path class="chart-line-path" d="${pointsInLine.map((point,i)=>`${i?'L':'M'}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(' ')}"/>`
+  );
+  const areas=connected.map(pointsInLine=>{
+    const line=pointsInLine.map((point,i)=>`${i?'L':'M'}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(' ');
+    return `<path class="chart-area-path" d="${line} L${pointsInLine.at(-1).x.toFixed(1)},${plotBottom} L${pointsInLine[0].x.toFixed(1)},${plotBottom} Z"/>`;
+  });
+  const sleepGoal=Number.isFinite(Number(setup?.sleepGoal))?Number(setup.sleepGoal):7.5;
+  const goalY=sleepY(sleepGoal);
+  const ticks=period<=7?[...Array(period)].map((_,i)=>i):[0,Math.round((period-1)*.17),Math.round((period-1)*.34),Math.round((period-1)*.5),Math.round((period-1)*.67),Math.round((period-1)*.83),period-1];
+  const uniqueTicks=[...new Set(ticks)];
+  const xLabel=index=>{
+    const date=slots[index]?.date||start;
+    const day=Number(date.slice(8));
+    const month=longDate(date,{month:'short'}).replace(/[0-9.,]/g,'').trim();
+    return period<=7?`${day} ${month}`:(day===1?`${day} ${month}`:String(day));
+  };
+  const axisRows=Array.from({length:5},(_,i)=>{
+    const y=padTop+i*plotHeight/4;
+    return `<line class="chart-grid-row" x1="${padLeft}" x2="${width-padRight}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/>`;
+  }).join('');
+  const xTicks=uniqueTicks.map(index=>{
+    const edge=period===1?'center':index===0?'first':index===period-1?'last':'middle';
+    const position=period===1?50:index/(period-1)*100;
+    return `<span class="chart-x-tick ${edge}" style="left:${position.toFixed(2)}%">${xLabel(index)}</span>`;
+  }).join('');
+  const axisPosition=`--axis-top:${(padTop/height*100).toFixed(2)}%;--axis-bottom:${((height-plotBottom)/height*100).toFixed(2)}%`;
   return `<div class="chart-wrap">
-    <svg viewBox="0 0 ${width} ${height}" class="mood-chart" role="img" aria-label="Evolución del estado de ánimo y horas de sueño">
-      <defs>
-        <linearGradient id="moodAreaGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="var(--red)" stop-opacity="0.22"/>
-          <stop offset="100%" stop-color="var(--red)" stop-opacity="0.0"/>
-        </linearGradient>
-      </defs>
-      ${[1,2,3,4,5].map(m=>`<line x1="${padX}" x2="${width-padX}" y1="${y(m)}" y2="${y(m)}" stroke="var(--rule)" stroke-dasharray="3 5"/>
-      <text x="10" y="${y(m)+4}" fill="var(--ink-faint)" font-size="11" font-family="var(--font-mono)">${m}</text>`).join('')}
-      <line x1="${padX}" x2="${width-padX}" y1="${goalLineY.toFixed(1)}" y2="${goalLineY.toFixed(1)}" stroke="var(--green)" stroke-width="1" stroke-dasharray="6 4" opacity="0.55"/>
-      ${sleepBars.join('')}
-      ${area?`<path class="chart-area-path" d="${area}" fill="url(#moodAreaGrad)"/>`:''}
-      ${line?`<path class="chart-line-path" d="${line}" fill="none" stroke="var(--red)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`:''}
-      ${pts.map((p,idx)=>`<g>
-        <circle class="chart-dot" style="--dot-i:${idx}" cx="${p.x}" cy="${p.y}" r="5.5" fill="${MOODS[p.e.mood-1].color}" stroke="var(--paper-2)" stroke-width="2">
-          <title>${longDate(p.d)} · ${MOODS[p.e.mood-1].label} (${p.e.mood}/5) · ${formatNumber(p.e.sleepHours)} h sueño</title>
-        </circle>
-      </g>`).join('')}
-    </svg>
-    <div class="chart-legend-inline">
-      <span><i class="legend-line"></i> Ánimo (1–5)</span>
-      <span><i class="legend-bar"></i> Horas de sueño (meta: ${formatNumber(sleepGoal)} h)</span>
+    <div class="chart-plot">
+      <svg viewBox="0 0 ${width} ${height}" class="mood-chart" role="img" aria-label="Ánimo del 1 al 5 y horas de sueño en ${period} días; hay ${points.length} días con registro">
+        <defs>
+          <linearGradient id="moodAreaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--red)" stop-opacity="0.18"/>
+            <stop offset="100%" stop-color="var(--red)" stop-opacity="0.01"/>
+          </linearGradient>
+        </defs>
+        ${axisRows}
+        ${bars.join('')}
+        ${areas.join('')}
+        <line class="chart-goal-line" x1="${padLeft}" x2="${width-padRight}" y1="${goalY.toFixed(1)}" y2="${goalY.toFixed(1)}"/>
+        ${moodLines.join('')}
+        ${points.map((point,index)=>`<circle class="chart-dot" style="--dot-i:${index}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="5.2" fill="${MOODS[point.entry.mood-1]?.color||'var(--red)'}" stroke="var(--paper-2)" stroke-width="2">
+          <title>${longDate(point.date)} · ${MOODS[point.entry.mood-1]?.label||'Ánimo'} · ${point.entry.mood}/5 · ${formatNumber(point.entry.sleepHours)} h de sueño</title>
+        </circle>`).join('')}
+      </svg>
+      <div class="chart-y-axis mood-axis" style="${axisPosition}" aria-hidden="true">${[5,4,3,2,1].map(value=>`<span>${value}</span>`).join('')}</div>
+      <div class="chart-y-axis sleep-axis" style="${axisPosition}" aria-hidden="true">${[12,9,6,3,0].map(value=>`<span>${value}h</span>`).join('')}</div>
+      <div class="chart-x-axis" aria-hidden="true">${xTicks}</div>
     </div>
+    ${points.length?`<div class="chart-legend-inline">
+      <span><i class="legend-line"></i> Ánimo · escala 1–5</span>
+      <span><i class="legend-bar"></i> Sueño · escala 0–12 h</span>
+      <span><i class="legend-goal"></i> Meta de sueño: ${formatNumber(sleepGoal)} h</span>
+    </div>`:`<p class="chart-empty">Sin registros en este período.</p>`}
   </div>`;
 }
-
 export function moodHeatmap(entries=[],today=dateKey(),days=28){
   const byDate=new Map(entries.map(e=>[e.date,e]));
   const start=addDays(today,1-days);
@@ -245,7 +277,8 @@ export function moodHeatmap(entries=[],today=dateKey(),days=28){
     const d=addDays(start,i);
     const e=byDate.get(d);
     const m=e?MOODS[e.mood-1]:null;
-    cells.push(`<button type="button" class="heatmap-cell ${e?'filled':''}" data-action="open-day" data-date="${d}" style="${m?`--mood:${m.color}`:''}" title="${longDate(d)}${m?`: ${m.label} (${e.mood}/5) · ${formatNumber(e.sleepHours)} h sueño`:': sin registro'}">
+    const description=`${longDate(d)}${m?`: ${m.label} · ${e.mood}/5 · ${formatNumber(e.sleepHours)} h de sueño`:': sin registro'}`;
+    cells.push(`<button type="button" class="heatmap-cell ${e?'filled':''}" data-action="open-day" data-date="${d}" style="${m?`--mood:${m.color}`:''}" title="${description}" aria-label="${description}">
       <span>${d.slice(8)}</span>
       ${m?`<small>${m.emoji}</small>`:''}
     </button>`);
@@ -262,46 +295,46 @@ export function personalGoalsPanel(entries=[],setup={}){
         <h2>Tus metas personales</h2>
         <button type="button" class="text-button" data-action="open-setup-wizard">${icon('sliders')} Ajustar</button>
       </div>
-      <p class="habit-empty">Guarda tu primer día para ver cómo evolucionan tus metas de sueño (${formatNumber(g.sleepGoal)} h), ${escape(profile.focusLabel.toLowerCase())} (${formatNumber(g.studyGoal)} h) y agua (${g.waterGoal} vasos).</p>
+      <p class="habit-empty">Sin datos aún.</p>
     </section>`;
   }
   return `<section class="card personal-goals-card">
     <div class="section-heading">
       <div>
-        <h2>Cumplimiento de tus metas</h2>
+        <h2>Tus metas</h2>
       </div>
       <button type="button" class="text-button" data-action="open-setup-wizard">${icon('sliders')} Ajustar metas</button>
     </div>
     <div class="goals-meter-grid">
       <div class="goal-meter-item">
         <div class="goal-meter-top">
-          <span>${icon('moon')} Sueño (≥ ${formatNumber(g.sleepGoal)} h)</span>
-          <strong>${g.sleepPct}%</strong>
+          <span>${icon('moon')} Sueño · meta ${formatNumber(g.sleepGoal)} h</span>
+          <strong>${g.sleepTracked?`${g.sleepPct}%`:'—'}</strong>
         </div>
-        <div class="meter-track"><i style="width:${g.sleepPct}%;background:var(--green)"></i></div>
-        <small>${g.sleepMet} de ${g.total} días cumplidos</small>
+        <div class="meter-track" role="meter" aria-label="Días que alcanzan la meta de sueño" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${g.sleepPct??0}"><i style="width:${g.sleepPct||0}%;background:var(--green)"></i></div>
+        <small>${g.sleepMet} de ${g.sleepTracked} días con registro</small>
       </div>
       <div class="goal-meter-item">
         <div class="goal-meter-top">
-          <span>${icon('study')} ${escape(profile.focusLabel)} (≥ ${formatNumber(g.studyGoal)} h)</span>
-          <strong>${g.studyPct}%</strong>
+          <span>${icon('study')} ${escape(profile.focusLabel)} · meta ${formatNumber(g.studyGoal)} h</span>
+          <strong>${g.studyTracked?`${g.studyPct}%`:'—'}</strong>
         </div>
-        <div class="meter-track"><i style="width:${g.studyPct}%;background:var(--red)"></i></div>
-        <small>${g.studyMet} de ${g.total} días cumplidos</small>
+        <div class="meter-track" role="meter" aria-label="Días que alcanzan la meta de dedicación" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${g.studyPct??0}"><i style="width:${g.studyPct||0}%;background:var(--red)"></i></div>
+        <small>${g.studyMet} de ${g.studyTracked} días con registro</small>
       </div>
       <div class="goal-meter-item">
         <div class="goal-meter-top">
-          <span>${icon('drop')} Agua (≥ ${g.waterGoal} vasos)</span>
-          <strong>${g.waterPct}%</strong>
+          <span>${icon('drop')} Agua · meta ${g.waterGoal} vasos</span>
+          <strong>${g.waterTracked?`${g.waterPct}%`:'—'}</strong>
         </div>
-        <div class="meter-track"><i style="width:${g.waterPct}%;background:var(--ochre)"></i></div>
-        <small>${g.waterMet} de ${g.total} días cumplidos</small>
+        <div class="meter-track" role="meter" aria-label="Días que alcanzan la meta de agua" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${g.waterPct??0}"><i style="width:${g.waterPct||0}%;background:var(--ochre)"></i></div>
+        <small>${g.waterMet} de ${g.waterTracked} días con registro</small>
       </div>
     </div>
     ${(g.moodWhenSleepMet&&g.moodWhenSleepMissed)?`
       <div class="sleep-mood-insight">
         ${icon('spark')}
-        <p>Cuando alcanzas tu meta de <b>${formatNumber(g.sleepGoal)} h</b> de sueño, tu estado medio es <b>${g.moodWhenSleepMet}/5</b> (frente a <b>${g.moodWhenSleepMissed}/5</b> los días que duermes menos).</p>
+        <p>Ánimo medio · ${g.moodWhenSleepMet}/5 con tu meta · ${g.moodWhenSleepMissed}/5 sin alcanzarla.</p>
       </div>
     `:''}
   </section>`;
@@ -333,7 +366,7 @@ export function ledger(label,value,unit='',hint=''){
 
 export function rankRow(label,entry,field='mood'){
   if(!entry)return `<div class="rank-row"><span class="rank-label">${label}</span><strong>—</strong><small>Sin datos aún</small></div>`;
-  const detail=field==='mood'?`${MOODS[entry.mood-1].emoji} ${MOODS[entry.mood-1].label} (${entry.mood}/5)`:`${formatNumber(entry[field])} h`;
+  const detail=field==='mood'?`${MOODS[entry.mood-1].emoji} ${MOODS[entry.mood-1].label} · ${entry.mood}/5`:`${formatNumber(entry[field])} h`;
   return `<div class="rank-row">
     <span class="rank-label">${label}</span>
     <strong>${longDate(entry.date,{weekday:'short',day:'numeric',month:'short'})}</strong>
@@ -373,7 +406,7 @@ export function crisisBanner(risk,setup={}){
     </div>
     <p class="crisis-reason">${escape(risk.reason)}</p>
     <div class="crisis-quick-actions">
-      <a href="tel:024" class="button solid crisis-call-btn">${icon('phone')} Llamar al 024 (24h, gratuito y confidencial)</a>
+      <a href="tel:024" class="button solid crisis-call-btn">${icon('phone')} Llamar al 024 · gratis · 24 h</a>
       ${trustedName&&trustedPhone?`<a href="tel:${escape(trustedPhone.replace(/\s+/g,''))}" class="button outline">${icon('user')} Llamar a ${escape(trustedName)}</a>`:''}
       <button type="button" class="button outline" data-action="open-crisis-modal" data-tab="breathe">${icon('wind')} Respiración guiada</button>
     </div>
@@ -388,19 +421,19 @@ export function crisisSupportModal(setup={},initialTab='help'){
     <div class="section-heading">
       <div>
         <p class="eyebrow">${icon('heart')} Apoyo y calma</p>
-        <h2>Un espacio para respirar y pedir ayuda</h2>
+        <h2>Respirar y pedir ayuda</h2>
       </div>
       <button type="button" class="icon-button ghost" data-modal="close" aria-label="Cerrar">${icon('close')}</button>
     </div>
 
     <div class="crisis-tabs" role="tablist">
-      <button type="button" class="crisis-tab ${initialTab==='help'?'active':''}" data-crisis-tab="help" role="tab">${icon('phone')} Teléfonos 24h</button>
-      <button type="button" class="crisis-tab ${initialTab==='breathe'?'active':''}" data-crisis-tab="breathe" role="tab">${icon('wind')} Respirar (4-4-6)</button>
+      <button type="button" class="crisis-tab ${initialTab==='help'?'active':''}" data-crisis-tab="help" role="tab">${icon('phone')} Teléfonos · 24 h</button>
+      <button type="button" class="crisis-tab ${initialTab==='breathe'?'active':''}" data-crisis-tab="breathe" role="tab">${icon('wind')} Respirar · 4-4-6</button>
       <button type="button" class="crisis-tab ${initialTab==='ground'?'active':''}" data-crisis-tab="ground" role="tab">${icon('compass')} Volver al presente</button>
     </div>
 
     <div class="crisis-tab-panel ${initialTab==='help'?'active':''}" data-panel="help">
-      <p class="crisis-intro">Hablar con alguien cuando todo pesa es un paso valiente. Estos servicios son confidenciales, gratuitos y atienden las 24 horas.</p>
+      <p class="crisis-intro">Apoyo gratuito y confidencial, disponible las 24 horas.</p>
       ${trustedName&&trustedPhone?`
         <div class="trusted-contact-card">
           <div>
@@ -435,7 +468,7 @@ export function crisisSupportModal(setup={},initialTab='help'){
           </div>
         </div>
         <p class="breathing-instructions" id="breathing-guide">Inhala 4 segundos por la nariz, mantén el aire 4 segundos y suelta despacio durante 6 segundos.</p>
-        <button type="button" class="button solid" data-action="toggle-breathing" id="breathing-btn">${icon('wind')} Empezar ejercicio</button>
+        <button type="button" class="button solid" data-action="toggle-breathing" id="breathing-btn">${icon('wind')} Empezar</button>
       </div>
     </div>
 
@@ -522,23 +555,23 @@ export function dailyInspirationSection(dateStr,wordOffset,tipOffset,setup={},cu
 }
 
 /* ================= MODAL DE SET UP / BIENVENIDA ================= */
-export function setupWizardModal(setup={},habits=[],step=1){
+export function setupWizardModal(setup={},habits=[],step=1,mandatory=false){
   const profile=getAgeProfile(setup);
   const existingNames=new Set(habits.map(h=>h.name.toLowerCase()));
   const selectedInterests=new Set(setup.interests||[]);
-  return `<div class="modal-card setup-wizard-modal" data-current-step="${step}">
+  return `<div class="modal-card setup-wizard-modal ${mandatory?'is-mandatory':''}" data-current-step="${step}">
     <div class="setup-wizard-header">
       <div>
         <p class="eyebrow">${icon('sliders')} Paso ${step} de 3</p>
-        <h2>${step===1?'Sobre ti, tu edad y tus gustos':step===2?'Tu ritmo y tus hábitos':'Papel e icono de tu cuaderno'}</h2>
+        <h2>${step===1?'Tu perfil':step===2?'Tu ritmo':'Tu papel'}</h2>
       </div>
-      <button type="button" class="icon-button ghost" data-modal="close" aria-label="Cerrar">${icon('close')}</button>
+      ${mandatory?'':`<button type="button" class="icon-button ghost" data-modal="close" aria-label="Cerrar">${icon('close')}</button>`}
     </div>
 
     <div class="wizard-steps-bar" aria-hidden="true">
-      <span class="${step>=1?'done':''} ${step===1?'current':''}">1. Tú y tus gustos</span>
-      <span class="${step>=2?'done':''} ${step===2?'current':''}">2. Ritmo y hábitos</span>
-      <span class="${step>=3?'done':''} ${step===3?'current':''}">3. Papel e icono</span>
+      <span class="${step>=1?'done':''} ${step===1?'current':''}">1. Perfil</span>
+      <span class="${step>=2?'done':''} ${step===2?'current':''}">2. Rutina</span>
+      <span class="${step>=3?'done':''} ${step===3?'current':''}">3. Papel</span>
     </div>
 
     <form id="setup-wizard-form">
@@ -572,8 +605,7 @@ export function setupWizardModal(setup={},habits=[],step=1){
         </div>
 
         <div class="setup-field">
-          <label>¿Qué cosas te gustan o te importan más?</label>
-          <p class="setup-caption">El diario mostrará solo los bloques, etiquetas y frases que encajen contigo:</p>
+          <label>Tus intereses</label>
           <div class="interests-grid">
             ${INTEREST_OPTIONS.map(item=>`
               <label class="interest-chip">
@@ -589,8 +621,8 @@ export function setupWizardModal(setup={},habits=[],step=1){
         <div class="age-adaptation-callout" id="wiz-adaptation-callout">
           ${icon('compass')}
           <div>
-            <strong>Adaptado a: ${escape(profile.group.title)} (${escape(profile.group.label)})</strong>
-            <p>Hemos ajustado tus metas recomendadas de sueño (${formatNumber(profile.sleepRecommended)} h) y dedicación (${formatNumber(profile.studyRecommended)} h).</p>
+            <strong>${escape(profile.group.title)} · ${escape(profile.group.label)}</strong>
+            <p>Sueño ${formatNumber(profile.sleepRecommended)} h · dedicación ${formatNumber(profile.studyRecommended)} h.</p>
           </div>
         </div>
 
@@ -645,7 +677,7 @@ export function setupWizardModal(setup={},habits=[],step=1){
         </div>
 
         <div class="setup-field">
-          <label>Hábitos sugeridos para ti</label>
+          <label>Hábitos sugeridos</label>
           <div class="tag-picker" id="wiz-suggested-habits">
             ${profile.suggestedHabits.map(h=>{
               const already=existingNames.has(h.toLowerCase());
@@ -660,7 +692,7 @@ export function setupWizardModal(setup={},habits=[],step=1){
 
       <div class="wizard-step-body ${step===3?'active':''}" data-step="3" ${step===3?'':'hidden'}>
         <div class="setup-field">
-          <label>${icon('palette')} Elige el papel y el icono de tu pestaña</label>
+          <label>${icon('palette')} Elige tu papel e icono</label>
           <div class="theme-picker-grid">
             ${THEMES.map(t=>`
               <label class="theme-card">
@@ -679,24 +711,24 @@ export function setupWizardModal(setup={},habits=[],step=1){
         </div>
 
         <div class="setup-field">
-          <label for="setup-motto">Frase de portada (opcional)</label>
+          <label for="setup-motto">Frase de portada</label>
           <input id="setup-motto" name="motto" maxlength="140" placeholder="Un día a la vez." value="${escape(setup.motto||'Un día a la vez.')}">
         </div>
 
         <div class="setup-toggles">
           <label class="toggle-row">
             <input type="checkbox" name="showDailyWord" ${setup.showDailyWord!==false?'checked':''}>
-            <span><strong>Mostrar Palabra del día</strong><small>Sugiere cada día una palabra nueva en la cabecera.</small></span>
+            <span><strong>Palabra del día</strong></span>
           </label>
           <label class="toggle-row">
             <input type="checkbox" name="showDailyTip" ${setup.showDailyTip!==false?'checked':''}>
-            <span><strong>Mostrar Consejo del día</strong><small>Adaptado a tu edad y a tus intereses.</small></span>
+            <span><strong>Consejo del día</strong></span>
           </label>
         </div>
       </div>
 
       <div class="modal-actions wizard-footer">
-        ${step>1?`<button type="button" class="button outline" data-wizard="prev">${icon('left')} Anterior</button>`:`<button type="button" class="button outline" data-modal="close">Ahora no</button>`}
+        ${step>1?`<button type="button" class="button outline" data-wizard="prev">${icon('left')} Anterior</button>`:mandatory?'':`<button type="button" class="button outline" data-modal="close">Ahora no</button>`}
         <div style="flex:1"></div>
         ${step<3
           ?`<button type="button" class="button solid" data-wizard="next">Siguiente ${icon('right')}</button>`

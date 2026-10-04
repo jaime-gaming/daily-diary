@@ -111,6 +111,7 @@ test('set up: guardar, validar y recuperar preferencias y sidebar', () => {
   assert.equal(initial.completed, false);
   assert.equal(initial.theme, 'paper');
   assert.equal(initial.sidebarCollapsed, false);
+  assert.equal(initial.reduceMotion, false);
 
   const saved = saveSetup({
     completed: true,
@@ -122,6 +123,7 @@ test('set up: guardar, validar y recuperar preferencias y sidebar', () => {
     studyGoal: 3.5,
     waterGoal: 10,
     sidebarCollapsed: true,
+    reduceMotion: true,
     trustedContactName: 'Laura',
     trustedContactPhone: '600123456'
   });
@@ -135,6 +137,7 @@ test('set up: guardar, validar y recuperar preferencias y sidebar', () => {
   assert.equal(saved.studyGoal, 3.5);
   assert.equal(saved.waterGoal, 10);
   assert.equal(saved.sidebarCollapsed, true);
+  assert.equal(saved.reduceMotion, true);
   assert.equal(loadSetup().trustedContactName, 'Laura');
 
   const adultSetup = saveSetup({age: 34});

@@ -87,6 +87,33 @@ const pick=(arr,rnd)=>arr[Math.floor(rnd()*arr.length)%arr.length];
 const MOON_PHASES=['luna nueva','luna creciente','cuarto creciente','gibosa creciente','luna llena','gibosa menguante','cuarto menguante','luna menguante'];
 const clamp01=n=>Math.min(1,Math.max(0,n));
 
+/* La posición cambia con la hora local, sin pedir ubicación ni conexión. */
+export function sunPosition(now=new Date()){
+  const hour=now.getHours()+now.getMinutes()/60+now.getSeconds()/3600;
+  const sunrise=6,sunset=18;
+  const round=value=>Math.round(value*10)/10;
+  if(hour>=sunrise&&hour<sunset){
+    const progress=(hour-sunrise)/(sunset-sunrise);
+    return {
+      x:round(8+84*progress),
+      y:round(46-6*Math.sin(Math.PI*progress)),
+      moonX:50,
+      moonY:42,
+      phase:progress<.22?'morning':progress>.78?'evening':'day',
+      progress:round(progress)
+    };
+  }
+  const nightProgress=hour>=sunset?(hour-sunset)/12:(hour+6)/12;
+  return {
+    x:hour<sunrise?8:92,
+    y:94,
+    moonX:round(8+84*nightProgress),
+    moonY:round(58-20*Math.sin(Math.PI*nightProgress)),
+    phase:'night',
+    progress:round(nightProgress)
+  };
+}
+
 /* ---------- mareas ---------- */
 export function moonAge(dateStr=dateKey()){
   return mod(daysBetween(TIDE_EPOCH,dateStr)+.765,SYNODIC);
@@ -218,6 +245,10 @@ export function fateOf(bottle,today=dateKey()){
   return 'drifting';
 }
 
+export function canOpenBottle(bottle,today=dateKey()){
+  return Boolean(bottle)&&fateOf(bottle,today)==='returned';
+}
+
 export function resolveBottle(bottle,today=dateKey()){
   if(!bottle||typeof bottle!=='object')return bottle;
   const fate=fateOf(bottle,today);
@@ -271,7 +302,7 @@ export function seaPhrase(bottle,today=dateKey()){
 export function groupBottles(bottles=[],today=dateKey()){
   const g={drifting:[],returned:[],lost:[],kept:[]};
   for(const b of bottles)g[fateOf(b,today)]?.push(b);
-  g.kept=bottles.filter(b=>b.kept);
+  g.kept=bottles.filter(b=>b.kept&&fateOf(b,today)==='returned');
   g.drifting.sort((a,b)=>a.castAt.localeCompare(b.castAt));
   for(const k of ['returned','lost'])g[k].sort((a,b)=>String(b.returnedAt||b.lostAt||b.castAt).localeCompare(String(a.returnedAt||a.lostAt||a.castAt)));
   g.returned.sort((a,b)=>(a.seen===true)-(b.seen===true)||String(b.returnedAt||'').localeCompare(String(a.returnedAt||'')));

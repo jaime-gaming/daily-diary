@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  SEAS,WEATHERS,hashSeed,mulberry32,tideInfo,nextSpringTide,planVoyage,fateOf,resolveBottle,
+  SEAS,WEATHERS,hashSeed,mulberry32,tideInfo,nextSpringTide,planVoyage,fateOf,canOpenBottle,resolveBottle,
   voyageProgress,seaPhrase,groupBottles,shoreQueue,thoughtWordCount,
-  weatherOf,driftX
+  weatherOf,driftX,sunPosition
 } from '../src/utils/ocean.js';
 import {addDays,daysBetween} from '../src/utils/dates.js';
 
@@ -11,6 +11,27 @@ const bottle=(over={})=>({
   id:'b1',text:'Hoy no sé qué hago aquí.',castAt:'2026-09-01',mood:2,sea:'breeze',
   returns:true,speed:18,driftDays:14,arriveOn:'2026-09-15',lostOn:null,current:'el Noroeste',
   glass:'amber',mottoSeed:7,status:'drifting',reply:'',kept:false,seen:false,...over
+});
+
+test('el sol sigue la hora local y recorre el cielo de este a oeste', () => {
+  const at=(hour,minute=0)=>new Date(2026,5,21,hour,minute);
+  const sunrise=sunPosition(at(6));
+  const midday=sunPosition(at(12));
+  const evening=sunPosition(at(17));
+  const night=sunPosition(at(23));
+
+  assert.equal(sunrise.phase,'morning');
+  assert.equal(sunrise.x,8);
+  assert.equal(sunrise.y,46);
+  assert.equal(midday.phase,'day');
+  assert.equal(midday.x,50);
+  assert.equal(midday.y,40);
+  assert.ok(midday.y<sunrise.y,'el sol alcanza su punto más alto al mediodía');
+  assert.equal(evening.phase,'evening');
+  assert.ok(evening.x>midday.x,'el sol avanza hacia el oeste por la tarde');
+  assert.equal(night.phase,'night');
+  assert.ok(night.moonX>=8&&night.moonX<=92);
+  assert.ok([sunrise,midday,evening,night].every(position=>position.y>=0&&position.y<=100));
 });
 
 test('el azar es determinista: mismas entradas, mismo viaje', () => {
@@ -102,6 +123,13 @@ test('fateOf: deriva, vuelve con la marea o se hunde', () => {
   assert.equal(fateOf(bottle({status:'kept'}),'2026-09-30'),'kept');
 });
 
+test('solo se puede abrir una botella cuando ya ha regresado', () => {
+  assert.equal(canOpenBottle(null,'2026-09-30'),false);
+  assert.equal(canOpenBottle(bottle(),'2026-09-14'),false);
+  assert.equal(canOpenBottle(bottle(),'2026-09-15'),true);
+  assert.equal(canOpenBottle(bottle({status:'lost'}),'2026-09-30'),false);
+});
+
 test('resolveBottle escribe la fecha de regreso y respeta lo ya resuelto', () => {
   const r=resolveBottle(bottle(),'2026-09-20');
   assert.equal(r.status,'returned');
@@ -140,8 +168,8 @@ test('groupBottles ordena la orilla por llegada y separa las ancladas', () => {
   const list=[
     bottle({id:'a',status:'returned',returnedAt:'2026-09-16',seen:true}),
     bottle({id:'b',status:'returned',returnedAt:'2026-09-20',seen:false}),
-    bottle({id:'c',castAt:'2026-09-18',arriveOn:'2026-10-18'}),
-    bottle({id:'d',status:'lost',returns:false,arriveOn:'2026-09-10',lostOn:'2026-09-20'}),
+    bottle({id:'c',castAt:'2026-09-18',arriveOn:'2026-10-18',kept:true}),
+    bottle({id:'d',status:'lost',returns:false,arriveOn:'2026-09-10',lostOn:'2026-09-20',kept:true}),
     bottle({id:'e',status:'returned',returnedAt:'2026-09-18',kept:true,keptOn:'2026-09-19'})
   ];
   const g=groupBottles(list,'2026-09-25');
@@ -149,7 +177,8 @@ test('groupBottles ordena la orilla por llegada y separa las ancladas', () => {
   assert.equal(g.returned[0].id,'b','las sin leer van primero');
   assert.equal(g.drifting[0].id,'c');
   assert.equal(g.lost[0].id,'d');
-  assert.equal(g.kept.length,1);
+  assert.equal(g.kept.length,1,'solo las botellas devueltas pueden quedar guardadas');
+  assert.equal(g.kept[0].id,'e');
   assert.equal(shoreQueue(list,'2026-09-25').length,3);
 });
 

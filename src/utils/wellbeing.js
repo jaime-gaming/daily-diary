@@ -4,7 +4,7 @@ import {
 } from '../data/constants.js';
 import {dateKey} from './dates.js';
 import {ageGroupFromAge} from './storage.js';
-import {average, formatNumber} from './stats.js';
+import {formatNumber, meanOrNull} from './stats.js';
 
 export function normalizeForMatch(text = '') {
   return String(text || '')
@@ -105,17 +105,17 @@ export function getAgeProfile(setup = {}) {
 
   const isMinor = Number.isFinite(Number(setup?.age)) && Number(setup.age) > 0 && Number(setup.age) < 18;
 
-  let capsuleLabel = 'Nota al margen (canción, lectura, lugar...)';
-  let capsulePlaceholder = 'Una canción, un libro, una película o un detalle que quieras recordar...';
+  let capsuleLabel = 'Nota del día';
+  let capsulePlaceholder = 'Algo que quieras recordar hoy…';
   if (interests.includes('music')) {
-    capsuleLabel = 'Canción, película o escena del día';
+    capsuleLabel = 'Canción o escena del día';
     capsulePlaceholder = '¿Qué has escuchado o visto hoy?';
   } else if (interests.includes('reading')) {
-    capsuleLabel = 'Lectura o cita del día';
-    capsulePlaceholder = 'Un libro que estés leyendo o una frase que te haya gustado...';
+    capsuleLabel = 'Lectura o cita';
+    capsulePlaceholder = 'Un libro o una frase…';
   } else if (interests.includes('gaming')) {
-    capsuleLabel = 'Partida, serie o tema del día';
-    capsulePlaceholder = 'A qué has jugado hoy o qué serie estás viendo...';
+    capsuleLabel = 'Partida o serie del día';
+    capsulePlaceholder = 'Un juego o una serie…';
   }
 
   // Determinar qué contadores son relevantes para los gustos del usuario
@@ -249,7 +249,7 @@ export function getContextualAdvice(entry = {}, setup = {}) {
     advice.push({
       icon: 'moon',
       title: 'Descanso corto',
-      text: `Has dormido ${sleep} h (tu meta es ${sleepGoal} h). Intenta bajar el ritmo esta tarde.`
+      text: `Sueño: ${sleep} h · meta ${sleepGoal} h. Ve con calma esta tarde.`
     });
   }
 
@@ -257,7 +257,7 @@ export function getContextualAdvice(entry = {}, setup = {}) {
     advice.push({
       icon: 'wind',
       title: 'Día cargado',
-      text: 'Con este nivel de tensión, prioriza una sola cosa hoy y deja el resto para mañana.'
+      text: 'Prioriza una cosa hoy. Lo demás puede esperar.'
     });
   }
 
@@ -265,7 +265,7 @@ export function getContextualAdvice(entry = {}, setup = {}) {
     advice.push({
       icon: 'heart',
       title: 'Día cuesta arriba',
-      text: 'En los días pesados basta con descansar y cubrir lo básico.'
+      text: 'Descansar y cubrir lo básico es suficiente.'
     });
   }
 
@@ -274,37 +274,44 @@ export function getContextualAdvice(entry = {}, setup = {}) {
 
 export function calculateGoalStats(entries = [], setup = {}) {
   const profile = getAgeProfile(setup);
-  const sleepGoal = Number(setup?.sleepGoal) || profile.sleepRecommended || 7.5;
-  const studyGoal = Number(setup?.studyGoal) ?? profile.studyRecommended ?? 2;
-  const waterGoal = Number(setup?.waterGoal) || 8;
-  const total = entries.length;
-  if (!total) {
+  const positiveGoal=(value,fallback)=>{
+    const number=Number(value);
+    return Number.isFinite(number)&&number>0?number:fallback;
+  };
+  const sleepGoal=positiveGoal(setup?.sleepGoal,profile.sleepRecommended||7.5);
+  const studyGoal=positiveGoal(setup?.studyGoal,profile.studyRecommended||2);
+  const waterGoal=positiveGoal(setup?.waterGoal,8);
+  const uniqueEntries=[...new Map(entries.filter(entry=>entry?.date).map(entry=>[entry.date,entry])).values()];
+  const total=uniqueEntries.length;
+  if(!total){
     return {
-      total: 0,
-      sleepGoal, studyGoal, waterGoal,
-      sleepMet: 0, studyMet: 0, waterMet: 0,
-      sleepPct: 0, studyPct: 0, waterPct: 0,
-      moodWhenSleepMet: null, moodWhenSleepMissed: null
+      total:0,sleepGoal,studyGoal,waterGoal,
+      sleepMet:0,studyMet:0,waterMet:0,
+      sleepTracked:0,studyTracked:0,waterTracked:0,
+      sleepPct:null,studyPct:null,waterPct:null,
+      moodWhenSleepMet:null,moodWhenSleepMissed:null
     };
   }
-  const sleepEntries = entries.filter(e => e.sleepHours >= sleepGoal);
-  const sleepMissed = entries.filter(e => e.sleepHours < sleepGoal);
-  const studyEntries = entries.filter(e => e.studyHours >= studyGoal);
-  const waterEntries = entries.filter(e => (e.counters?.water || 0) >= waterGoal);
+  const sleepData=uniqueEntries.filter(entry=>Number.isFinite(entry.sleepHours));
+  const studyData=uniqueEntries.filter(entry=>Number.isFinite(entry.studyHours));
+  const waterData=uniqueEntries.filter(entry=>Number.isFinite(entry.counters?.water));
+  const sleepEntries=sleepData.filter(entry=>entry.sleepHours>=sleepGoal);
+  const sleepMissed=sleepData.filter(entry=>entry.sleepHours<sleepGoal);
+  const studyEntries=studyData.filter(entry=>entry.studyHours>=studyGoal);
+  const waterEntries=waterData.filter(entry=>entry.counters.water>=waterGoal);
+  const percentage=(met,tracked)=>tracked?Math.round(met/tracked*100):null;
+  const sleepMoodMet=meanOrNull(sleepEntries.map(entry=>entry.mood));
+  const sleepMoodMissed=meanOrNull(sleepMissed.map(entry=>entry.mood));
 
   return {
-    total,
-    sleepGoal,
-    studyGoal,
-    waterGoal,
-    sleepMet: sleepEntries.length,
-    studyMet: studyEntries.length,
-    waterMet: waterEntries.length,
-    sleepPct: Math.round((sleepEntries.length / total) * 100),
-    studyPct: Math.round((studyEntries.length / total) * 100),
-    waterPct: Math.round((waterEntries.length / total) * 100),
-    moodWhenSleepMet: sleepEntries.length ? formatNumber(average(sleepEntries.map(e => e.mood))) : null,
-    moodWhenSleepMissed: sleepMissed.length ? formatNumber(average(sleepMissed.map(e => e.mood))) : null
+    total,sleepGoal,studyGoal,waterGoal,
+    sleepMet:sleepEntries.length,studyMet:studyEntries.length,waterMet:waterEntries.length,
+    sleepTracked:sleepData.length,studyTracked:studyData.length,waterTracked:waterData.length,
+    sleepPct:percentage(sleepEntries.length,sleepData.length),
+    studyPct:percentage(studyEntries.length,studyData.length),
+    waterPct:percentage(waterEntries.length,waterData.length),
+    moodWhenSleepMet:Number.isFinite(sleepMoodMet)?formatNumber(sleepMoodMet):null,
+    moodWhenSleepMissed:Number.isFinite(sleepMoodMissed)?formatNumber(sleepMoodMissed):null
   };
 }
 
