@@ -150,10 +150,12 @@
 .mini-mood input{position:absolute;opacity:0;width:1px;height:1px}
 .mini-mood span{font-size:1rem;filter:grayscale(.5);opacity:.65;transition:filter .2s,opacity .2s,transform .2s var(--ease-pop)}
 .mini-mood:hover{background:var(--paper-3)}
+.mini-mood:active span{transform:scale(.86)}
 .mini-mood:has(input:checked) span{filter:none;opacity:1;transform:scale(1.14)}
 .mini-mood:has(input:checked){background:color-mix(in srgb,var(--mood-color) 16%,transparent);box-shadow:inset 0 -2px 0 var(--mood-color)}
 .word-count{font-family:var(--font-mono);font-size:.66rem;letter-spacing:.08em;color:var(--ink-faint);margin-right:auto}
-.cast-btn{display:inline-flex;align-items:center;gap:6px;font-size:.7rem}
+.cast-btn{display:inline-flex;align-items:center;gap:6px;font-size:.7rem;transition:opacity .22s var(--ease-out),color .22s,border-color .22s}
+.cast-btn:active:not(:disabled){transform:translateY(1px)}
 .cast-btn .icon{width:15px;height:15px;transition:transform .3s var(--ease-pop)}
 .cast-btn:hover .icon{transform:translateX(3px) rotate(-12deg)}
 .cast-btn:disabled{opacity:.35;cursor:default}
@@ -172,6 +174,7 @@
   font-size:.86rem;transition:background .2s,border-color .2s,color .2s,transform .2s var(--ease-ink)
 }
 .sea-option:hover{transform:translateY(-1px);border-color:var(--ink)}
+.sea-option:active{transform:translateY(0) scale(.985)}
 .sea-option input{position:absolute;opacity:0;width:1px;height:1px}
 .sea-option-name{font-family:var(--font-display);color:var(--ink)}
 .sea-option-days{font-family:var(--font-mono);font-size:.62rem;letter-spacing:.06em;color:var(--ink-faint)}

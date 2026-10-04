@@ -4,7 +4,7 @@
    ============================================================ */
 
 import {icon,escape as esc,counterSteppers} from './ui.js';
-import {COUNTERS} from '../data/constants.js';
+import {COUNTERS,counterDefs} from '../data/constants.js';
 import {dateKey,longDate,addDays,weekStart,parseDate} from '../utils/dates.js';
 import {bestHabitStreak,liveHabitStreak,habitRate,habitMomentum,habitCount} from '../utils/stats.js';
 
@@ -143,13 +143,13 @@ export function habitComposer(profile={},habits=[]){
 }
 
 /* ---------- contadores del día ---------- */
-export function countersBoard(entry={},setup={},visible=[]){
+export function countersBoard(entry={},setup={},visible=[],counters=null){
   return `<section class="card counters-board">
     <div class="section-heading">
       <div><p class="eyebrow">${icon('drop')} Contadores</p><h2>Lo de hoy, en cifras</h2></div>
       <span class="field-caption">se guarda al instante</span>
     </div>
-    ${counterSteppers(entry?.counters||{},COUNTERS,setup,{action:'routine'})}
+    ${counterSteppers(entry?.counters||{},counters||counterDefs(setup),setup,{action:'routine'})}
     ${visible.length?`<p class="sleep-mood-insight">${icon('spark')} ${esc(visible[0])}</p>`:''}
   </section>`;
 }

@@ -1,5 +1,5 @@
 import {dayNumber,dateKey} from './dates.js';
-import {COUNTERS,TEXT_FIELDS,THEMES,SETUP_PURPOSES,AGE_GROUPS,INTEREST_OPTIONS,WRITING_RITUALS,TONE_STYLES} from '../data/constants.js';
+import {COUNTERS,TEXT_FIELDS,THEMES,SETUP_PURPOSES,AGE_GROUPS,INTEREST_OPTIONS,WRITING_RITUALS,TONE_STYLES,counterDefs,partDefs,MAX_PARTS,MAX_COUNTERS} from '../data/constants.js';
 import {SEAS,GLASS_TINTS,WEATHERS,planVoyage,resolveBottle} from './ocean.js';
 const KEY='diario.entries.v1';
 const HABITS_KEY='diario.habits.v1';
@@ -27,6 +27,9 @@ export const DEFAULT_SETUP = {
   trustedContactName: '',
   trustedContactPhone: '',
   sidebarCollapsed: false,
+  /* listas resueltas por validateSetup: [] significa «los de siempre» */
+  counters: [],
+  parts: [],
   updatedAt: null
 };
 
@@ -48,14 +51,32 @@ function cleanCounter(value,key){
   const preset=COUNTERS.find(c=>c.key===key);
   if(value===undefined||value===null||value==='')return 0;
   const n=Number(value);
-  if(!Number.isFinite(n)||n<preset.min||n>preset.max)throw new Error(`${preset.label} debe estar entre ${preset.min} y ${preset.max}.`);
+  const min=preset?.min??0,max=preset?.max??99999,label=preset?.label??key;
+  if(!Number.isFinite(n)||n<min||n>max)throw new Error(`${label} debe estar entre ${min} y ${max}.`);
   return Math.round(n*10)/10;
 }
+const SAFE_KEY=/^[\w-]{1,24}$/;
 function cleanScale(value){
   if(value===undefined||value===null||value==='')return null;
   const n=Number(value);
   if(!Number.isInteger(n)||n<1||n>5)throw new Error('Las escalas van de 1 a 5.');
   return n;
+}
+
+function cleanParts(raw){
+  const parts={};
+  if(raw===undefined||raw===null)return parts;
+  if(typeof raw!=='object'||Array.isArray(raw))throw new Error('Las partes del diario no son válidas.');
+  for(const [key,value] of Object.entries(raw)){
+    if(!SAFE_KEY.test(key))continue;
+    if(typeof value!=='string')throw new Error(`La parte «${key}» debe ser texto.`);
+    const text=value.trim();
+    if(!text)continue;
+    if(text.length>4000)throw new Error('Cada parte del diario admite como máximo 4.000 caracteres.');
+    parts[key]=text;
+    if(Object.keys(parts).length>=MAX_PARTS)break;
+  }
+  return parts;
 }
 
 export function validateEntry(e){
@@ -74,8 +95,18 @@ export function validateEntry(e){
   const tags=Array.isArray(e.tags)?e.tags:[];
   if(tags.length>20)throw new Error('Puedes elegir como máximo 20 etiquetas.');
   for(const t of tags)if(typeof t!=='string'||!t.trim()||t.length>40)throw new Error('Hay una etiqueta no válida.');
+  /* Los de siempre van siempre (así los lee quien los espere) y se suman los
+     propios: un contador que añadas hoy seguirá ahí mañana. */
   const counters={};
   for(const c of COUNTERS)counters[c.key]=cleanCounter(e.counters?.[c.key],c.key);
+  for(const key of Object.keys(e.counters||{})){
+    if(!SAFE_KEY.test(key)||key in counters)continue;
+    /* en un contador propio no merecía la pena romper el guardado por una
+       cifra rara: si no es un número, se ignora */
+    const n=Number(e.counters[key]);
+    if(Number.isFinite(n)&&n>=0&&n<=99999)counters[key]=Math.round(n*10)/10;
+  }
+  if(Object.keys(counters).length>MAX_COUNTERS)throw new Error(`No puedes tener más de ${MAX_COUNTERS} contadores.`);
   const habits={};
   if(e.habits!==undefined&&(typeof e.habits!=='object'||e.habits===null||Array.isArray(e.habits)))throw new Error('Los hábitos no son válidos.');
   for(const [id,value] of Object.entries(e.habits||{}))if(typeof id==='string'&&id.length<=60)habits[id]=value===true;
@@ -93,6 +124,7 @@ export function validateEntry(e){
     goals:(e.goals||[]).map(x=>cleanText(x,'Un objetivo')),
     tags:[...new Set(tags.map(t=>t.trim()))],
     counters,
+    parts:cleanParts(e.parts),
     habits,
     createdAt:typeof e.createdAt==='string'?e.createdAt:new Date().toISOString(),
     updatedAt:typeof e.updatedAt==='string'?e.updatedAt:new Date().toISOString()
@@ -278,6 +310,10 @@ export function validateSetup(s = {}){
     trustedContactName: String(raw.trustedContactName ?? '').trim().slice(0, 60),
     trustedContactPhone: String(raw.trustedContactPhone ?? '').trim().slice(0, 30),
     sidebarCollapsed: Boolean(raw.sidebarCollapsed),
+    /* los contadores y las partes del diario quedan materializados: el editor
+       de Personalizar trabaja siempre sobre una lista concreta */
+    counters: counterDefs(raw).slice(0, MAX_COUNTERS),
+    parts: partDefs(raw).slice(0, MAX_PARTS),
     updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : new Date().toISOString()
   };
 }

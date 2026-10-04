@@ -87,7 +87,7 @@ export function seaPanel(thoughts=[],today=dateKey()){
   }).join('');
 
   const shore=groups.returned.slice(0,3).map((b,i)=>`
-    <button type="button" class="shore-bottle ${b.seen?'':'is-new'}" style="--i:${i}" data-action="open-bottle" data-id="${b.id}">
+    <button type="button" class="shore-bottle ${b.seen?'':'is-new'}" data-action="open-bottle" data-id="${b.id}">
       <span class="shore-bottle-glow">${bottleGlyph(b,{class:'is-landed'})}</span>
       <span class="shore-bottle-meta">
         <strong>${esc(longDate(b.returnedAt||today,{day:'numeric',month:'long'}))}</strong>

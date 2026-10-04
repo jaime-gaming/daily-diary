@@ -12,6 +12,7 @@ import './styles/motion.css';
 
 import {
   MOODS,ENERGY_LABELS,STRESS_LABELS,COUNTERS,THEMES,
+  counterDefs,counterGoal,partDefs,makeKey,PART_TYPES,PART_PRESETS,COUNTER_ICONS,MAX_PARTS,MAX_COUNTERS,
   AGE_GROUPS,INTEREST_OPTIONS,WRITING_RITUALS,TONE_STYLES
 } from './data/constants.js';
 import {dateKey,addDays,dayNumber,longDate,weekStart,monthRange,monthMove} from './utils/dates.js';
@@ -52,7 +53,7 @@ let entries=[],habits=[],thoughts=[],setup=loadSetup(),storageError='',view='dia
     archiveTab='list',statsTab='pulse',profileTab='personal',moreDetailsOpen=false,
     pendingImport=null,wordOffset=0,tipOffset=0,promptOffset=0,quoteOffset=0,showWritingPrompt=false,focusWriting=false,
     crisisBannerDismissed=false,breathingTimer=null,pageTurnDir='',
-    oceanFilter='',lastView='',saveState='idle',saveAt=0,shellMounted=false,motionOn=true;
+    oceanFilter='',lastView='',saveState='idle',saveAt=0,shellMounted=false,motionOn=true,panelEnter=true;
 /* Movimiento: quien pide poco movimiento en el sistema lo recibe. */
 try{
   const mq=window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -351,6 +352,9 @@ function renderPage(opts={}){
   if(!main)return;
   if(view==='thoughts')primeBottleDraft();
   const viewChanged=lastView!==view;
+  const turning=Boolean(pageTurnDir);
+  const animate=viewChanged||turning||panelEnter;
+  panelEnter=false;
   const keepScroll=window.scrollY;
   const turnClass=pageTurnDir?`page-turn-${pageTurnDir}`:(viewChanged?'view-enter':'');
   pageTurnDir='';
@@ -358,11 +362,14 @@ function renderPage(opts={}){
     ${storageError?`<div class="error-banner" role="alert">${esc(storageError)}</div>`:''}
     ${page()}`;
   main.className=`${turnClass}`;
-  if(viewChanged||pageTurnDir){
+  if(animate){
     main.classList.remove('view-enter');
     void main.offsetWidth;
     main.classList.add('view-enter');
     staggerCards(main);
+  }else{
+    /* al volver a pintar por guardar algo, no se vuelve a animar todo: sólo lo que cambió */
+    main.querySelectorAll('.tab-panel-enter').forEach(el=>el.classList.remove('tab-panel-enter'));
   }
   bindForm();
   bindOceanForm();
@@ -469,9 +476,32 @@ function textField(name,title,placeholder,value,large=true){
   </div>`;
 }
 
+function entryPartsFields(e){
+  const parts=partDefs(setup);
+  if(!parts.length)return '';
+  return `<div class="entry-parts">
+    ${parts.map(p=>{
+      const name=`part_${p.key}`;
+      const value=e?.parts?.[p.key]||'';
+      const label=`<label for="${name}">${esc(p.label)}${p.hint?`<small>${esc(p.hint)}</small>`:''}</label>`;
+      const field=p.type==='line'
+        ?`<input id="${name}" name="${name}" class="clean-line-input" maxlength="600" placeholder="${esc(p.hint||'…')}" value="${esc(value)}">`
+        :`<textarea id="${name}" name="${name}" maxlength="4000" rows="3" placeholder="${esc(p.hint||'…')}">${esc(value)}</textarea>`;
+      return `<div class="writing-field part-field" data-part="${p.key}">${label}${field}</div>`;
+    }).join('')}
+  </div>`;
+}
+
+function partLines(e){
+  const parts=partDefs(setup).filter(p=>String(e?.parts?.[p.key]||'').trim());
+  if(!parts.length)return '';
+  return `<div class="sheet-parts">${parts.map(p=>`
+    <div class="sheet-part"><span>${esc(p.label)}</span><p>${esc(e.parts[p.key])}</p></div>`).join('')}</div>`;
+}
+
 function goalRow(value=''){
   return `<div class="goal-row"><span class="goal-circle"></span>
-    <input name="goal" aria-label="Objetivo para mañana" placeholder="Un objetivo concreto..." maxlength="500" value="${esc(value)}">
+    <input name="goal" aria-label="Objetivo para mañana" placeholder="Un objetivo concreto…" maxlength="500" value="${esc(value)}">
     <button type="button" class="icon-button ghost" data-action="remove-goal" aria-label="Eliminar objetivo">${icon('close')}</button>
   </div>`;
 }
@@ -496,6 +526,7 @@ function savedNotebookSheet(e,profile){
     ` : ''}
     <p class="sheet-narrative">${generateSummary(e)}</p>
     ${e.bestOfDay ? `<div class="sheet-quote-note"><span>Lo mejor:</span> «${esc(e.bestOfDay)}»</div>` : ''}
+    ${partLines(e)}
     ${doneHabits.length ? `<div class="sheet-habits-line">${icon('check')} ${doneHabits.map(h=>`<b>${esc(h.name)}</b>`).join(' · ')}</div>` : ''}
     <div class="sheet-footer">
       <small>${esc(ownerSign)} · ${wordCount(e)} palabras</small>
@@ -540,7 +571,7 @@ function diaryPage(){
         <div id="entry-draft-slot" data-live="1"></div>
 
         <!-- 1 · CAPTURA RÁPIDA -->
-        <section class="card mood-card-section quick-capture" style="--i:1">
+        <section class="card mood-card-section quick-capture">
           <div class="section-heading">
             <p class="section-index" style="margin-bottom:0">¿Cómo ha ido hoy?</p>
             <span class="capture-hint">${icon('spark')} un clic vale como entrada</span>
@@ -583,7 +614,7 @@ function diaryPage(){
         </section>
 
         <!-- 2 · TU PÁGINA DE HOY -->
-        <section class="card writing-card-section" style="--i:2">
+        <section class="card writing-card-section">
           <div class="section-heading">
             <p class="section-index" style="flex:1">Tu página de hoy</p>
             <div class="writing-tools-bar">
@@ -605,6 +636,7 @@ function diaryPage(){
             </div>
           </div>
           ${textField('generalDay','Notas del día (opcional si solo quieres un registro rápido)',profile.placeholders.generalDay,e?.generalDay,true)}
+          ${entryPartsFields(e)}
           <div class="capsule-word-grid">
             <div class="writing-field" data-field="capsule">
               <label for="capsule">${icon('spark')} ${esc(profile.capsuleLabel)}</label>
@@ -612,7 +644,7 @@ function diaryPage(){
             </div>
             <div class="writing-field" data-field="wordOfDay">
               <label for="wordOfDay">${icon('book')} Palabra del día</label>
-              <input id="wordOfDay" name="wordOfDay" class="clean-line-input" maxlength="60" placeholder="Una palabra que resuma hoy..." value="${esc(e?.wordOfDay||'')}">
+              <input id="wordOfDay" name="wordOfDay" class="clean-line-input" maxlength="60" placeholder="Una palabra que resuma hoy…" value="${esc(e?.wordOfDay||'')}">
             </div>
           </div>
         </section>
@@ -929,7 +961,7 @@ function archivePage(){
   `:`
     <div class="tab-panel-enter">
       <div class="history-controls">
-        <label class="search-box">${icon('search')}<input id="history-search" aria-label="Buscar en el diario" placeholder="Buscar por palabra, nota o etiqueta..." value="${esc(historyQuery)}"></label>
+        <label class="search-box">${icon('search')}<input id="history-search" aria-label="Buscar en el diario" placeholder="Buscar por palabra, nota o etiqueta…" value="${esc(historyQuery)}"></label>
         <select id="history-mood" aria-label="Filtrar por estado de ánimo">
           <option value="">Todos los estados</option>
           ${MOODS.map(m=>`<option value="${m.value}" ${historyMood==m.value?'selected':''}>${m.emoji} ${m.label}</option>`).join('')}
@@ -1091,11 +1123,144 @@ function setupUnifiedPage(){
   return `${pageHeader('Perfil y ajustes','Hecho a tu medida','Personaliza tu identidad, tus gustos, el papel del cuaderno o haz una copia de seguridad.',`
     <div class="segmented">
       <button type="button" data-action="profile-tab" data-tab="personal" class="${profileTab==='personal'?'active':''}">${icon('sliders')} Mi perfil</button>
+      <button type="button" data-action="profile-tab" data-tab="custom" class="${profileTab==='custom'?'active':''}">${icon('paper')} Personalizar</button>
       <button type="button" data-action="profile-tab" data-tab="data" class="${profileTab==='data'?'active':''}">${icon('shield')} Datos y copias</button>
     </div>
   `)}
   <div class="tab-panel-enter">
-    ${profileTab==='data'?dataAndPrivacyBody():setupFormBody()}
+    ${profileTab==='data'?dataAndPrivacyBody():profileTab==='custom'?customizationBody():setupFormBody()}
+  </div>`;
+}
+
+function saveCustomization(patch,msg='Guardado.'){
+  try{
+    setup=saveSetup(patch);
+  }catch(err){toast(err.message||'No se pudo guardar.',true);return;}
+  render();
+  if(msg)toast(msg);
+}
+function flashRow(kind,id){
+  if(!motionOn)return;
+  const row=document.querySelector(`[data-${kind}-row="${id}"]`);
+  if(!row)return;
+  row.classList.add('is-fresh');
+  setTimeout(()=>row.classList.remove('is-fresh'),620);
+}
+function focusCustom(kind,id,field='label'){
+  const el=document.querySelector(`[data-edit="${kind}"][data-key="${id}"][data-field="${field}"]`);
+  if(el){el.focus();if(el.select)el.select();}
+}
+function addPart(presetLabel=''){
+  const parts=partDefs(setup);
+  if(parts.length>=MAX_PARTS){toast(`Con ${MAX_PARTS} partes es más que suficiente.`,true);return;}
+  const preset=PART_PRESETS.find(p=>p.label===presetLabel);
+  const label=preset?preset.label:String(document.querySelector('#new-part-label')?.value||'').trim().slice(0,60);
+  if(!label){toast('Escribe un título para la parte.',true);document.querySelector('#new-part-label')?.focus();return;}
+  if(parts.some(p=>p.label.toLowerCase()===label.toLowerCase())){toast('Esa parte ya está en el diario.',true);return;}
+  const key=makeKey('p');
+  saveCustomization({parts:[...parts,{key,label,hint:preset?.hint||'',type:preset?.type||'text'}]},'Añadida, ya está en la página de hoy.');
+  flashRow('part',key);
+  focusCustom('part',key);
+}
+function addCounter(){
+  const counters=counterDefs(setup);
+  if(counters.length>=MAX_COUNTERS){toast(`No hacen falta más de ${MAX_COUNTERS} contadores.`,true);return;}
+  const label=String(document.querySelector('#new-counter-label')?.value||'').trim().slice(0,28);
+  if(!label){toast('El contador necesita un nombre.',true);document.querySelector('#new-counter-label')?.focus();return;}
+  if(counters.some(c=>c.label.toLowerCase()===label.toLowerCase())){toast('Ya tienes un contador con ese nombre.',true);return;}
+  const key=makeKey('c');
+  saveCustomization({counters:[...counters,{
+    key,label,
+    unit:String(document.querySelector('#new-counter-unit')?.value||'').trim().slice(0,14),
+    goal:parseFloat(document.querySelector('#new-counter-goal')?.value)||0,
+    min:0,max:Math.max(20,(parseFloat(document.querySelector('#new-counter-goal')?.value)||0)*3),step:1,
+    icon:'gauge'
+  }]},'Contador añadido a la Rutina.');
+  focusCustom('counter',key);
+}
+function applyCustomEdit(el){
+  const kind=el.dataset.edit,id=el.dataset.key,field=el.dataset.field;
+  if(kind==='part'){
+    if(field==='label'&&!String(el.value).trim()){
+      toast('Sin título no puede estar: escribe uno o quítala.',true);
+      render();
+      return;
+    }
+    saveCustomization({parts:partDefs(setup).map(p=>p.key===id?{...p,[field]:el.value}:p)},'');
+    focusCustom('part',id,field);
+    return;
+  }
+  if(kind==='counter'){
+    const list=counterDefs(setup).map(c=>{
+      if(c.key!==id)return c;
+      if(field==='goal')return c.key==='water'?c:{...c,goal:parseFloat(el.value)||0};
+      return {...c,[field]:el.value};
+    });
+    const patch={counters:list};
+    if(field==='goal'&&id==='water')patch.waterGoal=Math.min(25,Math.max(0,parseFloat(el.value)||0))||8;
+    saveCustomization(patch,'');
+    focusCustom('counter',id,field);
+  }
+}
+
+function customizationBody(){
+  const parts=partDefs(setup);
+  const counters=counterDefs(setup);
+  const customIcons=COUNTER_ICONS.map(id=>`<option value="${id}">${id}</option>`).join('');
+  return `<div class="custom-grid">
+    <section class="card custom-card">
+      <div class="section-heading">
+        <div><p class="eyebrow">${icon('paper')} Partes del diario</p><h2>Qué quieres escribir cada día</h2></div>
+        <span class="field-caption">${parts.length} de ${MAX_PARTS}</span>
+      </div>
+      <p class="custom-lead">Cada parte es un campo con tu título dentro de «Tu página de hoy». Se guarda con el día y se lee en el archivo.</p>
+      ${parts.length?`<ul class="custom-list">
+        ${parts.map(p=>`<li class="custom-row custom-row--part" data-part-row="${p.key}">
+          <input class="custom-input custom-input--label" value="${esc(p.label)}" maxlength="60" aria-label="Título de la parte" data-edit="part" data-key="${p.key}" data-field="label">
+          <input class="custom-input custom-input--hint" value="${esc(p.hint)}" maxlength="140" placeholder="texto de ayuda, opcional" aria-label="Texto de ayuda" data-edit="part" data-key="${p.key}" data-field="hint">
+          <div class="micro-seg">${PART_TYPES.map(t=>`<button type="button" class="${p.type===t.id?'active':''}" data-action="part-type" data-key="${p.key}" data-val="${t.id}">${t.label}</button>`).join('')}</div>
+          <button type="button" class="icon-button ghost custom-remove" data-action="remove-part" data-key="${p.key}" aria-label="Quitar ${esc(p.label)}">${icon('close')}</button>
+        </li>`).join('')}
+      </ul>`:`<p class="custom-none">Nada por ahora: el diario se queda con sus campos de siempre.</p>`}
+      <div class="custom-add">
+        <input id="new-part-label" class="custom-input" maxlength="60" placeholder="Título de la parte…" aria-label="Título de la parte nueva">
+        <button type="button" class="button outline" data-action="add-part">${icon('plus')} Añadir parte</button>
+      </div>
+      ${parts.length<MAX_PARTS?`<div class="custom-presets">
+        <span class="custom-presets-label">O coge una ya escrita:</span>
+        ${PART_PRESETS.filter(pre=>!parts.some(p=>p.label===pre.label)).map(pre=>`<button type="button" class="custom-preset" data-action="part-preset" data-val="${esc(pre.label)}">${esc(pre.label)}</button>`).join('')}
+      </div>`:''}
+    </section>
+
+    <section class="card custom-card">
+      <div class="section-heading">
+        <div><p class="eyebrow">${icon('gauge')} Contadores</p><h2>Qué cuentas</h2></div>
+        <span class="field-caption">${counters.length} de ${MAX_COUNTERS}</span>
+      </div>
+      <p class="custom-lead">Los de siempre se pueden renombrar o quitar. Los tuyos llevan unidad y meta, y aparecen en la pestaña de Rutina junto a los otros.</p>
+      <ul class="custom-list custom-list--counters">
+        <li class="custom-head"><span>Nombre</span><span>Unidad</span><span>Meta</span><span>Icono</span><span></span></li>
+        ${counters.map(c=>`<li class="custom-row custom-row--counter" data-counter-row="${c.key}">
+          <input class="custom-input custom-input--label" value="${esc(c.label)}" maxlength="28" aria-label="Nombre del contador" data-edit="counter" data-key="${c.key}" data-field="label">
+          <input class="custom-input custom-input--unit" value="${esc(c.unit)}" maxlength="14" aria-label="Unidad" data-edit="counter" data-key="${c.key}" data-field="unit">
+          <input class="custom-input custom-input--goal" type="number" min="0" max="9999" step="1" value="${counterGoal(c,setup)||''}" placeholder="—" aria-label="Meta diaria" data-edit="counter" data-key="${c.key}" data-field="goal">
+          <select class="custom-select" aria-label="Icono" data-edit="counter" data-key="${c.key}" data-field="icon">
+            ${COUNTER_ICONS.map(id=>`<option value="${id}" ${c.icon===id?'selected':''}>${id}</option>`).join('')}
+          </select>
+          <button type="button" class="icon-button ghost custom-remove" data-action="remove-counter" data-key="${c.key}" aria-label="Quitar ${esc(c.label)}">${icon('close')}</button>
+        </li>`).join('')}
+      </ul>
+      <div class="custom-add custom-add--counter">
+        <input id="new-counter-label" class="custom-input" maxlength="28" placeholder="Nombre" aria-label="Nombre del contador nuevo">
+        <input id="new-counter-unit" class="custom-input custom-input--unit" maxlength="14" placeholder="unidad" aria-label="Unidad del contador nuevo">
+        <input id="new-counter-goal" class="custom-input custom-input--goal" type="number" min="0" max="9999" step="1" placeholder="meta" aria-label="Meta diaria del contador nuevo">
+        <button type="button" class="button outline" data-action="add-counter">${icon('plus')} Añadir contador</button>
+      </div>
+      <p class="custom-foot">
+        <button type="button" class="text-button" data-action="reset-counters">${icon('refresh')} Dejar los cuatro de siempre</button>
+        <span>Las cifras ya anotadas se conservan aunque quites un contador.</span>
+      </p>
+    </section>
   </div>`;
 }
 
@@ -1104,12 +1269,12 @@ function setupFormBody(){
   const existingNames=new Set(habits.map(h=>h.name.toLowerCase()));
   const selectedInterests=new Set(setup.interests||[]);
   return `<form id="setup-page-form" class="setup-page-grid">
-    <section class="card" style="--i:1">
+    <section class="card">
       <h2>Identidad y etapa vital</h2>
       <div class="setup-name-age-row">
         <div class="setup-field">
           <label for="sp-name">${icon('user')} Tu nombre o apodo</label>
-          <input id="sp-name" name="name" maxlength="50" placeholder="Tu nombre..." value="${esc(setup.name)}">
+          <input id="sp-name" name="name" maxlength="50" placeholder="Tu nombre…" value="${esc(setup.name)}">
         </div>
         <div class="setup-field">
           <label for="sp-age">Tu edad</label>
@@ -1140,7 +1305,7 @@ function setupFormBody(){
       </div>
     </section>
 
-    <section class="card" style="--i:2">
+    <section class="card">
       <h2>Tus gustos y estilo</h2>
       <p class="field-caption" style="margin:6px 0 8px">El diario adapta sus contadores, etiquetas y frases a lo que marques aquí:</p>
       <div class="interests-grid">
@@ -1179,7 +1344,7 @@ function setupFormBody(){
       </div>
     </section>
 
-    <section class="card" style="--i:3">
+    <section class="card">
       <h2>Metas, hábitos y frases propias</h2>
       <p class="field-caption" style="margin-top:6px">Los hábitos que elijas se marcan en su propia pestaña, <b>Rutina</b>, junto a los contadores.</p>
       <div class="age-adaptation-callout" id="sp-adaptation-callout" style="margin-top:12px">
@@ -1197,10 +1362,6 @@ function setupFormBody(){
         <div class="setup-field">
           <label for="sp-study">${icon('study')} Meta de dedicación (h)</label>
           <input id="sp-study" name="studyGoal" type="number" min="0" max="16" step="0.5" value="${setup.studyGoal}">
-        </div>
-        <div class="setup-field">
-          <label for="sp-water">${icon('drop')} Meta de agua (vasos)</label>
-          <input id="sp-water" name="waterGoal" type="number" min="1" max="25" step="1" value="${setup.waterGoal}">
         </div>
       </div>
       <div class="setup-field" style="margin-top:16px">
@@ -1225,13 +1386,14 @@ function setupFormBody(){
           </div>
         `:''}
         <div class="habit-add" style="margin-top:10px">
-          <input id="new-custom-quote" maxlength="240" placeholder="Añade una frase propia...">
+          <label class="sr-only" for="new-custom-quote">Frase propia</label>
+          <input id="new-custom-quote" maxlength="240" placeholder="Añade una frase propia…" aria-label="Frase propia para tu cuaderno">
           <button type="button" class="icon-button" data-action="add-custom-quote" aria-label="Añadir frase">${icon('plus')}</button>
         </div>
       </div>
     </section>
 
-    <section class="card" style="--i:4">
+    <section class="card">
       <h2>Papel e icono de la pestaña</h2>
       <div class="setup-field">
         <div class="theme-picker-grid">
@@ -1354,13 +1516,14 @@ function bindRoutineForm(){
 let routineCounterTimer=null;
 function updateCounterRow(input,key,value){
   const row=input.closest('.counter-row');
+  const def=counterDefs(setup).find(c=>c.key===key)||{key,label:key};
   const hint=document.querySelector(`#hint-${key}`);
-  if(hint)hint.textContent=counterInterpretation(key,value);
+  if(hint)hint.textContent=counterInterpretation(key,value,def);
   input.classList.remove('num-bump');
   void input.offsetWidth;
   input.classList.add('num-bump');
-  if(key==='water'){
-    const goal=setup.waterGoal||8;
+  const goal=counterGoal(def,setup);
+  if(goal){
     const pill=row?.querySelector('.counter-goal-pill');
     const bar=row?.querySelector('.counter-progress i');
     if(pill){pill.textContent=`Meta: ${value}/${goal}`;pill.classList.toggle('met',value>=goal);}
@@ -1368,11 +1531,11 @@ function updateCounterRow(input,key,value){
   }
 }
 function saveRoutineCounters(){
-  const patch={};
   const stored=entries.find(x=>x.date===selected);
-  for(const c of COUNTERS){
+  const patch={...(stored?.counters||{})};
+  for(const c of counterDefs(setup)){
     const input=document.querySelector(`[name="counter_${c.key}"]`);
-    patch[c.key]=input?(parseFloat(input.value)||0):(Number(stored?.counters?.[c.key])||0);
+    if(input||c.key in patch)patch[c.key]=input?(parseFloat(input.value)||0):(Number(stored?.counters?.[c.key])||0);
   }
   try{patchDay(selected,{counters:patch});}
   catch(err){toast(err.message||'No se pudo guardar el contador.',true);}
@@ -1600,6 +1763,11 @@ function requestDeleteBottle(id){
       escribe solo en el cuaderno (nunca si está vacío).
    ============================================================ */
 const ENTRY_TEXT_FIELDS=['generalDay','bestOfDay','differentToday','capsule','wordOfDay','tomorrow','gratitude0','gratitude1','gratitude2','tagCustom'];
+/* Cada parte propia es un campo más del diario: borrador, autoguardado y
+   recuperación lo tratan igual que a los de siempre. */
+function entryTextFields(){
+  return [...ENTRY_TEXT_FIELDS,...partDefs(setup).map(p=>`part_${p.key}`)];
+}
 const draftTimers=new Map();
 let bottleDraftRestored='',autosavePending=false;
 
@@ -1622,7 +1790,7 @@ function entryScope(){return DRAFT_SCOPES.entry(selected);}
 function rawFormValues(form){
   const out={};
   if(!form)return out;
-  for(const name of ENTRY_TEXT_FIELDS){
+  for(const name of entryTextFields()){
     const el=form.querySelector(`[name="${name}"]`);
     if(el&&typeof el.value==='string')out[name]=el.value;
   }
@@ -1651,7 +1819,7 @@ function rawFormValues(form){
 function entryMatchesStored(values){
   const stored=entries.find(x=>x.date===selected);
   if(!stored)return !Object.keys(values).length;
-  for(const key of ENTRY_TEXT_FIELDS){
+  for(const key of entryTextFields()){
     if(!(key in values))continue;
     let had='';
     if(key.startsWith('gratitude'))had=(stored.gratitude||[])[+key.slice(9)]||'';
@@ -1759,6 +1927,7 @@ function bindDraftListeners(){
   app.addEventListener('change',event=>{
     const el=event.target;
     if(!el||!el.closest)return;
+    if(el.dataset?.edit){applyCustomEdit(el);return;}
     if(el.closest('#diary-form'))onEntryEdit();
     if(el.closest('#bottle-form'))onBottleEdit();
   });
@@ -1800,7 +1969,7 @@ function restoreEntryDraft(){
   if(!draftIsNewer(entryScope(),stored?.updatedAt))return;
   const data=draftData(entryScope());
   if(!data)return;
-  for(const key of ENTRY_TEXT_FIELDS)applyToField(form,key,data[key]);
+  for(const key of entryTextFields())applyToField(form,key,data[key]);
   for(const key of ['mood','energy','stress','sleepHours','studyHours']){
     if(data[key]!==undefined)applyToField(form,key,data[key]);
   }
@@ -1853,7 +2022,7 @@ function primeBottleDraft(){
 
 /* ---------- el autoguardado ---------- */
 function entryHasSubstance(values){
-  const words=ENTRY_TEXT_FIELDS
+  const words=entryTextFields()
     .map(k=>String(values[k]||''))
     .join(' ')
     .trim()
@@ -2102,10 +2271,19 @@ function collectForm(form){
   const profile=getAgeProfile(setup);
   const customTag=(data.get('tagCustom')||'').toString().trim();
   const tags=[...new Set([...data.getAll('tags').map(t=>t.toString().trim()),customTag].filter(Boolean))];
-  const counters={};
-  for(const c of COUNTERS){
+  /* Se parte de lo ya guardado y sólo se pisan las claves que hay en el
+     formulario: si quitaste un contador o una parte, lo anotado con él se queda. */
+  const counters={...(current?.counters||{})};
+  for(const c of counterDefs(setup)){
     const input=form.querySelector(`[name="counter_${c.key}"]`);
     counters[c.key]=input?(parseFloat(input.value)||0):(Number(current?.counters?.[c.key])||0);
+  }
+  const parts={...(current?.parts||{})};
+  for(const p of partDefs(setup)){
+    const input=form.querySelector(`[name="part_${p.key}"]`);
+    if(!input)continue;
+    const text=input.value.trim();
+    if(text)parts[p.key]=text;else delete parts[p.key];
   }
   // Hábitos, contadores y tareas de mañana pueden estar en la pestaña Rutina:
   // si hoy no hay campos en el DOM, se conservan los valores guardados.
@@ -2149,7 +2327,7 @@ function collectForm(form){
     goals:form.querySelector('[name="goal"]')
       ?data.getAll('goal').map(g=>g.toString().trim()).filter(Boolean)
       :(current?.goals||[]),
-    tags,counters,habits:habitMap,
+    tags,counters,parts,habits:habitMap,
     createdAt:current?.createdAt
   };
 }
@@ -2168,21 +2346,22 @@ function updateLiveIndicators(form){
   const wordsChip=document.querySelector('#hero-words-chip');
   if(wordsChip){
     const n=wordCount(draft);
-    wordsChip.innerHTML=n?`${n} ${n===1?'palabra':'palabras'} escritas`:'todavía sin escribir';
+    const text=n?`${n} ${n===1?'palabra':'palabras'} escritas`:'todavía sin escribir';
+    if(wordsChip.textContent!==text)wordsChip.textContent=text;
     wordsChip.classList.toggle('pending',!n);
   }
 
   const floatBar=document.querySelector('#floating-save');
   if(floatBar)floatBar.classList.toggle('is-visible',dirty||saveState==='error');
 
+  /* el aviso no se re-monta en cada tecla: sólo cuando cambia de verdad */
   const risk=detectCrisisRisk(draft);
+  const show=risk.triggered&&risk.level==='high'&&!crisisBannerDismissed;
+  const sig=show?`high:${(risk.reasons||[]).length}`:'none';
   const slot=document.querySelector('#crisis-alert-slot');
-  if(slot){
-    if(risk.triggered && risk.level==='high' && !crisisBannerDismissed){
-      slot.innerHTML=crisisBanner(risk,setup);
-    }else if(!risk.triggered){
-      slot.innerHTML='';
-    }
+  if(slot&&slot.dataset.sig!==sig){
+    slot.dataset.sig=sig;
+    slot.innerHTML=show?crisisBanner(risk,setup):'';
   }
 }
 
@@ -2350,7 +2529,6 @@ function saveSetupFromForm(formEl){
     theme:data.get('theme')||setup.theme,
     sleepGoal:parseFloat(data.get('sleepGoal'))||7.5,
     studyGoal:parseFloat(data.get('studyGoal'))??2,
-    waterGoal:parseInt(data.get('waterGoal'),10)||8,
     showDailyWord:formEl.querySelector('[name="showDailyWord"]')?.checked??true,
     showDailyTip:formEl.querySelector('[name="showDailyTip"]')?.checked??true,
     sidebarCollapsed:hasSidebarToggle?Boolean(formEl.querySelector('[name="sidebarCollapsed"]')?.checked):sidebarCollapsed
@@ -2363,10 +2541,10 @@ function saveSetupFromForm(formEl){
 function refreshCounterHints(){
   const form=document.querySelector('#diary-form');
   if(!form)return;
-  for(const c of COUNTERS){
+  for(const c of counterDefs(setup)){
     const input=form.querySelector(`[name="counter_${c.key}"]`);
     const hint=document.querySelector(`#hint-${c.key}`);
-    if(input&&hint&&input.value!=='')hint.textContent=counterInterpretation(c.key,parseFloat(input.value)||0);
+    if(input&&hint&&input.value!=='')hint.textContent=counterInterpretation(c.key,parseFloat(input.value)||0,c);
   }
 }
 
@@ -2682,7 +2860,7 @@ app.addEventListener('click',async event=>{
     const next=viewButton.dataset.view;
     savePendingText();
     dirty=false;
-    view=next;menu=false;
+    view=next;menu=false;panelEnter=true;
     if(view==='diary')selected=dateKey();
     render({transition:true});
     return;
@@ -2693,10 +2871,31 @@ app.addEventListener('click',async event=>{
     case 'menu':menu=!menu;render();break;
     case 'close-menu':menu=false;render();break;
     case 'toggle-sidebar':toggleSidebar();break;
-    case 'archive-tab':archiveTab=tab||'list';render();break;
-    case 'stats-tab':statsTab=tab||'pulse';render();break;
-    case 'profile-tab':profileTab=tab||'personal';render();break;
-    case 'thoughts-tab':thoughtsTab=tab||'shore';render();break;
+    case 'archive-tab':archiveTab=tab||'list';panelEnter=true;render();break;
+    case 'stats-tab':statsTab=tab||'pulse';panelEnter=true;render();break;
+    case 'profile-tab':profileTab=tab||'personal';panelEnter=true;render();break;
+    case 'add-part':addPart();break;
+    case 'part-preset':addPart(val);break;
+    case 'part-type':{
+      const list=partDefs(setup).map(p=>p.key===key?{...p,type:val==='line'?'line':'text'}:p);
+      saveCustomization({parts:list},'');
+      break;
+    }
+    case 'remove-part':{
+      const gone=partDefs(setup).find(p=>p.key===key);
+      saveCustomization({parts:partDefs(setup).filter(p=>p.key!==key)},`«${gone?.label||'Parte'}» fuera. Lo ya escrito se queda en sus días.`);
+      break;
+    }
+    case 'add-counter':addCounter();break;
+    case 'remove-counter':{
+      const list=counterDefs(setup);
+      if(list.length<=1){toast('Deja al menos un contador.',true);break;}
+      const gone=list.find(c=>c.key===key);
+      saveCustomization({counters:list.filter(c=>c.key!==key)},`«${gone?.label||'Contador'}» fuera. Las cifras ya anotadas se conservan.`);
+      break;
+    }
+    case 'reset-counters':saveCustomization({counters:COUNTERS.map(c=>({...c}))},'Vuelta a los cuatro de siempre.');break;
+    case 'thoughts-tab':thoughtsTab=tab||'shore';panelEnter=true;render();break;
     case 'show-drafts':openDraftsModal();break;
     case 'commit-draft':commitEntry();break;
     case 'discard-draft':{
@@ -2724,7 +2923,7 @@ app.addEventListener('click',async event=>{
       toast('Borrador de la botella descartado');
       break;
     }
-    case 'routine-tab':routineTab=tab||'hoy';render();break;
+    case 'routine-tab':routineTab=tab||'hoy';panelEnter=true;render();break;
     case 'shift-day':{
       const next=addDays(selected,parseInt(delta||'1',10));
       if(next>dateKey()){toast('Ese día todavía no ha llegado.',true);break;}

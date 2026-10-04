@@ -37,6 +37,12 @@ También puedes servir la carpeta `docs/` (build de producción) con cualquier s
 - **Rutina** — pestaña propia para la tasklist: hábitos del día con rachas, rejilla de constancia
   (35 días, se puede pintar cualquier día pasado), contadores (agua, ejercicio, lectura, pausa)
   y la lista de «para mañana». Todo se guarda al instante, sin botón de guardar.
+- **Personalizar** (en *Perfil*) — el diario se monta con lo que tú necesites. En «Partes del diario» añades campos propios a la página de hoy (una línea o un párrafo), con presets —
+  cuerpo, cabeza, sueño, comida, entrenamiento, lectura, gratitud, pendiente, sueño de mañana —
+  y quitas los que sobran. En «Contadores» haces lo mismo con las cifras de la Rutina: nombre,
+  unidad y meta, con icono. Los que trae el cuaderno (agua, ejercicio, lectura, pausa) se pueden
+  editar y ocultar, y volver a los cuatro de siempre cuando quieras. Cada línea se edita en su
+  propio sitio y se guarda al salir del campo.
 - **Guardado a prueba de pestañas cerradas** — dos capas: (1) cada tecla escribe un *borrador*
   local con su hora (`diario.drafts.v1`) y (2) si dejas de escribir dos segundos, el día se
   autoguarda en el cuaderno. Al volver, lo que estaba a medias se recupera solo y te lo dice
@@ -67,8 +73,7 @@ src/
 │   ├── ui.js             # piezas de interfaz (calendario, gráfico SVG, iconos…)
 │   ├── ocean.js          # el mar: agua, botellas que flotan, ficha y modal
 │   └── habits.js         # rutina: tablero de hábitos, rejilla de constancia, contadores
-├── data/constants.js     # estados de ánimo, mareas visuales, etiquetas
-├── styles/main.css       # diseño mobile-first, temas de papel, animaciones suaves
+├── data/constants.js     # estados de ánimo, etiquetas y las piezas que se pueden personalizar
 ├── utils/
 │   ├── dates.js          # fechas, número de día, semanas, meses, calendario
 │   ├── stats.js          # medias, rachas (diario y por hábito), resúmenes, tendencias
@@ -79,7 +84,7 @@ src/
 │   ├── main.css          # identidad de papel, portada, diario, rutina, archivo, progreso
 │   ├── sea.css           # el mar y sus animaciones (agua, orilla, botellas, chapuzón)
 │   └── motion.css        # sistema de movimiento, barra lateral y transiciones de vista
-└── main.js               # navegación (Hoy · Pensamientos · Archivo · Rutina · Progreso · Perfil)
+└── main.js               # navegación (Hoy · Pensamientos · Rutina · Archivo · Progreso · Perfil) y las vistas
 public/                   # icono, manifest y service worker offline
 tests/                    # pruebas de las funciones puras y de pintado (npm test)
 ```
@@ -96,18 +101,54 @@ Cada entrada se guarda como JSON en `localStorage` (`diario.entries.v1`):
   "mood": 4,
   "sleepHours": 7.5,
   "studyHours": 2,
+  "energy": 3,
+  "stress": 2,
   "bestOfDay": "…",
   "differentToday": "…",
   "generalDay": "…",
-  "gratitude": ["…", "…", "…"],
   "tomorrow": "…",
+  "wordOfDay": "…",
+  "capsule": "…",
+  "gratitude": ["…", "…", "…"],
   "goals": ["…"],
+  "tags": ["…"],
+  "counters": { "water": 6, "ejercicio": 30, "p-31": 2 },
+  "parts": { "p-12": "lo que escribiste en tu propia parte del día" },
+  "habits": { "h-3": true, "h-7": false },
   "createdAt": "…",
   "updatedAt": "…"
 }
 ```
 
-El número de día se calcula automáticamente desde la fecha de la primera entrada.
+El número de día se calcula automáticamente desde la fecha de la primera entrada. Lo que no está en
+esa lista no se guarda: `validateEntry` limpia y rechaza lo que no conoce.
+
+### Las listas que puedes cambiar tú
+
+En `diario.setup.v1` viven dos arrays que definen qué se pinta cada día. `counters` son las cifras
+de la Rutina y `parts`, las partes de la entrada:
+
+```json
+{
+  "counters": [
+    { "key": "p-31", "label": "Flexiones", "unit": "repeticiones", "min": 0, "max": 200, "step": 10, "goal": 50, "icon": "flame" }
+  ],
+  "parts": [
+    { "key": "p-12", "label": "Cabeza", "hint": "lo que no te deja pensar en otra cosa", "type": "text" },
+    { "key": "p-8",  "label": "Mañana", "hint": "", "type": "line" }
+  ]
+}
+```
+
+- `type` es `text` (párrafo en la página de hoy) o `line` (una línea, como la palabra del día).
+- `key` la genera el propio cuaderno (`p-<n>`), y es la misma que verás en `entry.parts` y
+  `entry.counters`. Por eso **quitar una parte o un contador no borra nada**: sólo deja de pintarse,
+  y lo ya escrito y las cifras apuntadas siguen en cada día por si vuelves a ponerla.
+- Máximos: 8 partes y 12 contadores. Un contador se queda sin definir si le quitas el título, y
+  las entradas nunca se rompen por un número raro en un contador propio: se ignora la cifra.
+- El contador del agua usa como meta tu `waterGoal` del perfil; los demás llevan su meta propia.
+- Hay ocho rótulos de partida (`COUNTERS` en `src/data/constants.js`) y ocho presets de escritura
+  (`PART_PRESETS`). Añadir uno nuevo es, literalmente, un botón en *Perfil → Personalizar*.
 
 Los pensamientos viajan en `diario.thoughts.v1`. El parte del día en que la tiraste es una función
 determinista de la fecha, así que viaja dentro de la botella y no necesita red:

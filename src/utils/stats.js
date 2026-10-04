@@ -1,11 +1,13 @@
 import {addDays,dateKey,daysBetween} from './dates.js';
-import {COUNTERS} from '../data/constants.js';
 export const formatNumber=n=>new Intl.NumberFormat('es-ES',{maximumFractionDigits:1}).format(n);
 export function average(values){const v=values.filter(x=>Number.isFinite(x));return v.length?v.reduce((a,b)=>a+b,0)/v.length:0;}
 export function inRange(entries,start,end){return entries.filter(e=>e.date>=start&&e.date<=end).sort((a,b)=>a.date.localeCompare(b.date));}
 export function maxStreak(entries){let max=0,current=0,previous;for(const date of [...new Set(entries.map(e=>e.date))].sort()){current=previous&&daysBetween(previous,date)===1?current+1:1;max=Math.max(max,current);previous=date;}return max;}
 export function currentStreak(entries,today=dateKey()){const dates=new Set(entries.map(e=>e.date));let d=dates.has(today)?today:addDays(today,-1),n=0;while(dates.has(d)){n++;d=addDays(d,-1);}return n;}
-export function wordCount(entry){const text=[entry.bestOfDay,entry.differentToday,entry.generalDay,entry.tomorrow,...(entry.gratitude||[])].join(' ').trim();return text?text.split(/\s+/).length:0;}
+export function wordCount(entry){
+  const text=[entry.bestOfDay,entry.differentToday,entry.generalDay,entry.tomorrow,...(entry.gratitude||[]),...Object.values(entry.parts||{})].join(' ').trim();
+  return text?text.split(/\s+/).length:0;
+}
 export function totalWords(entries){return entries.reduce((sum,e)=>sum+wordCount(e),0);}
 export function habitStreak(entries,habitId){const dates=[...new Set(entries.filter(e=>e.habits?.[habitId]).map(e=>e.date))].sort();if(!dates.length)return 0;let max=0,current=0,previous;for(const date of dates){current=previous&&daysBetween(previous,date)===1?current+1:1;max=Math.max(max,current);previous=date;}
   const last=dates[dates.length-1],today=dateKey(),alive=daysBetween(last,today)<=1;
@@ -67,9 +69,12 @@ export function calculateStats(entries){
     mostSleep:highest('sleepHours'),
     maxStreak:maxStreak(entries),
     moods:[1,2,3,4,5].map(m=>entries.filter(e=>e.mood===m).length),
-    counters:Object.fromEntries(COUNTERS.map(c=>[c.key,{
-      total:entries.reduce((s,e)=>s+(e.counters?.[c.key]||0),0),
-      average:average(entries.map(e=>e.counters?.[c.key]))
+    /* se resumen los contadores que hay en tus días, propios incluidos */
+    counters:Object.fromEntries(Object.keys(
+      entries.reduce((keys,e)=>{for(const k of Object.keys(e.counters||{}))keys[k]=1;return keys;},{})
+    ).map(key=>[key,{
+      total:entries.reduce((s,e)=>s+(e.counters?.[key]||0),0),
+      average:average(entries.map(e=>e.counters?.[key]))
     }]))
   };
 }
@@ -77,7 +82,8 @@ export function calculateStats(entries){
 /* ----- Interpretaciones por reglas ----- */
 export function sleepInterpretation(h){return h<6?'Has dormido poco.':h<7?'Una cantidad algo baja.':h<=9?'Un descanso razonable.':'Has dormido bastante.';}
 export function studyInterpretation(h){return h===0?'Hoy no has dedicado tiempo al estudio.':h<1?'Has hecho un poco de estudio.':h<3?'Has tenido una sesión de estudio considerable.':h<5?'Has dedicado bastante tiempo.':'Ha sido un día de estudio intenso.';}
-export function counterInterpretation(key,value){
+export function counterInterpretation(key,value,counter=null){
+  if(counter&&!counter.builtin)return customCounterPhrase(counter,value);
   switch(key){
     case 'water':return value===0?'Sin registrar agua hoy.':value<4?'Poca agua registrada.':value<8?'Una hidratación razonable.':'Buen nivel de hidratación.';
     case 'exercise':return value===0?'Sin ejercicio registrado hoy.':value<20?'Un poco de movimiento.':value<60?'Una sesión de ejercicio notable.':'Un día muy activo.';
@@ -85,6 +91,16 @@ export function counterInterpretation(key,value){
     default:return value===0?'Sin pausa consciente registrada.':value<10?'Un momento de pausa.':value<30?'Una práctica considerable.':'Una práctica muy constante hoy.';
   }
 }
+/* Contadores propios: ni ánimo ni sermones, sólo la cifra y su meta. */
+function customCounterPhrase(counter,value){
+  const unit=counter.unit?` ${counter.unit}`:'';
+  const goal=Number(counter.goal)||0;
+  if(!value)return 'Sin registrar hoy.';
+  if(goal&&value>=goal)return `Meta cumplida: ${value} de ${goal}${unit}.`;
+  if(goal)return `Vas a ${value} de ${goal}${unit}.`;
+  return `${value}${unit} hoy.`;
+}
+
 const MOOD_PHRASE=['','Hoy ha sido un día difícil.','Hoy ha sido un día flojo.','Hoy ha sido un día normal.','Hoy ha sido un día bueno.','Hoy ha sido un día genial.'];
 
 export function generateSummary(e){

@@ -1,4 +1,4 @@
-import {MOODS,WEEKDAYS,CRISIS_HELPLINES,THEMES,AGE_GROUPS,INTEREST_OPTIONS,WRITING_RITUALS,TONE_STYLES} from '../data/constants.js';
+import {MOODS,WEEKDAYS,CRISIS_HELPLINES,THEMES,AGE_GROUPS,INTEREST_OPTIONS,WRITING_RITUALS,TONE_STYLES,counterGoal,COUNTERS} from '../data/constants.js';
 import {dateKey,generateCalendar,longDate,dayNumber,addDays} from '../utils/dates.js';
 import {formatNumber,counterInterpretation} from '../utils/stats.js';
 import {getDailyWord,getDailyTip,getContextualAdvice,getAgeProfile,getPersonalQuote,calculateGoalStats,generateThemeFaviconSvg} from '../utils/wellbeing.js';
@@ -119,25 +119,25 @@ export function tagPicker(selected=[],tagsList=[]){
 export function counterSteppers(values={},counters=[],setup={},opts={}){
   const profile=getAgeProfile(setup);
   const activeSet=new Set(profile.activeCounterKeys||['water']);
-  const visibleCounters=counters.filter(c=>activeSet.has(c.key)||(Number(values?.[c.key])||0)>0);
+  /* los propios se ven siempre (los añadiste a propósito); los de siempre, según tu perfil */
+  const visibleCounters=counters.filter(c=>!c.builtin||activeSet.has(c.key)||(Number(values?.[c.key])||0)>0);
   const list=visibleCounters.length?visibleCounters:counters;
   const prefix=opts.action?`${opts.action}-`:'';
 
   return `<div class="counters-grid">${list.map(c=>{
     const v=Number(values?.[c.key])||0;
-    const isWater=c.key==='water';
-    const goal=isWater?(setup.waterGoal||8):0;
+    const goal=counterGoal(c,setup);
     const pct=goal?Math.min(100,Math.round((v/goal)*100)):0;
     return `<div class="counter-row" data-counter="${c.key}">
       <div>
         <p class="field-title">${icon(c.icon)} ${c.label} ${goal?`<small class="counter-goal-pill ${v>=goal?'met':''}">Meta: ${v}/${goal}</small>`:''}</p>
-        <p class="field-caption" id="hint-${c.key}">${counterInterpretation(c.key,v)}</p>
+        <p class="field-caption" id="hint-${c.key}" data-counter-hint="${c.key}">${counterInterpretation(c.key,v,c)}</p>
         ${goal?`<div class="counter-progress"><i style="width:${pct}%"></i></div>`:''}
       </div>
       <div class="stepper">
         <button type="button" class="icon-button" data-action="${prefix}counter-minus" data-key="${c.key}" data-step="${c.step}" aria-label="Restar ${c.label}">${icon('minus')}</button>
         <div class="stepper-value">
-          <input type="number" name="counter_${c.key}" min="0" max="${c.max}" step="${c.step}" value="${v}" aria-label="${c.label}" data-counter-input="${c.key}">
+          <input type="number" name="counter_${c.key}" min="${c.min}" max="${c.max}" step="${c.step}" value="${v}" aria-label="${c.label}" data-counter-input="${c.key}">
           <span>${c.unit}</span>
         </div>
         <button type="button" class="icon-button" data-action="${prefix}counter-plus" data-key="${c.key}" data-step="${c.step}" aria-label="Sumar ${c.label}">${icon('plus')}</button>
@@ -546,7 +546,7 @@ export function setupWizardModal(setup={},habits=[],step=1){
         <div class="setup-name-age-row">
           <div class="setup-field">
             <label for="setup-name">${icon('user')} ¿Cómo te llamas?</label>
-            <input id="setup-name" name="name" maxlength="50" placeholder="Tu nombre o apodo..." value="${escape(setup.name||'')}">
+            <input id="setup-name" name="name" maxlength="50" placeholder="Tu nombre o apodo…" value="${escape(setup.name||'')}">
           </div>
           <div class="setup-field">
             <label for="setup-age">¿Cuántos años tienes?</label>
