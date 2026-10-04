@@ -98,7 +98,7 @@ export function generateSummary(e){
   return parts.join(' ');
 }
 export function periodSummary(s,monthly=false){
-  if(!s.count)return 'Aún no hay entradas en este período. Cada día que escribas irá dando forma a tu historia.';
+  if(!s.count)return 'Aún no hay entradas en este período.';
   const base=monthly
     ?`Durante este mes has registrado ${s.count} ${s.count===1?'día':'días'}. Tu valoración media ha sido de ${formatNumber(s.mood)}/5. Has estudiado un total de ${formatNumber(s.totalStudy)} horas y tu media de sueño ha sido de ${formatNumber(s.sleep)} horas.`
     :`Esta semana has registrado ${s.count} ${s.count===1?'día':'días'}. Tu estado medio ha sido ${['','difícil','flojo','normal','bueno','genial'][Math.round(s.mood)]}. Has dormido una media de ${formatNumber(s.sleep)} horas y estudiado ${formatNumber(s.study)} horas por día registrado.`;

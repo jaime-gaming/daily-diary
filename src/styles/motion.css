@@ -79,7 +79,7 @@
 .tabbar-wrap{position:relative}
 .tabbar-rail{
   position:absolute;bottom:6px;left:var(--rail-x,0);width:var(--rail-w,60px);height:calc(100% - 12px);z-index:0;
-  border-radius:99px;background:color-mix(in srgb,var(--paper-2) 70%,transparent);
+  border-radius:6px;background:color-mix(in srgb,var(--paper-2) 70%,transparent);
   box-shadow:inset 0 0 0 1px var(--rule-strong);
   opacity:0;pointer-events:none;
   transition:left var(--dur-4) var(--ease-tide),width var(--dur-3) var(--ease-tide),opacity var(--dur-2)
@@ -107,7 +107,7 @@ main .is-entering{animation:cardEnter .52s var(--ease-ink) both;animation-delay:
 
 /* ---------- indicadores de guardado y borradores ---------- */
 .save-status{
-  display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:99px;
+  display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border-radius:2px;
   font-family:var(--font-mono);font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;
   color:var(--ink-faint);border:1px solid var(--rule);background:var(--paper-2);
   transition:color var(--dur-2),border-color var(--dur-2),background var(--dur-2)
@@ -117,10 +117,10 @@ main .is-entering{animation:cardEnter .52s var(--ease-ink) both;animation-delay:
 .save-status.is-working{color:var(--ochre);border-color:color-mix(in srgb,var(--ochre) 45%,var(--rule))}
 .save-status.is-draft{color:var(--sea-deep);border-color:color-mix(in srgb,var(--sea-1) 60%,var(--rule))}
 .save-status.is-error{color:var(--red);border-color:var(--red);background:var(--red-soft)}
-.save-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 18%,transparent)}
-.save-dot.is-working{background:var(--ochre);box-shadow:0 0 0 3px color-mix(in srgb,var(--ochre) 22%,transparent);animation:softPulse 1.4s var(--ease-soft) infinite}
-.save-dot.is-draft{background:var(--sea-1);box-shadow:0 0 0 3px color-mix(in srgb,var(--sea-1) 22%,transparent)}
-.save-dot.is-error{background:var(--red);box-shadow:0 0 0 3px color-mix(in srgb,var(--red) 24%,transparent)}
+.save-dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex:none}
+.save-dot.is-working{background:var(--ochre);animation:softPulse 1.4s var(--ease-soft) infinite}
+.save-dot.is-draft{background:var(--sea-1)}
+.save-dot.is-error{background:var(--red);box-shadow:0 0 0 2px color-mix(in srgb,var(--red) 26%,transparent)}
 .save-note{
   display:flex;gap:10px;align-items:flex-start;padding:11px 12px;border-radius:3px;font-size:.78rem;line-height:1.45;
   border:1px dashed rgba(243,239,230,.24);color:rgba(243,239,230,.66)
@@ -131,7 +131,7 @@ main .is-entering{animation:cardEnter .52s var(--ease-ink) both;animation-delay:
 .save-note.has-pending{border-style:solid;border-color:color-mix(in srgb,var(--sea-1) 70%,transparent)}
 #save-note:has(.is-error){border-color:var(--red)}
 .draft-chip{
-  display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:99px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:2px;cursor:pointer;
   font-family:var(--font-mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;
   color:var(--sea-deep);background:color-mix(in srgb,var(--sea-1) 22%,var(--paper-2));
   border:1px solid color-mix(in srgb,var(--sea-1) 60%,var(--rule));
@@ -141,11 +141,8 @@ main .is-entering{animation:cardEnter .52s var(--ease-ink) both;animation-delay:
 .draft-chip:hover{background:var(--sea-1);color:var(--paper-2);transform:translateY(-1px)}
 @keyframes chipIn{from{opacity:0;transform:translateY(-6px) scale(.9)}to{opacity:1;transform:none}}
 .draft-note{
-  display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 16px;padding:10px 14px;border-radius:4px;
-  background:linear-gradient(100deg,color-mix(in srgb,var(--ochre) 14%,var(--paper-2)),var(--paper-2));
-  border:1px dashed color-mix(in srgb,var(--ochre) 55%,var(--rule-strong));
-  font-size:.84rem;color:var(--ink-soft);animation:noteIn var(--dur-3) var(--ease-ink) both
-}
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 16px;padding:10px 14px;border-radius:2px;
+  background:var(--paper-2);border:1px solid var(--rule-strong);border-left:3px solid var(--ochre);
 .draft-note .icon{width:16px;height:16px;color:var(--ochre)}
 .draft-note b{color:var(--ink)}
 .draft-note.is-live .icon{animation:penScratch 1.2s var(--ease-soft) infinite}
@@ -171,14 +168,6 @@ main .is-entering{animation:cardEnter .52s var(--ease-ink) both;animation-delay:
   0%{background:color-mix(in srgb,var(--green) 34%,transparent);transform:scale(1.04)}
   100%{background:transparent;transform:none}
 }
-.filter-chip{
-  display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:14px;padding:9px 13px;border-radius:99px;
-  background:var(--red-soft);border:1px solid color-mix(in srgb,var(--red) 40%,transparent);
-  font-family:var(--font-mono);font-size:.68rem;letter-spacing:.06em;color:var(--ink);
-  animation:noteIn var(--dur-3) var(--ease-ink) both
-}
-.filter-chip .icon{width:14px;color:var(--red)}
-.filter-chip .text-button{margin-left:auto}
 
 /* ---------- cuando el usuario quiere poco movimiento ---------- */
 @media (prefers-reduced-motion:reduce){

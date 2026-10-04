@@ -162,80 +162,10 @@ export function weatherOf(dateStr=dateKey()){
   };
 }
 
-/* Una línea legible para el registro y para la portada. */
-export function describePart(dateStr=dateKey()){
-  const d=weatherOf(dateStr);
-  return `${d.weather.label} · viento ${d.wind.label}, ${d.wind.kmh} nudos · ${d.tide.name.toLowerCase()}`;
-}
-export function waterLevel(dateStr=dateKey()){
-  return weatherOf(dateStr).level;
-}
 
-/* ---------- hitos de la travesía ---------- */
-export const MILESTONES=[
-  {id:'port',at:0,label:'el puerto',note:'todavía se oye la playa'},
-  {id:'buoy',at:.26,label:'la boya',note:'doblado el canal'},
-  {id:'cabo',at:.56,label:'el cabo',note:'ya no se ve tierra'},
-  {id:'rompiente',at:.86,label:'la rompiente',note:'a un pulso de la arena'}
-];
-export function milestonesOf(bottle,today=dateKey()){
-  const p=voyageProgress(bottle,today);
-  const settled=p.fate!=='drifting';
-  let last=-1;
-  const list=MILESTONES.map(m=>{
-    const reached=settled||p.pct>=m.at;
-    if(reached)last=MILESTONES.findIndex(x=>x.id===m.id);
-    return {...m,reached};
-  });
-  return {list,current:Math.max(0,last),next:list.find(m=>!m.reached)||null,pct:p.pct,fate:p.fate};
-}
 /* Posición (0..1) de la botella sobre el agua según su deriva. */
 export function driftX(pct){
   return clamp01(.05+clamp01(pct)*.86);
-}
-
-/* ---------- la costa en los próximos días ---------- */
-export function arrivalDateOf(bottle){
-  if(!bottle)return null;
-  if(bottle.status==='returned')return bottle.returnedAt||bottle.arriveOn||null;
-  if(bottle.status==='lost'||bottle.returns===false)return null;
-  return bottle.arriveOn||null;
-}
-export function seaForecast({today=dateKey(),bottles=[],days=14}={}){
-  const out=[];
-  for(let i=0;i<days;i++){
-    const date=addDays(today,i);
-    const part=weatherOf(date);
-    const arrivals=bottles.filter(b=>arrivalDateOf(b)===date);
-    const sinking=bottles.filter(b=>b.status==='drifting'&&b.returns===false&&b.lostOn===date);
-    out.push({
-      ...part,
-      date,
-      day:i,
-      arrivalCount:arrivals.length,
-      arrivalIds:arrivals.map(b=>b.id),
-      sinkingIds:sinking.map(b=>b.id),
-      isToday:i===0,
-      marker:i===0?'hoy':i===1?'mañana':null
-    });
-  }
-  return out;
-}
-export function nextArrival(bottles=[],today=dateKey()){
-  let best=null;
-  for(const b of bottles){
-    if(fateOf(b,today)!=='drifting')continue;
-    const date=arrivalDateOf(b);
-    if(!date||date<today)continue;
-    if(!best||date<best.date)best={date,bottle:b,daysLeft:daysBetween(today,date)};
-  }
-  return best;
-}
-/* Días de margen hasta la próxima pleamar con botellas esperando. */
-export function nextSpringWithArrivals(bottles=[],today=dateKey()){
-  const n=nextArrival(bottles,today);
-  if(!n)return null;
-  return {...n,tide:tideInfo(n.date)};
 }
 
 /* ---------- el viaje ---------- */
@@ -337,16 +267,6 @@ export function seaPhrase(bottle,today=dateKey()){
   return list[seed%list.length];
 }
 
-export function etaLabel(bottle,today=dateKey()){
-  const p=voyageProgress(bottle,today);
-  if(p.fate==='returned')return 'en la orilla';
-  if(p.fate==='lost')return 'perdida';
-  const left=Math.max(0,p.total-p.atSea);
-  if(left<=1)return 'casi llega';
-  if(left<=7)return `${left} días para la orilla`;
-  return `${left} días de travesía`;
-}
-
 /* ---------- agrupaciones y métricas ---------- */
 export function groupBottles(bottles=[],today=dateKey()){
   const g={drifting:[],returned:[],lost:[],kept:[]};
@@ -363,47 +283,11 @@ export function shoreQueue(bottles=[],today=dateKey()){
   return bottles.filter(b=>fateOf(b,today)==='returned');
 }
 
-export function hasUnseen(bottles=[],today=dateKey()){
-  return shoreQueue(bottles,today).some(b=>b.seen!==true);
-}
 
-export function oceanStats(bottles=[],today=dateKey()){
-  const g=groupBottles(bottles,today);
-  const words=bottles.reduce((sum,b)=>sum+thoughtWordCount(b.text),0);
-  const farthest=bottles.reduce((best,b)=>{
-    const m=Math.round(daysAtSea(b,today)*(b.speed||10));
-    return m>(best?.miles||0)?{miles:m,bottle:b}:best;
-  },null);
-  const trips=bottles.filter(b=>b.status!=='drifting');
-  const avg=trips.length?Math.round(trips.reduce((s,b)=>s+Math.max(1,daysBetween(b.castAt,b.returnedAt||b.lostAt||b.castAt)),0)/trips.length):0;
-  return {
-    total:bottles.length,
-    drifting:g.drifting.length,
-    returned:g.returned.length,
-    lost:g.lost.length,
-    kept:g.kept.length,
-    words,
-    avgDays:avg,
-    farthest:farthest||{miles:0,bottle:null}
-  };
-}
 
 export function thoughtWordCount(text=''){
   const t=String(text||'').trim();
   return t?t.split(/\s+/).length:0;
 }
 
-/* La marea también manda sobre las palabras: los días de marea viva las
-   botellas vuelven más a menudo, y eso se cuenta en la portada. */
-export function tideNote(dateStr=dateKey()){
-  const t=tideInfo(dateStr);
-  if(t.key==='spring')return 'Marea viva: hoy el mar devuelve lo que guardó.';
-  if(t.key==='neap')return 'Marea muerta: el agua apenas se mueve, ten paciencia.';
-  if(t.key==='rising')return 'La marea sube: algo podría acercarse a la orilla.';
-  return 'La marea baja: buen momento para escribir y soltar.';
-}
 
-export function sealOf(bottle){
-  if(!bottle?.glass)return GLASS_TINTS[0];
-  return GLASS_TINTS.find(g=>g.id===bottle.glass.id)||GLASS_TINTS[0];
-}

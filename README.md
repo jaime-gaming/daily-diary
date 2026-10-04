@@ -26,17 +26,14 @@ También puedes servir la carpeta `docs/` (build de producción) con cualquier s
 - **Hoy** — portada con captura rápida: estado de ánimo (1–5) en un clic, horas de sueño y
   dedicación con atajos, «Tu página de hoy» (nota libre + palabra del día), etiquetas, energía,
   estrés y tres cosas buenas. Los resúmenes se generan con reglas, nunca con IA.
-- **Pensamientos (el mar)** — notas rápidas que se escriben, se sellan en una botella y se echan
-  al mar. Cada botella sortea su travesía (cuatro mares, de «a la orilla» a «alta mar») y el
-  **parte del día** manda de verdad: con viento a favor entra en la primera pleamar; con temporal
-  o viento de tierra se queda fuera uno o dos días más. Puede volver a ti en un día de marea viva
-  o perderse para siempre. Al volver puedes leerla, responder a tu yo de entonces, anclarla al
-  cuaderno o volver a lanzarla. Todo el azar se calcula en tu navegador con una semilla derivada
-  de tus palabras, la fecha y el mar elegido — y solo vuelven pensamientos tuyos: no hay otros
-  navegantes ni textos generados.
-  El mar se puede leer: **el parte de hoy** (clima, viento, marea, luna), **la costa en dos
-  semanas** (cuánto sube el agua y qué días toca tierra algo) y los **hitos del viaje** de cada
-  botella (el puerto, la boya, el cabo, la rompiente).
+- **Pensamientos (el mar)** — notas rápidas que se escriben, se cierran en una botella y se tiran.
+  No hay que volver a mirar: cada botella sortea su travesía (cuatro mares, de «a la orilla» a
+  «alta mar», de 2 a 240 días) y, cuando toca, la marea viva la devuelve; algunas se pierden para
+  siempre. Al volver puedes leerla, responder a tu yo de entonces, anclarla al cuaderno o volver a
+  lanzarla. El clima del día (brisa, viento, temporal) existe, pero solo dentro del sorteo: cambia
+  lo que tarda y cuánto se aleja el agua, sin paneles ni pronósticos. Todo el azar se calcula en tu
+  navegador con una semilla derivada de tus palabras, la fecha y el mar elegido — y solo vuelven
+  pensamientos tuyos: no hay otros navegantes ni textos generados.
 - **Rutina** — pestaña propia para la tasklist: hábitos del día con rachas, rejilla de constancia
   (35 días, se puede pintar cualquier día pasado), contadores (agua, ejercicio, lectura, pausa)
   y la lista de «para mañana». Todo se guarda al instante, sin botón de guardar.
@@ -68,19 +65,19 @@ También puedes servir la carpeta `docs/` (build de producción) con cualquier s
 src/
 ├── components/
 │   ├── ui.js             # piezas de interfaz (calendario, gráfico SVG, iconos…)
-│   ├── ocean.js          # el mar: olas, parte, pronóstico, botellas, ficha y modal
+│   ├── ocean.js          # el mar: agua, botellas que flotan, ficha y modal
 │   └── habits.js         # rutina: tablero de hábitos, rejilla de constancia, contadores
 ├── data/constants.js     # estados de ánimo, mareas visuales, etiquetas
 ├── styles/main.css       # diseño mobile-first, temas de papel, animaciones suaves
 ├── utils/
 │   ├── dates.js          # fechas, número de día, semanas, meses, calendario
 │   ├── stats.js          # medias, rachas (diario y por hábito), resúmenes, tendencias
-│   ├── ocean.js          # mareas, parte del día, sorteo del viaje y estado de cada botella
+│   ├── ocean.js          # mareas, clima, sorteo del viaje y estado de cada botella
 │   ├── drafts.js         # los borradores: que nada se quede a medias
 │   └── storage.js        # validar, guardar, cargar, borrar, exportar, importar
 ├── styles/
 │   ├── main.css          # identidad de papel, portada, diario, rutina, archivo, progreso
-│   ├── sea.css           # el mar y sus animaciones (panel, parte, pronóstico, botellas)
+│   ├── sea.css           # el mar y sus animaciones (agua, orilla, botellas, chapuzón)
 │   └── motion.css        # sistema de movimiento, barra lateral y transiciones de vista
 └── main.js               # navegación (Hoy · Pensamientos · Archivo · Rutina · Progreso · Perfil)
 public/                   # icono, manifest y service worker offline
@@ -90,9 +87,6 @@ tests/                    # pruebas de las funciones puras y de pintado (npm tes
 ## Datos
 
 Cada entrada se guarda como JSON en `localStorage` (`diario.entries.v1`):
-
-El parte (clima, viento, nivel del agua) es una función determinista de la fecha, así que se
-guarda dentro de la botella y no necesita red:
 
 ```json
 {
@@ -115,10 +109,8 @@ guarda dentro de la botella y no necesita red:
 
 El número de día se calcula automáticamente desde la fecha de la primera entrada.
 
-Los pensamientos viajan en `diario.thoughts.v1`; cada botella guárdala así:
-
-El parte (clima, viento, nivel del agua) es una función determinista de la fecha, así que se
-guarda dentro de la botella y no necesita red:
+Los pensamientos viajan en `diario.thoughts.v1`. El parte del día en que la tiraste es una función
+determinista de la fecha, así que viaja dentro de la botella y no necesita red:
 
 ```json
 {
@@ -148,8 +140,8 @@ guarda dentro de la botella y no necesita red:
 
 `status` pasa de `drifting` a `returned` (la marea viva la devolvió) o `lost` (se hundió) al abrir
 el cuaderno; `reply`/`kept` son tu respuesta y si la anclaste; `weather`, `wind`, `windSpeed` y
-`push` recuerdan el parte del día en que la soltaste (y por qué tardó lo que tardó). Nunca sale
-del dispositivo.
+`push` son la firma del día en que la soltaste — explican por qué tardó lo que tardó, y nada más.
+Nunca sale del dispositivo.
 
 Los textos a medias viven aparte, en `diario.drafts.v1`, con esta pinta:
 
@@ -223,7 +215,7 @@ Todo ocurre en tu dispositivo: no hay servidores, seguimiento, anuncios, fuentes
 inteligencia artificial de ningún tipo. Los textos nunca se analizan con modelos; solo se muestran
 tal cual los escribiste.
 
-El mar tampoco es magia: las botellas no viajan a ningún sitio. El «a ver si vuelve» se decide con
-una función determinista (`src/utils/ocean.js`) a partir del texto, la fecha y el mar elegido, y el
-resultado se guarda en tu `localStorage`. Por eso ninguna botella puede la leer otra persona, y por
-eso tus pensamientos no se pierden si cambias de dispositivo: viajan dentro de tu copia de seguridad.
+El mar tampoco es magia: las botellas no viajan a ningún sitio. Si vuelven o no se decide con una
+función determinista (`src/utils/ocean.js`) a partir del texto, la fecha y el mar elegido, y el
+resultado se guarda en tu `localStorage`. Nadie más puede leerlas, y tus pensamientos no se pierden
+si cambias de dispositivo: viajan dentro de tu copia de seguridad.

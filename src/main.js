@@ -25,13 +25,9 @@ import {
   loadHabits,saveHabit,deleteHabit,loadSetup,saveSetup,ageGroupFromAge,
   loadThoughts,saveThought,updateThought,deleteThought,recastThought
 } from './utils/storage.js';
+import {groupBottles,shoreQueue,seaById,seaPhrase} from './utils/ocean.js';
 import {
-  tideInfo,tideNote,seaById,groupBottles,shoreQueue,voyageProgress,
-  weatherOf,seaForecast,nextArrival,arrivalDateOf
-} from './utils/ocean.js';
-import {
-  seaPanel,bottleComposer,bottleCard,bottleModal,oceanLedger,shoreTeaser,emptySea,bottleGlyph,tideRule,
-  seaPartCard,seaForecastStrip,castSplash
+  seaPanel,bottleComposer,bottleCard,bottleModal,shoreTeaser,emptySea,bottleGlyph,tideRule,castSplash
 } from './components/ocean.js';
 import {
   DRAFT_SCOPES,setDraft,draftData,clearDraft,draftIsNewer,draftSummary,
@@ -109,9 +105,8 @@ const pageName=id=>getNavs().find(n=>n[0]===id)?.[2]||'Hoy';
 
 function navBadge(id){
   if(id!=='thoughts')return '';
-  const queue=shoreQueue(thoughts);
-  const unseen=queue.some(t=>t.seen!==true);
-  return `<span class="nav-badge ${unseen?'is-new':''}" ${queue.length?'':'hidden'} data-count="${queue.length}">${queue.length}</span>`;
+  const unseen=shoreQueue(thoughts).some(t=>t.seen!==true);
+  return `<span class="nav-dot ${unseen?'is-new':''}" ${unseen?'':'hidden'} title="hay algo sin leer en la orilla"></span>`;
 }
 
 function navButton([id,ico,label],index){
@@ -178,9 +173,8 @@ function shell(){
       </div>
       <div class="topbar-right">
         <span id="draft-chip-slot"></span>
-        <button type="button" id="sea-quick" class="sea-quick" data-view="thoughts" title="Pensamientos en el mar">
+        <button type="button" id="sea-quick" class="sea-quick" data-view="thoughts" title="El mar">
           ${icon('wave')}
-          <span id="sea-quick-count"></span>
         </button>
         <button type="button" id="theme-pill" class="theme-pill" data-action="cycle-theme">
           <span class="topbar-favicon-mini" id="theme-pill-favicon">${generateThemeFaviconSvg(setup.theme,setup)}</span>
@@ -224,7 +218,7 @@ function saveNoteTitle(){
   if(storageError)return 'Sin guardar';
   switch(saveState){
     case 'typing':case 'saving':return 'Guardando…';
-    case 'draft':return 'Borrador a salvo';
+    case 'draft':return 'Borrador guardado';
     case 'error':return 'No se pudo guardar';
     default:return saveAt?`Guardado ${timeAgo(saveAt)}`:'Todo guardado';
   }
@@ -308,19 +302,7 @@ function syncShell(){
     if(on)btn.setAttribute('aria-current','page');else btn.removeAttribute('aria-current');
   });
 
-  const arrivals=shoreQueue(thoughts);
-  const unseen=arrivals.some(t=>t.seen!==true);
-  app.querySelectorAll('[data-view="thoughts"] .nav-badge').forEach(el=>{
-    el.textContent=arrivals.length;
-    el.hidden=!arrivals.length;
-    el.classList.toggle('is-new',unseen);
-  });
-  const quick=app.querySelector('#sea-quick');
-  if(quick){
-    quick.classList.toggle('has-new',unseen);
-    const count=app.querySelector('#sea-quick-count');
-    if(count)count.textContent=`${arrivals.length||groupBottles(thoughts).drifting.length||''}`;
-  }
+  syncNavDots();
   const exSlot=app.querySelector('#ex-libris-slot');
   if(exSlot)exSlot.innerHTML=exLibrisBadge(setup,entries.length);
   const bottom=app.querySelector('#sidebar-bottom');
@@ -398,7 +380,7 @@ function renderPage(opts={}){
 /* Entrada escalonada de las tarjetas: solo al cambiar de vista. */
 function staggerCards(main){
   if(!motionOn)return;
-  const cards=[...main.querySelectorAll('.page-heading, .sea-panel, .card, .forecast-card, .day-hero')].slice(0,12);
+  const cards=[...main.querySelectorAll('.page-heading, .sea-panel, .card, .day-hero')].slice(0,12);
   cards.forEach((c,i)=>{
     c.style.setProperty('--enter-i',i);
     c.classList.add('is-entering');
@@ -452,7 +434,6 @@ function setupOnboardingBanner(){
 }
 
 function hero(e,profile){
-  const words=e?wordCount(e):0;
   const done=e?Object.values(e.habits||{}).filter(Boolean).length:0;
   const greeting=getGreeting(setup.name);
   const groups=groupBottles(thoughts,selected);
@@ -461,24 +442,21 @@ function hero(e,profile){
     <div class="hero-left">
       <div class="hero-day-number"><small>Día</small><span>${dayNumber(selected,entries)}</span></div>
       <div class="hero-meta">
-        <p class="hero-greeting">${esc(greeting)} <span class="age-stage-tag">${setup.age?`· ${setup.age} años`:''}</span></p>
+        <p class="hero-greeting">${esc(greeting)}</p>
         <span class="date-line">${longDate(selected)}</span>
-        <div class="hero-chips">
-          ${currentStreak(entries)>0?`<span class="chip hot">${icon('flame')} ${currentStreak(entries)} d seguidos</span>`:''}
-          <span class="chip" id="hero-words-chip">${words} palabras</span>
-          ${habits.length?`<button type="button" class="chip chip-link" data-view="routine" id="hero-routine-chip">${icon('listChecks')} ${done}/${habits.length} rutina</button>`:''}
-          ${arrivals?`<button type="button" class="chip chip-link is-new" data-view="thoughts">${icon('anchor')} ${arrivals} ${arrivals===1?'botella':'botellas'} en la orilla</button>`
-            :atSea?`<button type="button" class="chip chip-link" data-view="thoughts">${icon('wave')} ${atSea} en el mar</button>`
-            :`<button type="button" class="chip chip-link" data-view="thoughts">${icon('pen')} Echar un pensamiento al mar</button>`}
-          ${profile.interests.slice(0,2).map(i=>`<span class="chip personal-interest-chip">${icon(i.icon)} ${esc(i.label.split(' ')[0])}</span>`).join('')}
-          ${e?`<span class="entry-status">${icon('check')} Escrito en el cuaderno</span>`:`<span class="entry-status pending">Aún sin cerrar</span>`}
+        <p class="hero-line">
+          <span class="entry-status ${e?'':'pending'}" id="hero-words-chip">${heroStatusHtml(e)}</span>
+          ${habits.length?`<button type="button" class="hero-link" data-view="routine" id="hero-routine-chip">${done} de ${habits.length} en la rutina</button><span class="hero-dot">·</span>`:''}
+          ${arrivals?`<button type="button" class="hero-link is-new" data-view="thoughts">${arrivals} ${arrivals===1?'botella':'botellas'} en la orilla</button>`
+            :atSea?`<button type="button" class="hero-link" data-view="thoughts">${atSea} ${atSea===1?'botella':'botellas'} por ahí fuera</button>`
+            :''}
+          <span class="hero-dot">·</span>
           <span class="save-status" data-save-status>${saveStatusHtml()}</span>
-        </div>
+        </p>
       </div>
     </div>
     <div class="hero-right">
       ${dayNav()}
-      <p class="hero-tide">${icon('tide')} <span>${esc(tideNote(selected))}</span></p>
     </div>
   </div>`;
 }
@@ -722,17 +700,15 @@ function thoughtsPage(){
   const today=dateKey();
   const groups=groupBottles(thoughts,today);
   const tabs=[
-    ['shore','anchor','La orilla',groups.returned.length],
-    ['sea','wave','En el mar',groups.drifting.length],
+    ['shore','anchor','En la orilla',groups.returned.length],
+    ['sea','wave','Por ahí fuera',groups.drifting.length],
     ['kept','bookmark','Ancladas',groups.kept.length],
-    ['lost','storm','Perdidas',groups.lost.length]
+    ['lost','storm','Nunca volvieron',groups.lost.length]
   ];
-  return `${pageHeader('Pensamientos',setup.name?`El mar de ${esc(setup.name)}`:'El mar de los pensamientos',
-    'Escribe lo que no quieres guardar, séllalo en una botella y échalo al mar. Cuando la marea quiera, puede volver a ti.',`
-    <span class="count-badge">${thoughts.length} ${thoughts.length===1?'botella':'botellas'} en tu mar</span>
-  `)}
+  return `${pageHeader('Pensamientos','El mar',
+    'Lo que no quieres dejar escrito aquí lo cierras y lo tiras. De vez en cuando vuelve algo.'
+  )}
   ${seaPanel(thoughts,today)}
-  ${seaForecastStrip(seaForecast({today,bottles:thoughts,days:14}))}
   <div class="tide-rule-wrap is-after-sea">${tideRule()}</div>
   <div class="ocean-layout">
     <div class="ocean-main">
@@ -745,72 +721,42 @@ function thoughtsPage(){
       <div id="ocean-body" class="tab-panel-enter">${oceanTabBody(groups,today)}</div>
     </div>
     <aside class="ocean-aside">
-      ${seaPartCard(today,thoughts)}
-      ${tideCard(today)}
       ${seaRulesCard(groups,today)}
-      ${oceanLedger(thoughts,today)}
     </aside>
   </div>`;
 }
 
-function groupsForFilter(){
-  const today=dateKey();
-  return thoughts.filter(b=>arrivalDateOf(b)===oceanFilter&&fateOf(b,today)==='drifting');
-}
 function oceanTabBody(groups,today){
   if(!thoughts.length)return emptySea(thoughtsTab);
   const map={shore:groups.returned,sea:groups.drifting,kept:groups.kept,lost:groups.lost};
-  let list=map[thoughtsTab]??groups.returned;
-  if(oceanFilter){
-    list=list.filter(b=>arrivalDateOf(b)===oceanFilter||b.lostOn===oceanFilter);
-    if(!list.length)return oceanEmptyFor(thoughtsTab);
-  }
-  const chip=oceanFilter?`<div class="filter-chip">${icon('calendar')} Botellas que tocan tierra el ${esc(longDate(oceanFilter,{day:'numeric',month:'long'}))}<button type="button" class="text-button" data-action="clear-sea-filter">${icon('close')} Quitar el filtro</button></div>`:'';
-  return `${chip}<div class="bottle-grid">${list.map((b,i)=>bottleCard(b,today,i)).join('')}</div>`;
+  const list=map[thoughtsTab]??groups.returned;
+  if(!list.length)return oceanEmptyFor(thoughtsTab);
+  return `<div class="bottle-grid">${list.map((b,i)=>bottleCard(b,today,i)).join('')}</div>`;
 }
 
 function oceanEmptyFor(tab){
   const copy={
-    shore:['La orilla está seca','Ninguna botella ha vuelto todavía. Cuando la marea viva traiga una, aparecerá aquí y en tu portada.'],
-    sea:['No hay nada a la deriva','Echa una botella al mar y la verás alejarse por esta pantalla.'],
-    kept:['Nada anclado','Al abrir una botella puedes guardarla en el cuaderno para que se quede contigo.'],
-    lost:['El mar no se ha quedado nada','Todavía ninguna botella se ha perdido. Suerte, o paciencia.']
+    shore:['La orilla está seca','Cuando vuelva alguna, aparecerá aquí y en la portada.'],
+    sea:['Nada a la deriva','Lo que eches se verá por aquí hasta que el mar lo devuelva.'],
+    kept:['Nada anclado','Al abrir una botella puedes dejarla prendida del cuaderno.'],
+    lost:['El mar no se ha quedado nada','Todavía.']
   };
   const [title,text]=copy[tab]||copy.shore;
   return `${emptyState(title,text,tab==='lost'?'':`<button type="button" class="button outline" data-action="focus-composer">${icon('pen')} Escribir un pensamiento</button>`)}`;
 }
 
-function tideCard(today){
-  const t=tideInfo(today);
-  const half=14.765;
-  const pos=Math.round((((t.age%half)+half)%half/half)*100);
-  return `<section class="card tide-card" data-tide="${t.key}">
-    <div class="section-heading">
-      <p class="section-index" style="margin-bottom:0">La marea</p>
-      <span class="tag">${esc(t.name)}</span>
-    </div>
-    <p class="tide-headline">${esc(tideNote(today))}</p>
-    <div class="tide-dial">
-      <span class="tide-track" style="--pct:${pos}%"><i style="width:${pos}%"></i><b class="tide-pin"></b></span>
-      <span class="tide-track-labels"><small>${icon('moon')} Luna nueva</small><small class="tide-now">${esc(t.phase)}</small><small>${icon('moon')} Luna llena</small></span>
-    </div>
-    <p class="field-caption">Las botellas que vuelven lo hacen con la marea viva, cerca de la luna nueva o de la llena.</p>
-  </section>`;
-}
 
 function seaRulesCard(groups,today){
   const nearest=groups.drifting[0];
-  const eta=nearest?voyageProgress(nearest,today):null;
   return `<section class="card sea-rules">
-    <p class="section-index">${icon('compass')} Cómo funciona</p>
+    <p class="field-title">${icon('wave')} Cómo va esto</p>
     <ol class="sea-rules-list">
-      <li><b>Escribe</b> un pensamiento suelto: una duda, un deseo, una rabia, una frase que no va a ningún sitio.</li>
-      <li><b>Mira el parte.</b> El clima del día en que la sueltas no es decorado: con viento a favor entra en la primera pleamar; con temporal o viento de tierra se queda fuera uno o dos días más.</li>
-      <li><b>Elige el mar.</b> Cuanto más lejos lo lances, más tarda y más fácil es que no regrese.</li>
-      <li><b>El azar se calcula aquí.</b> Sale de tus propias palabras, del día y del mar elegido; no hay servidores, ni cuentas, ni IA.</li>
-      <li><b>Espérate a la marea.</b> Solo vuelve en marea viva. Tú decides si la abres, la anclas o la vuelves a lanzar; si se hundió, se quedó perdida para siempre (aunque se puede leer).</li>
+      <li>Se escribe, se echa y se deja estar. No hay que volver a mirar.</li>
+      <li>Cuanto más lejos la tires, más tarda y más fácil que no regrese.</li>
+      <li>Lo decide este cuaderno, con tu texto y la fecha: sin servidores y sin IA.</li>
+      <li>Si vuelve, la lees, la anclas o la tiras otra vez. Si no, se queda fuera.</li>
     </ol>
-    ${nearest?`<p class="sea-rules-now">${icon('wave')} <span>La más cercana: <b>${esc(seaById(nearest.sea).label.toLowerCase())}</b>, ${eta.total-eta.atSea<=1?'a un día de la orilla':`${eta.total-eta.atSea} días por delante`}.</span></p>`:'<p class="sea-rules-now"><span>Nada en el agua ahora mismo.</span></p>'}
+    ${nearest?`<p class="sea-rules-now">${esc(seaPhrase(nearest,today))}.</p>`:'<p class="sea-rules-now">Nada en el agua ahora mismo.</p>'}
   </section>`;
 }
 
@@ -1461,21 +1407,15 @@ function flashHabit(id){
   }
 }
 
-function syncNavBadges(){
-  const arrivals=shoreQueue(thoughts);
-  const count=arrivals.length;
-  const isNew=arrivals.some(t=>t.seen!==true);
-  document.querySelectorAll('.nav-badge').forEach(el=>{
-    el.textContent=count;
-    el.classList.toggle('is-new',isNew);
-    el.hidden=!count;
+function syncNavDots(){
+  const unseen=shoreQueue(thoughts).some(t=>t.seen!==true);
+  document.querySelectorAll('.nav-dot').forEach(el=>{
+    el.hidden=!unseen;
+    el.classList.toggle('is-new',unseen);
   });
-  const quick=document.querySelector('.sea-quick');
-  if(quick){
-    const label=quick.querySelector('span');
-    if(label)label.textContent=count||groupBottles(thoughts).drifting.length||'';
-    quick.classList.toggle('has-new',isNew);
-  }
+  document.querySelectorAll('#sea-quick,.tabbar-item[data-view="thoughts"]').forEach(el=>{
+    el.classList.toggle('has-new',unseen);
+  });
 }
 
 /* ---------- abrir, traer y volver a lanzar botellas ---------- */
@@ -1484,7 +1424,7 @@ function openBottle(id){
   if(!bottle)return;
   if(bottle.status==='returned'&&bottle.seen!==true){
     thoughts=updateThought(id,{seen:true});
-    syncNavBadges();
+    syncNavDots();
   }
   const replyDraft=bottle.reply?'':(draftData(DRAFT_SCOPES.reply(id))?.text||'');
   const modal=showModal(bottleModal({...bottle,replyDraft},dateKey(),setup));
@@ -1501,7 +1441,7 @@ function openBottle(id){
       thoughts=updateThought(id,{reply:value,seen:true,repliedAt:new Date().toISOString()});
       clearDraft(DRAFT_SCOPES.reply(id));
       modal.close();render();openBottle(id);
-      toast('Le has respondido a tu yo de entonces');
+      toast('Contestada.');
       return;
     }
     if(act==='reply-clear'){
@@ -1515,27 +1455,21 @@ function openBottle(id){
       const keep=!bottle.kept;
       thoughts=updateThought(id,{kept:keep,keptOn:keep?dateKey():null,seen:true});
       again();
-      toast(keep?'Botella anclada a tu cuaderno':'Botella desanclada');
+      toast(keep?'Anclada.':'Desanclada.');
       return;
     }
     if(act==='to-entry'){
       try{
         bottleToEntry(bottle);
         again();
-        toast('Copiado en la entrada de hoy');
+        toast('Copiado a la entrada de hoy.');
       }catch(err){toast(err.message||'No se pudo copiar.',true);}
-      return;
-    }
-    if(act==='recall'){
-      thoughts=updateThought(id,{status:'returned',returnedAt:dateKey(),seen:true});
-      again();
-      toast('La marea te la trajo antes de tiempo');
       return;
     }
     if(act==='recast'){
       thoughts=recastThought(id);
       again();
-      toast('La botella vuelve a navegar');
+      toast('Otra vez fuera.');
       return;
     }
   };
@@ -1602,14 +1536,10 @@ function castBottle(form){
     bottleDraft={text:'',mood:null,sea};
     bottleDraftRestored='';
     thoughtsTab='sea';
-    oceanFilter='';
     playCastSplash(bottle||{});
     setSaveState('saved');
     setTimeout(()=>render(),motionOn?1150:0);
-    const part=weatherOf(dateKey());
-    toast(bottle
-      ?`Botella al mar${bottle.push?` · el ${part.weather.short} la retiene ${bottle.push} ${bottle.push===1?'día':'días'}`:''} · la orilla la espera hacia el ${longDate(bottle.arriveOn,{day:'numeric',month:'long'})}`
-      :'Botella al mar');
+    toast('Ya está fuera.');
   }catch(err){toast(err.message||'No se pudo echar la botella al mar.',true);}
 }
 
@@ -1656,7 +1586,7 @@ function requestDeleteBottle(id){
     if(!ok)return;
     thoughts=deleteThought(id);
     render();
-    toast('Botella rota');
+    toast('Rota.');
   });
 }
 
@@ -1976,15 +1906,20 @@ function commitEntry({silent=false,final=false}={}){
 function syncHeroChips(entry){
   const stored=entry||entries.find(x=>x.date===selected);
   const chip=document.querySelector('#hero-words-chip');
-  if(chip&&stored)chip.textContent=`${wordCount(stored)} palabras`;
-  const status=document.querySelector('.entry-status');
-  if(status){
-    status.textContent=stored?.updatedAt?`Autoguardado ${timeAgo(stored.updatedAt)}`:'Sin escribir todavía';
-    status.classList.remove('is-flash');
-    void status.offsetWidth;
-    status.classList.add('is-flash');
+  if(chip){
+    chip.innerHTML=heroStatusHtml(stored);
+    chip.classList.toggle('pending',!stored);
+    chip.classList.remove('is-flash');
+    void chip.offsetWidth;
+    chip.classList.add('is-flash');
   }
   syncDraftChip();
+}
+
+function heroStatusHtml(entry){
+  if(!entry)return 'todavía sin escribir';
+  const w=wordCount(entry);
+  return `${w} ${w===1?'palabra':'palabras'} escritas`;
 }
 
 /* ---------- indicadores ---------- */
@@ -1997,13 +1932,13 @@ function saveStatusHtml(){
   const map={
     typing:['pen','Escribiendo…','is-working'],
     saving:['save','Guardando…','is-working'],
-    draft:['paper','Borrador a salvo, sin enviar','is-draft'],
-    error:['close','Sin guardar · reintenta','is-error'],
+    draft:['paper','Borrador guardado','is-draft'],
+    error:['close','No se ha guardado','is-error'],
     autosaved:['check','Autoguardado','is-ok'],
     idle:['check',saveAt?`Guardado ${timeAgo(saveAt)}`:'Todo guardado','is-ok']
   };
   const [name,text,cls]=map[saveState]||map.idle;
-  return `<span class="save-dot ${cls}"></span>${icon(name)}<span>${esc(text)}</span>`;
+  return `${icon(name)}<span>${esc(text)}</span>`;
 }
 function syncSaveIndicators(){
   document.querySelectorAll('[data-save-status]').forEach(el=>{
@@ -2154,7 +2089,7 @@ function castBottleFromDraft(data){
     clearDraft(DRAFT_SCOPES.bottle());
     bottleDraft={text:'',mood:null,sea:data.sea||'breeze'};
     bottleDraftRestored='';
-    toast('Tu botella a medias ya está en el mar');
+    toast('Ya está fuera.');
   }catch(err){toast(err.message||'No se pudo echar la botella al mar.',true);}
 }
 
@@ -2231,7 +2166,11 @@ function updateLiveIndicators(form){
   if(!form)return;
   const draft=collectForm(form);
   const wordsChip=document.querySelector('#hero-words-chip');
-  if(wordsChip)wordsChip.textContent=`${wordCount(draft)} palabras`;
+  if(wordsChip){
+    const n=wordCount(draft);
+    wordsChip.innerHTML=n?`${n} ${n===1?'palabra':'palabras'} escritas`:'todavía sin escribir';
+    wordsChip.classList.toggle('pending',!n);
+  }
 
   const floatBar=document.querySelector('#floating-save');
   if(floatBar)floatBar.classList.toggle('is-visible',dirty||saveState==='error');
@@ -2743,7 +2682,6 @@ app.addEventListener('click',async event=>{
     const next=viewButton.dataset.view;
     savePendingText();
     dirty=false;
-    if(next!==view){oceanFilter='';}
     view=next;menu=false;
     if(view==='diary')selected=dateKey();
     render({transition:true});
@@ -2758,16 +2696,7 @@ app.addEventListener('click',async event=>{
     case 'archive-tab':archiveTab=tab||'list';render();break;
     case 'stats-tab':statsTab=tab||'pulse';render();break;
     case 'profile-tab':profileTab=tab||'personal';render();break;
-    case 'thoughts-tab':thoughtsTab=tab||'shore';oceanFilter='';render();break;
-    case 'sea-day':{
-      oceanFilter=oceanFilter===date?'':date;
-      if(oceanFilter&&!groupsForFilter().length){oceanFilter='';toast('Ese día no toca tierra ninguna botella.',true);}
-      thoughtsTab=oceanFilter?'sea':thoughtsTab;
-      render();
-      if(oceanFilter)setTimeout(()=>document.querySelector('#ocean-body')?.scrollIntoView({behavior:motionOn?'smooth':'auto',block:'center'}),80);
-      break;
-    }
-    case 'clear-sea-filter':oceanFilter='';render();break;
+    case 'thoughts-tab':thoughtsTab=tab||'shore';render();break;
     case 'show-drafts':openDraftsModal();break;
     case 'commit-draft':commitEntry();break;
     case 'discard-draft':{
@@ -2887,12 +2816,6 @@ app.addEventListener('click',async event=>{
       break;
     }
     case 'open-bottle':openBottle(id);break;
-    case 'recall-bottle':{
-      thoughts=updateThought(id,{status:'returned',returnedAt:dateKey(),seen:true});
-      render();
-      toast('Botella recogida en la orilla');
-      break;
-    }
     case 'recast-bottle':{
       thoughts=recastThought(id);
       render();
@@ -3192,7 +3115,7 @@ setSaveState('idle');
 const arrivalsAtBoot=shoreQueue(thoughts).filter(t=>t.seen!==true);
 if(arrivalsAtBoot.length){
   setTimeout(()=>{
-    toast(`El mar te ha devuelto ${arrivalsAtBoot.length} ${arrivalsAtBoot.length===1?'pensamiento':'pensamientos'}`);
+    toast(arrivalsAtBoot.length===1?'Ha vuelto una de tus botellas.':'Han vuelto un par de tus botellas.');
     document.querySelectorAll('.shore-bottle').forEach((el,i)=>{
       el.style.setProperty('--wash-delay',`${i*140}ms`);
       el.classList.add('is-washing');
