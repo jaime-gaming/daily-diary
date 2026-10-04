@@ -23,10 +23,17 @@ También puedes servir la carpeta `docs/` (build de producción) con cualquier s
 
 ## Qué incluye
 
-- **Mi diario** — entrada diaria con estado de ánimo (1–5), horas de sueño e estudio con
-  interpretación automática por reglas, «Lo mejor del día», «¿Qué ha sido distinto?»,
-  «¿Cómo ha ido en general?», *Agradecimiento nocturno* (tres cosas buenas que has hecho) y
-  «Mañana quiero...» con objetivos opcionales.
+- **Hoy** — portada con captura rápida: estado de ánimo (1–5) en un clic, horas de sueño y
+  dedicación con atajos, «Tu página de hoy» (nota libre + palabra del día), etiquetas, energía,
+  estrés y tres cosas buenas. Los resúmenes se generan con reglas, nunca con IA.
+- **Pensamientos (el mar)** — notas rápidas que se escriben, se sellan en una botella y se echan
+  al mar. Cada botella sortea su travesía (cuatro mares posibles, de «a la orilla» a «alta mar»):
+  puede volver a ti en un día de marea viva o perderse para siempre. Al volver puedes leerla,
+  responder a tu yo de entonces, anclarla al cuaderno o volver a lanzarla. Todo el azar se
+  calcula en tu navegador con una semilla derivada de tus palabras y de la fecha.
+- **Rutina** — pestaña propia para la tasklist: hábitos del día con rachas, rejilla de constancia
+  (35 días, se puede pintar cualquier día pasado), contadores (agua, ejercicio, lectura, pausa)
+  y la lista de «para mañana». Todo se guarda al instante, sin botón de guardar.
 - **Resumen del día** generado con plantillas `if/else` y frases fijas (sin ningún modelo).
 - **Historial** — tarjetas con búsqueda y filtro por estado; ver, editar y eliminar con confirmación.
 - **Calendario** — los días registrados se marcan con el color de su estado de ánimo.
@@ -40,16 +47,20 @@ También puedes servir la carpeta `docs/` (build de producción) con cualquier s
 
 ```
 src/
-├── components/ui.js      # piezas de interfaz (calendario, gráfico SVG, iconos…)
-├── data/constants.js     # estados de ánimo y etiquetas
-├── styles/main.css       # diseño mobile-first, animaciones suaves
+├── components/
+│   ├── ui.js             # piezas de interfaz (calendario, gráfico SVG, iconos…)
+│   ├── ocean.js          # el mar: olas SVG, botellas, orilla, ficha y modal de la botella
+│   └── habits.js         # rutina: tablero de hábitos, rejilla de constancia, contadores
+├── data/constants.js     # estados de ánimo, mareas visuales, etiquetas
+├── styles/main.css       # diseño mobile-first, temas de papel, animaciones suaves
 ├── utils/
 │   ├── dates.js          # fechas, número de día, semanas, meses, calendario
-│   ├── stats.js          # medias, rachas, resúmenes, tendencias
+│   ├── stats.js          # medias, rachas (diario y por hábito), resúmenes, tendencias
+│   ├── ocean.js          # mareas, sorteo determinista del viaje y estado de cada botella
 │   └── storage.js        # validar, guardar, cargar, borrar, exportar, importar
-└── main.js               # vistas e interacción
+└── main.js               # navegación (Hoy · Pensamientos · Archivo · Rutina · Progreso · Perfil)
 public/                   # icono, manifest y service worker offline
-tests/                    # pruebas de las funciones puras (npm test)
+tests/                    # pruebas de las funciones puras y de pintado (npm test)
 ```
 
 ## Datos
@@ -76,6 +87,33 @@ Cada entrada se guarda como JSON en `localStorage` (`diario.entries.v1`):
 ```
 
 El número de día se calcula automáticamente desde la fecha de la primera entrada.
+
+Los pensamientos viajan en `diario.thoughts.v1`; cada botella guárdala así:
+
+```json
+{
+  "id": "…",
+  "text": "Un pensamiento suelto",
+  "castAt": "2026-10-04",
+  "mood": 3,
+  "sea": "breeze",
+  "returns": true,
+  "driftDays": 18,
+  "arriveOn": "2026-10-22",
+  "lostOn": null,
+  "speed": 21,
+  "current": "la corriente fría",
+  "glass": "amber",
+  "status": "drifting",
+  "returnedAt": null,
+  "reply": "",
+  "kept": false,
+  "seen": false
+}
+```
+
+`status` pasa de `drifting` a `returned` (la marea viva la devolvió) o `lost` (se hundió) al abrir
+el cuaderno, y `reply`/`kept` son tu respuesta y si la anclaste. Nunca sale del dispositivo.
 
 ## Desplegar en GitHub Pages (por branch, sin Actions)
 
@@ -139,3 +177,8 @@ Notas del despliegue:
 Todo ocurre en tu dispositivo: no hay servidores, seguimiento, anuncios, fuentes remotas ni
 inteligencia artificial de ningún tipo. Los textos nunca se analizan con modelos; solo se muestran
 tal cual los escribiste.
+
+El mar tampoco es magia: las botellas no viajan a ningún sitio. El «a ver si vuelve» se decide con
+una función determinista (`src/utils/ocean.js`) a partir del texto, la fecha y el mar elegido, y el
+resultado se guarda en tu `localStorage`. Por eso ninguna botella puede la leer otra persona, y por
+eso tus pensamientos no se pierden si cambias de dispositivo: viajan dentro de tu copia de seguridad.

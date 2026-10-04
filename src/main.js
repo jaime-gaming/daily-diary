@@ -14,26 +14,32 @@ import {
 } from './data/constants.js';
 import {dateKey,addDays,dayNumber,longDate,weekStart,monthRange,monthMove} from './utils/dates.js';
 import {
-  calculateStats,currentStreak,inRange,formatNumber as f,sleepInterpretation,studyInterpretation,
-  generateSummary,periodSummary,generateTrends,wordCount,habitStreak,habitCount,tagFrequency,counterInterpretation
+  calculateStats,currentStreak,maxStreak,inRange,formatNumber as f,sleepInterpretation,studyInterpretation,
+  generateSummary,periodSummary,generateTrends,wordCount,tagFrequency,counterInterpretation,
+  bestHabitStreak,liveHabitStreak
 } from './utils/stats.js';
 import {
   loadEntries,saveEntry,deleteEntry,clearEntries,exportData,parseImport,importData,
-  loadHabits,saveHabit,deleteHabit,loadSetup,saveSetup,ageGroupFromAge
+  loadHabits,saveHabit,deleteHabit,loadSetup,saveSetup,ageGroupFromAge,
+  loadThoughts,saveThought,updateThought,deleteThought,recastThought
 } from './utils/storage.js';
+import {tideInfo,tideNote,seaById,groupBottles,shoreQueue,voyageProgress} from './utils/ocean.js';
+import {seaPanel,bottleComposer,bottleCard,bottleModal,oceanLedger,shoreTeaser,emptySea,bottleGlyph,tideRule} from './components/ocean.js';
+import {habitBoard,momentumGrid,habitStatsList,habitComposer,countersBoard,tomorrowBoard,routineTeaser,progressRing} from './components/habits.js';
 import {
   detectCrisisRisk,getWritingPrompt,calculateEntryCompletion,getGreeting,getAgeProfile,
   generateThemeFaviconDataUri,generateThemeFaviconSvg
 } from './utils/wellbeing.js';
 import {
-  icon,escape as esc,calendar,scaleField,tagPicker,counterSteppers,habitChecklist,
+  icon,escape as esc,calendar,scaleField,tagPicker,
   moodChart,moodHeatmap,personalGoalsPanel,personalQuoteCard,exLibrisBadge,
   ledger,rankRow,emptyState,meterRows,crisisBanner,crisisSupportModal,
   dailyInspirationSection,setupWizardModal
 } from './components/ui.js';
 
 const app=document.querySelector('#app');
-let entries=[],habits=[],setup=loadSetup(),storageError='',view='diary',selected=dateKey(),month=dateKey(),miniMonth=dateKey(),
+let entries=[],habits=[],thoughts=[],setup=loadSetup(),storageError='',view='diary',selected=dateKey(),month=dateKey(),miniMonth=dateKey(),
+    thoughtsTab='shore',routineTab='hoy',bottleDraft={text:'',mood:null,sea:'breeze'},oceanAnimating=false,
     period=7,dirty=false,menu=false,sidebarCollapsed=false,historyQuery='',historyMood='',historyTag='',historyLayout='grid',
     archiveTab='list',statsTab='pulse',profileTab='personal',moreDetailsOpen=false,
     pendingImport=null,wordOffset=0,tipOffset=0,promptOffset=0,quoteOffset=0,showWritingPrompt=false,focusWriting=false,
@@ -63,6 +69,7 @@ function applyTheme(themeId,customSetup=setup){
 function refresh(){
   entries=loadEntries();
   habits=loadHabits();
+  thoughts=loadThoughts();
   setup=loadSetup();
   sidebarCollapsed=Boolean(setup.sidebarCollapsed);
   applyTheme(setup.theme,setup);
@@ -71,25 +78,52 @@ try{refresh();}catch(e){
   storageError='No se han podido leer los datos guardados. Revisa el almacenamiento del navegador o recupera una copia. '+e.message;
 }
 
-function getNavs(){
-  return [
-    ['diary','pen','Hoy'],
-    ['archive','book','Archivo'],
-    ['stats','chart','Progreso'],
-    ['setup','sliders','Perfil']
-  ];
-}
+const NAV_GROUPS=[
+  {label:'El cuaderno',items:[['diary','pen','Hoy'],['thoughts','wave','Pensamientos'],['archive','book','Archivo']]},
+  {label:'Constancia',items:[['routine','listChecks','Rutina'],['stats','chart','Progreso']]},
+  {label:'Tuyo',items:[['setup','sliders','Perfil']]}
+];
+const MOBILE_TABS=['diary','thoughts','routine','archive','stats'];
+function getNavs(){return NAV_GROUPS.flatMap(g=>g.items);}
 const pageName=id=>getNavs().find(n=>n[0]===id)?.[2]||'Hoy';
+
+function navBadge(id){
+  if(id!=='thoughts')return '';
+  const arrivals=shoreQueue(thoughts).length;
+  if(!arrivals)return '';
+  const unseen=shoreQueue(thoughts).filter(t=>t.seen!==true).length;
+  return `<span class="nav-badge ${unseen?'is-new':''}">${arrivals}</span>`;
+}
 
 function navButton([id,ico,label],index){
   return `<button class="nav-item ${view===id?'active':''}" style="--nav-i:${index}" data-view="${id}" title="${esc(label)}" data-tooltip="${esc(label)}" ${view===id?'aria-current="page"':''}>
-    ${icon(ico)}<span class="nav-label">${esc(label)}</span>
+    ${icon(ico)}<span class="nav-label">${esc(label)}</span>${navBadge(id)}
   </button>`;
+}
+
+function navGroups(){
+  let i=0;
+  return NAV_GROUPS.map(group=>`<div class="nav-group">
+    <p class="nav-group-label">${esc(group.label)}</p>
+    ${group.items.map(item=>navButton(item,i++)).join('')}
+  </div>`).join('');
+}
+
+function mobileTabs(){
+  return `<nav class="tabbar" aria-label="Navegación inferior">
+    ${MOBILE_TABS.map(id=>{
+      const item=getNavs().find(n=>n[0]===id);
+      if(!item)return '';
+      return `<button type="button" class="tabbar-item ${view===id?'active':''}" data-view="${id}">
+        <span class="tabbar-icon">${icon(item[1])}${navBadge(id)}</span>
+        <span>${esc(item[2])}</span>
+      </button>`;
+    }).join('')}
+  </nav>`;
 }
 
 function render(){
   applyTheme(setup.theme,setup);
-  const navs=getNavs();
   const currentThemeObj=THEMES.find(t=>t.id===setup.theme)||THEMES[0];
   const turnClass=pageTurnDir?`page-turn-${pageTurnDir}`:'view-enter';
   pageTurnDir='';
@@ -106,7 +140,7 @@ function render(){
     </div>
     <div class="brand-rule"></div>
     ${exLibrisBadge(setup,entries.length)}
-    <nav aria-label="Navegación principal">${navs.map(navButton).join('')}</nav>
+    <nav class="sidebar-nav" aria-label="Navegación principal">${navGroups()}</nav>
     <div class="sidebar-bottom">
       <div class="local-note">${icon('lock')}<div><strong>Guardado en tu dispositivo</strong>${setup.name?`Cuaderno de ${esc(setup.name)}.`:'Sin cuentas ni servidores externos.'}</div></div>
     </div>
@@ -119,6 +153,10 @@ function render(){
         <span class="breadcrumb">${setup.name?`Cuaderno de ${esc(setup.name)}`:'Diario'} <span>/</span> ${esc(pageName(view))}</span>
       </div>
       <div class="topbar-right">
+        <button type="button" class="sea-quick ${shoreQueue(thoughts).some(t=>t.seen!==true)?'has-new':''}" data-view="thoughts" title="Pensamientos en el mar">
+          ${icon('wave')}
+          <span>${shoreQueue(thoughts).length||groupBottles(thoughts).drifting.length||''}</span>
+        </button>
         <button type="button" class="theme-pill" data-action="cycle-theme" title="Cambiar papel e icono (${esc(currentThemeObj.name)})">
           <span class="topbar-favicon-mini">${generateThemeFaviconSvg(setup.theme,setup)}</span>
           <span>${esc(currentThemeObj.name)}</span>
@@ -132,6 +170,7 @@ function render(){
       ${storageError?`<div class="error-banner" role="alert">${esc(storageError)}</div>`:''}
       ${page()}
     </main>
+    ${mobileTabs()}
     <footer class="page-footer">
       <span>${icon('leaf')} ${esc(setup.motto||'Un día a la vez.')}</span>
       <span>${setup.name?`Cuaderno de ${esc(setup.name)}`:'Guardado localmente en este navegador'}</span>
@@ -145,6 +184,8 @@ function render(){
   <div id="stamp" aria-hidden="true"></div>
   <dialog id="modal"></dialog>`;
   bindForm();
+  bindOceanForm();
+  bindRoutineForm();
 }
 
 function pageHeader(eyebrow,title,subtitle,action=''){
@@ -157,6 +198,8 @@ function pageHeader(eyebrow,title,subtitle,action=''){
 function page(){
   switch(view){
     case 'diary':return diaryPage();
+    case 'thoughts':return thoughtsPage();
+    case 'routine':return routinePage();
     case 'archive':return archivePage();
     case 'stats':return statsUnifiedPage();
     case 'setup':return setupUnifiedPage();
@@ -194,6 +237,8 @@ function hero(e,profile){
   const words=e?wordCount(e):0;
   const done=e?Object.values(e.habits||{}).filter(Boolean).length:0;
   const greeting=getGreeting(setup.name);
+  const groups=groupBottles(thoughts,selected);
+  const atSea=groups.drifting.length,arrivals=groups.returned.length;
   return `<div class="day-hero">
     <div class="hero-left">
       <div class="hero-day-number"><small>Día</small><span>${dayNumber(selected,entries)}</span></div>
@@ -203,7 +248,10 @@ function hero(e,profile){
         <div class="hero-chips">
           ${currentStreak(entries)>0?`<span class="chip hot">${icon('flame')} ${currentStreak(entries)} d seguidos</span>`:''}
           <span class="chip" id="hero-words-chip">${words} palabras</span>
-          ${habits.length?`<span class="chip" id="hero-habits-chip">${done}/${habits.length} hábitos</span>`:''}
+          ${habits.length?`<button type="button" class="chip chip-link" data-view="routine" id="hero-routine-chip">${icon('listChecks')} ${done}/${habits.length} rutina</button>`:''}
+          ${arrivals?`<button type="button" class="chip chip-link is-new" data-view="thoughts">${icon('anchor')} ${arrivals} ${arrivals===1?'botella':'botellas'} en la orilla</button>`
+            :atSea?`<button type="button" class="chip chip-link" data-view="thoughts">${icon('wave')} ${atSea} en el mar</button>`
+            :`<button type="button" class="chip chip-link" data-view="thoughts">${icon('pen')} Echar un pensamiento al mar</button>`}
           ${profile.interests.slice(0,2).map(i=>`<span class="chip personal-interest-chip">${icon(i.icon)} ${esc(i.label.split(' ')[0])}</span>`).join('')}
           ${e?`<span class="entry-status">${icon('check')} Guardado</span>`:`<span class="entry-status pending">Borrador</span>`}
         </div>
@@ -211,6 +259,7 @@ function hero(e,profile){
     </div>
     <div class="hero-right">
       ${dayNav()}
+      <p class="hero-tide">${icon('tide')} <span>${esc(tideNote(selected))}</span></p>
     </div>
   </div>`;
 }
@@ -267,9 +316,7 @@ function hasExtraDetails(e){
     e.energy ||
     e.stress ||
     (e.tags&&e.tags.length) ||
-    (e.gratitude&&e.gratitude.some(Boolean)) ||
-    (e.goals&&e.goals.length) ||
-    Object.values(e.counters||{}).some(v=>v>0)
+    (e.gratitude&&e.gratitude.some(Boolean))
   );
 }
 
@@ -282,30 +329,31 @@ function diaryPage(){
   const defaultSleep=e?.sleepHours ?? setup.sleepGoal ?? profile.sleepRecommended ?? 7.5;
   const defaultStudy=e?.studyHours ?? 0;
   const showExtras=moreDetailsOpen || hasExtraDetails(e);
-
   const sleepPresets=[6,7,7.5,8,9];
   const studyPresets=[0,1,2,3,4];
 
   return `
   ${setupOnboardingBanner()}
   ${hero(e,profile)}
+  <div class="tide-rule-wrap">${tideRule()}</div>
   <div id="crisis-alert-slot">${crisisBanner(risk,setup)}</div>
-  <div id="inspiration-slot">${dailyInspirationSection(selected,wordOffset,tipOffset,setup,e,e?.wordOfDay||'')}</div>
   <div class="diary-layout ${focusWriting?'is-focus-writing':''}">
     <div class="diary-main">
       <form id="diary-form" style="${moodColor?`--active-mood:${moodColor}`:''}">
-        <!-- TARJETA 1: ÁNIMO Y RITMO CON 1 CLIC -->
-        <section class="card mood-card-section" style="--i:1">
-          <fieldset>
-            <legend class="section-index">¿Cómo ha ido hoy?</legend>
-            <div class="mood-scale" role="radiogroup" aria-label="¿Cómo te ha ido?" style="margin-top:12px">
-              ${MOODS.map(m=>`<label class="mood-option" style="--mood-color:${m.color}">
-                <input type="radio" name="mood" value="${m.value}" ${(e?.mood||0)===m.value?'checked':''}>
-                <span class="mood-face">${m.emoji}</span>
-                <span class="mood-label">${m.label}</span>
-              </label>`).join('')}
-            </div>
-          </fieldset>
+
+        <!-- 1 · CAPTURA RÁPIDA -->
+        <section class="card mood-card-section quick-capture" style="--i:1">
+          <div class="section-heading">
+            <p class="section-index" style="margin-bottom:0">¿Cómo ha ido hoy?</p>
+            <span class="capture-hint">${icon('spark')} un clic vale como entrada</span>
+          </div>
+          <div class="mood-scale" role="radiogroup" aria-label="¿Cómo te ha ido?">
+            ${MOODS.map(m=>`<label class="mood-option" style="--mood-color:${m.color}">
+              <input type="radio" name="mood" value="${m.value}" ${(e?.mood||0)===m.value?'checked':''}>
+              <span class="mood-face">${m.emoji}</span>
+              <span class="mood-label">${m.label}</span>
+            </label>`).join('')}
+          </div>
 
           <div class="quick-hours-strip">
             <div class="quick-hour-box">
@@ -336,7 +384,7 @@ function diaryPage(){
           </div>
         </section>
 
-        <!-- TARJETA 2: TU PÁGINA DE HOY (ESCRITURA LIBRE Y CÁPSULA) -->
+        <!-- 2 · TU PÁGINA DE HOY -->
         <section class="card writing-card-section" style="--i:2">
           <div class="section-heading">
             <p class="section-index" style="flex:1">Tu página de hoy</p>
@@ -371,12 +419,12 @@ function diaryPage(){
           </div>
         </section>
 
-        <!-- ACORDEÓN ANIMADO: MÁS DETALLES DEL DÍA (ADAPTADO A TUS GUSTOS) -->
+        <!-- 3 · MÁS DETALLES (etiquetas, momentos, gratitud) -->
         <div class="extras-accordion ${showExtras?'is-open':''}" id="extras-accordion">
           <button type="button" class="extras-toggle-btn" data-action="toggle-more-details" aria-expanded="${showExtras}">
             <div>
               <strong>Añadir más detalles al día</strong>
-              <small>Etiquetas, contadores, lo mejor de hoy, gratitud o intención para mañana</small>
+              <small>Etiquetas, energía, lo mejor de hoy y tres cosas buenas · la rutina y los contadores viven en su pestaña</small>
             </div>
             <span class="extras-chevron">${icon('chevronDown')}</span>
           </button>
@@ -385,11 +433,6 @@ function diaryPage(){
               <section class="card">
                 <p class="section-index">Etiquetas de hoy</p>
                 ${tagPicker(e?.tags||[],profile.tags)}
-              </section>
-
-              <section class="card">
-                <p class="section-index">Contadores adaptados a ti</p>
-                ${counterSteppers(e?.counters,COUNTERS,setup)}
               </section>
 
               <section class="card">
@@ -403,13 +446,11 @@ function diaryPage(){
               </section>
 
               <section class="card">
-                <p class="section-index">Tres cosas buenas y mañana</p>
-                <div class="gratitude-fields" style="margin-bottom:16px">
+                <p class="section-index">Tres cosas buenas</p>
+                <div class="gratitude-fields">
                   ${['1. Hoy agradezco o valoro...','2. También...','3. Y además...'].map((p,i)=>`<label><span>0${i+1}</span><input name="gratitude${i}" aria-label="${p}" placeholder="${p}" maxlength="20000" value="${esc(e?.gratitude?.[i]||'')}"></label>`).join('')}
                 </div>
-                <textarea name="tomorrow" aria-label="Intención para mañana" maxlength="20000" placeholder="${esc(profile.placeholders.tomorrow)}">${esc(e?.tomorrow||'')}</textarea>
-                <div id="goals">${(e?.goals||[]).map(goalRow).join('')}</div>
-                <button type="button" class="text-button" data-action="add-goal">${icon('plus')} Añadir objetivo concreto</button>
+                <p class="aside-note" style="margin-top:14px">${icon('listChecks')}<span>Lo de mañana (intención y tareas) se apunta en la pestaña <button type="button" class="inline-link" data-view="routine">Rutina</button>.</span></p>
               </section>
             </div>
           </div>
@@ -424,7 +465,9 @@ function diaryPage(){
     </div>
 
     <aside class="diary-aside">
-      ${habitsCard(e)}
+      ${shoreTeaser(thoughts)}
+      <div id="inspiration-slot">${dailyInspirationSection(selected,wordOffset,tipOffset,setup,e,e?.wordOfDay||'')}</div>
+      ${routineTeaser(habits,e,entries,selected)}
       ${weekPreview()}
       <div id="quote-slot">${personalQuoteCard(selected,quoteOffset,setup)}</div>
     </aside>
@@ -454,18 +497,231 @@ function weekPreview(){
   </section>`;
 }
 
-function habitsCard(e){
-  const doneCount=habits.filter(h=>e?.habits?.[h.id]).length;
-  const pct=habits.length?Math.round((doneCount/habits.length)*100):0;
-  return `<section class="card">
-    <div class="section-heading"><h2>Tus hábitos</h2><span class="tag ${doneCount===habits.length&&habits.length>0?'all-done':''}" id="habits-badge">${doneCount}/${habits.length}</span></div>
-    ${habits.length?`<div class="habit-progress-bar"><i id="habit-progress-fill" style="width:${pct}%"></i></div>`:''}
-    ${habits.length?habitChecklist(habits,e):'<p class="habit-empty" style="margin-top:10px">Añade aquí los hábitos que quieras seguir a diario.</p>'}
-    <div class="habit-add">
-      <input id="new-habit" maxlength="40" placeholder="Añadir hábito…" aria-label="Nuevo hábito">
-      <button class="icon-button" data-action="add-habit" aria-label="Añadir hábito">${icon('plus')}</button>
+/* ================= PENSAMIENTOS: EL MAR DE LAS BOTELLAS ================= */
+function thoughtsPage(){
+  const today=dateKey();
+  const groups=groupBottles(thoughts,today);
+  const tabs=[
+    ['shore','anchor','La orilla',groups.returned.length],
+    ['sea','wave','En el mar',groups.drifting.length],
+    ['kept','bookmark','Ancladas',groups.kept.length],
+    ['lost','storm','Perdidas',groups.lost.length]
+  ];
+  return `${pageHeader('Pensamientos',setup.name?`El mar de ${esc(setup.name)}`:'El mar de los pensamientos',
+    'Escribe lo que no quieres guardar, séllalo en una botella y échalo al mar. Cuando la marea quiera, puede volver a ti.',`
+    <span class="count-badge">${thoughts.length} ${thoughts.length===1?'botella':'botellas'} en tu mar</span>
+  `)}
+  ${seaPanel(thoughts,today)}
+  <div class="tide-rule-wrap is-after-sea">${tideRule()}</div>
+  <div class="ocean-layout">
+    <div class="ocean-main">
+      <div id="composer-slot">${bottleComposer(setup,today,bottleDraft)}</div>
+      <div class="segmented ocean-tabs">
+        ${tabs.map(([id,ico,label,count])=>`<button type="button" data-action="thoughts-tab" data-tab="${id}" class="${thoughtsTab===id?'active':''}">
+          ${icon(ico)} ${esc(label)}${count?`<span class="seg-count">${count}</span>`:''}
+        </button>`).join('')}
+      </div>
+      <div id="ocean-body" class="tab-panel-enter">${oceanTabBody(groups,today)}</div>
     </div>
+    <aside class="ocean-aside">
+      ${tideCard(today)}
+      ${seaRulesCard(groups,today)}
+      ${oceanLedger(thoughts,today)}
+    </aside>
+  </div>`;
+}
+
+function oceanTabBody(groups,today){
+  if(!thoughts.length)return emptySea();
+  const map={shore:groups.returned,sea:groups.drifting,kept:groups.kept,lost:groups.lost};
+  const list=map[thoughtsTab]??groups.returned;
+  if(!list.length)return oceanEmptyFor(thoughtsTab);
+  return `<div class="bottle-grid">${list.map((b,i)=>bottleCard(b,today,i)).join('')}</div>`;
+}
+
+function oceanEmptyFor(tab){
+  const copy={
+    shore:['La orilla está seca','Ninguna botella ha vuelto todavía. Cuando la marea viva traiga una, aparecerá aquí y en tu portada.'],
+    sea:['No hay nada a la deriva','Echa una botella al mar y la verás alejarse por esta pantalla.'],
+    kept:['Nada anclado','Al abrir una botella puedes guardarla en el cuaderno para que se quede contigo.'],
+    lost:['El mar no se ha quedado nada','Todavía ninguna botella se ha perdido. Suerte, o paciencia.']
+  };
+  const [title,text]=copy[tab]||copy.shore;
+  return `${emptyState(title,text,tab==='lost'?'':`<button type="button" class="button outline" data-action="focus-composer">${icon('pen')} Escribir un pensamiento</button>`)}`;
+}
+
+function tideCard(today){
+  const t=tideInfo(today);
+  const half=14.765;
+  const pos=Math.round((((t.age%half)+half)%half/half)*100);
+  return `<section class="card tide-card" data-tide="${t.key}">
+    <div class="section-heading">
+      <p class="section-index" style="margin-bottom:0">La marea</p>
+      <span class="tag">${esc(t.name)}</span>
+    </div>
+    <p class="tide-headline">${esc(tideNote(today))}</p>
+    <div class="tide-dial">
+      <span class="tide-track" style="--pct:${pos}%"><i style="width:${pos}%"></i><b class="tide-pin"></b></span>
+      <span class="tide-track-labels"><small>${icon('moon')} Luna nueva</small><small class="tide-now">${esc(t.phase)}</small><small>${icon('moon')} Luna llena</small></span>
+    </div>
+    <p class="field-caption">Las botellas que vuelven lo hacen con la marea viva, cerca de la luna nueva o de la llena.</p>
   </section>`;
+}
+
+function seaRulesCard(groups,today){
+  const nearest=groups.drifting[0];
+  const eta=nearest?voyageProgress(nearest,today):null;
+  return `<section class="card sea-rules">
+    <p class="section-index">${icon('compass')} Cómo funciona</p>
+    <ol class="sea-rules-list">
+      <li><b>Escribe</b> un pensamiento suelto: una duda, un deseo, una rabia, una frase que no va a ningún sitio.</li>
+      <li><b>Elige el mar.</b> Cuanto más lejos lo lances, más tarda y más fácil es que no regrese.</li>
+      <li><b>El azar se calcula aquí.</b> Sale de tus propias palabras y de la fecha; no hay servidores, ni cuentas, ni IA.</li>
+      <li><b>Espérate a la marea.</b> En marea viva puede aparecer en la orilla; tú decides si la abres o la vuelves a lanzar.</li>
+    </ol>
+    ${nearest?`<p class="sea-rules-now">${icon('wave')} <span>La más cercana: <b>${esc(seaById(nearest.sea).label.toLowerCase())}</b>, ${eta.total-eta.atSea<=1?'a un día de la orilla':`${eta.total-eta.atSea} días por delante`}.</span></p>`:'<p class="sea-rules-now"><span>Nada en el agua ahora mismo.</span></p>'}
+  </section>`;
+}
+
+/* ================= RUTINA: HÁBITOS, CONTADORES Y MAÑANA ================= */
+function routinePage(){
+  const e=entries.find(x=>x.date===selected);
+  const tabs=[
+    ['hoy','listChecks','Hoy'],
+    ['week','grid','Semana'],
+    ['counters','drop','Contadores'],
+    ['streaks','flame','Rachas']
+  ];
+  return `${pageHeader('Rutina','Hábitos, contadores y la lista de mañana',
+    'Todo lo que se marca en un toque y se guarda al instante, sin escribir una sola línea.',`
+    <div class="segmented">
+      ${tabs.map(([id,ico,label])=>`<button type="button" data-action="routine-tab" data-tab="${id}" class="${routineTab===id?'active':''}">${icon(ico)} ${esc(label)}</button>`).join('')}
+    </div>
+  `)}
+  <div class="routine-layout">
+    <div class="routine-main tab-panel-enter">
+      ${routineHero(e)}
+      <div id="routine-body">${routineBody(e)}</div>
+    </div>
+    <aside class="routine-aside">${routineStatsAside(e)}</aside>
+  </div>`;
+}
+
+function dayNavInPlace(){
+  return `<div class="day-navigation">
+    <button type="button" data-action="shift-day" data-delta="-1" aria-label="Día anterior">${icon('left')}<span>Anterior</span></button>
+    <button type="button" data-action="today-routine" ${selected===dateKey()?'disabled':''}>${icon('sun')} Hoy</button>
+    <button type="button" data-action="shift-day" data-delta="1" ${selected>=dateKey()?'disabled':''}><span>Siguiente</span>${icon('right')}</button>
+  </div>`;
+}
+
+function routineHero(e){
+  const done=habits.filter(h=>e?.habits?.[h.id]).length;
+  const pct=habits.length?Math.round((done/habits.length)*100):0;
+  const headline=!habits.length?'Tu lista está vacía':done===0?'Aún no has marcado nada':done===habits.length?'Rutina completa':`Vas a ${done} de ${habits.length}`;
+  const note=pct>=100?'Todos los casilleros llenos: eso también se lee en tus estadísticas.'
+    :pct>0?'Cada casilla cuenta igual que un párrafo entero.'
+    :'Si hoy no puedes con todo, marca uno y da el día por bueno.';
+  return `<section class="card routine-hero">
+    <div class="routine-hero-copy">
+      <p class="eyebrow">${icon('sun')} ${esc(longDate(selected,{weekday:'long',day:'numeric',month:'long'}))}</p>
+      <h2>${esc(headline)}</h2>
+      <p class="routine-hero-note">${esc(note)}</p>
+      ${dayNavInPlace()}
+    </div>
+    ${progressRing(pct,habits.length?`${pct}%`:'—','de hoy')}
+  </section>`;
+}
+
+function routineBody(e){
+  const profile=getAgeProfile(setup);
+  const today=dateKey();
+  if(routineTab==='week'){
+    return `${momentumGrid(entries,habits,{days:35,end:today,today,title:'Tus últimas cinco semanas'})}${weekHabitSummary()}`;
+  }
+  if(routineTab==='counters'){
+    const recent=inRange(entries,addDays(today,-27),today);
+    return `${countersBoard(e,setup,[])||''}${personalGoalsPanel(recent,setup)}`;
+  }
+  if(routineTab==='streaks'){
+    return habits.length
+      ? `${habitStatsList(habits,entries,today)}${streakBoard()}`
+      : emptyState('Todavía no hay hábitos','Añade el primero y en unos días verás aquí sus rachas y su constancia.',`<button type="button" class="button outline" data-action="routine-tab" data-tab="hoy">${icon('plus')} Crear hábitos</button>`);
+  }
+  return `${habits.length?`<section class="card habit-board-card">
+    <div class="section-heading">
+      <div><p class="eyebrow">${icon('listChecks')} La tasklist de hoy</p><h2>Marcar y seguir</h2></div>
+      <span class="field-caption">${habits.filter(h=>e?.habits?.[h.id]).length}/${habits.length}</span>
+    </div>
+    ${habitBoard(habits,e,entries,selected,today)}
+    <p class="board-hint">${icon('spark')} Toca un hábito para marcarlo: se guarda solo, sin botón de guardar.</p>
+  </section>`:emptyState('Sin hábitos todavía','Crea tu lista abajo o toma prestados los sugeridos para tu etapa.',`<button type="button" class="button outline" data-action="routine-tab" data-tab="streaks">${icon('flame')} Ver rachas</button>`)}
+  ${tomorrowBoard(e,selected)}
+  ${habitComposer(profile,habits)}`;
+}
+
+function weekHabitSummary(){
+  const start=weekStart(selected),end=addDays(start,6);
+  const weekly=inRange(entries,start,end);
+  const rows=habits.map(h=>{
+    const done=weekly.filter(e=>e.habits?.[h.id]).length;
+    return {label:h.name,count:done,total:7,color:done>=5?'var(--green)':done>=3?'var(--ochre)':'var(--red)'};
+  });
+  return `<section class="card">
+    <div class="section-heading"><div><p class="eyebrow">${icon('week')}Esta semana</p><h2>${esc(longDate(start,{day:'numeric',month:'short'}))} → ${esc(longDate(end,{day:'numeric',month:'short'}))}</h2></div>
+      <span class="tag">${weekly.length}/7 días con entrada</span></div>
+    ${habits.length?meterRows(rows):'<p class="habit-empty">Añade hábitos para ver su semana.</p>'}
+  </section>`;
+}
+
+function streakBoard(){
+  const best=habits.map(h=>({h,best:bestHabitStreak(entries,h.id),live:liveHabitStreak(entries,h.id)})).filter(x=>x.best>0).sort((a,b)=>b.best-a.best).slice(0,6);
+  if(!best.length)return '';
+  const top=best[0].best||1;
+  return `<section class="card streak-board">
+    <div class="section-heading"><div><p class="eyebrow">${icon('flame')}El muro de las rachas</p><h2>Tus mejores series</h2></div><span class="field-caption">días seguidos</span></div>
+    <ol class="streak-ranks">
+      ${best.map((x,i)=>`<li>
+        <span class="streak-rank">${String(i+1).padStart(2,'0')}</span>
+        <span class="streak-name">${esc(x.h.name)}</span>
+        <span class="streak-bar"><i style="width:${Math.max(6,Math.round((x.best/top)*100))}%"></i></span>
+        <span class="streak-num"><b>${x.best}</b> d${x.live?` · viva ${x.live}`:''}</span>
+      </li>`).join('')}
+    </ol>
+  </section>`;
+}
+
+function fullRoutineDays(){
+  if(!habits.length)return 0;
+  return entries.filter(e=>habits.every(h=>e.habits?.[h.id])).length;
+}
+
+function routineStatsAside(e){
+  const today=dateKey();
+  const recent=inRange(entries,addDays(today,-27),today);
+  const sleepPct=e?Math.min(100,Math.round((e.sleepHours/(setup.sleepGoal||7.5))*100)):0;
+  return `
+  <section class="card routine-day-card">
+    <div class="section-heading"><h2>El día en cifras</h2><span class="tag">${esc(longDate(selected,{day:'numeric',month:'short'}))}</span></div>
+    <div class="mini-metrics">
+      <div>${icon('moon')}<strong>${e?f(e.sleepHours):'—'}<small>h</small></strong><span>Sueño</span></div>
+      <div>${icon('study')}<strong>${e?f(e.studyHours):'—'}<small>h</small></strong><span>Enfoque</span></div>
+      <div>${icon('drop')}<strong>${e?.counters?.water||0}<small>v</small></strong><span>Agua</span></div>
+    </div>
+    ${e?`<div class="sleep-goal-bar"><span style="width:${sleepPct}%"></span></div>
+      <p class="field-caption">${esc(sleepInterpretation(e.sleepHours))}</p>`:`<p class="habit-empty">Este día no tiene entrada en el cuaderno.</p>`}
+    <button type="button" class="text-button full-link" data-action="open-day" data-date="${selected}">Escribir sobre este día ${icon('arrow')}</button>
+  </section>
+  <section class="card">
+    <div class="section-heading"><h2>Rachas del cuaderno</h2><span class="field-caption">28 días</span></div>
+    <div class="streak-lines">
+      <div><span>${icon('flame')} Días seguidos escribiendo</span><strong>${currentStreak(entries)}</strong></div>
+      <div><span>${icon('seal')} Mejor racha histórica</span><strong>${maxStreak(entries)}</strong></div>
+      <div><span>${icon('check')} Días con toda la rutina</span><strong>${fullRoutineDays()}</strong></div>
+      <div><span>${icon('moon')} Sueño medio</span><strong>${recent.length?f(calculateStats(recent).sleep):'—'} h</strong></div>
+    </div>
+  </section>
+  ${weekPreview()}`;
 }
 
 /* ================= ARCHIVO UNIFICADO (ENTRADAS + CALENDARIO) ================= */
@@ -748,6 +1004,7 @@ function setupFormBody(){
 
     <section class="card" style="--i:3">
       <h2>Metas, hábitos y frases propias</h2>
+      <p class="field-caption" style="margin-top:6px">Los hábitos que elijas se marcan en su propia pestaña, <b>Rutina</b>, junto a los contadores.</p>
       <div class="age-adaptation-callout" id="sp-adaptation-callout" style="margin-top:12px">
         ${icon('compass')}
         <div>
@@ -869,6 +1126,256 @@ function dataAndPrivacyBody(){
   </section>`;
 }
 
+/* ================= GUARDADO RÁPIDO DESDE RUTINA Y MAR ================= */
+function entryDraftFor(date){
+  const current=entries.find(x=>x.date===date);
+  const profile=getAgeProfile(setup);
+  if(current)return {...current};
+  return {
+    date,
+    mood:3,
+    sleepHours:setup.sleepGoal||profile.sleepRecommended||7.5,
+    studyHours:0,
+    energy:null,stress:null,
+    bestOfDay:'',differentToday:'',
+    generalDay:'Registro rápido desde la rutina.',
+    wordOfDay:'',capsule:'',
+    gratitude:['','',''],tomorrow:'',goals:[],tags:[],counters:{},habits:{}
+  };
+}
+function patchDay(date,patch){
+  if(date>dateKey())throw new Error('Ese día todavía no ha llegado.');
+  entries=saveEntry({...entryDraftFor(date),...patch});
+}
+
+function currentGoalsRaw(){
+  return [...document.querySelectorAll('#routine-goals .task-input')].map(i=>i.value.trim());
+}
+function commitTomorrowFromDom(){
+  const textarea=document.querySelector('#routine-tomorrow');
+  if(!textarea)return;
+  const goals=currentGoalsRaw().filter(Boolean);
+  try{patchDay(selected,{tomorrow:textarea.value.trim(),goals});}
+  catch(err){toast(err.message||'No se pudo guardar la lista.',true);}
+}
+
+function bindRoutineForm(){
+  const textarea=document.querySelector('#routine-tomorrow');
+  if(!textarea)return;
+  textarea.addEventListener('change',commitTomorrowFromDom);
+  document.querySelectorAll('#routine-goals .task-input').forEach(inp=>{
+    inp.addEventListener('change',commitTomorrowFromDom);
+    inp.addEventListener('keydown',event=>{
+      if(event.key==='Enter'){event.preventDefault();commitTomorrowFromDom();render();}
+      if(event.key==='Escape')render();
+    });
+  });
+}
+
+let routineCounterTimer=null;
+function updateCounterRow(input,key,value){
+  const row=input.closest('.counter-row');
+  const hint=document.querySelector(`#hint-${key}`);
+  if(hint)hint.textContent=counterInterpretation(key,value);
+  input.classList.remove('num-bump');
+  void input.offsetWidth;
+  input.classList.add('num-bump');
+  if(key==='water'){
+    const goal=setup.waterGoal||8;
+    const pill=row?.querySelector('.counter-goal-pill');
+    const bar=row?.querySelector('.counter-progress i');
+    if(pill){pill.textContent=`Meta: ${value}/${goal}`;pill.classList.toggle('met',value>=goal);}
+    if(bar)bar.style.width=`${Math.min(100,Math.round((value/goal)*100))}%`;
+  }
+}
+function saveRoutineCounters(){
+  const patch={};
+  const stored=entries.find(x=>x.date===selected);
+  for(const c of COUNTERS){
+    const input=document.querySelector(`[name="counter_${c.key}"]`);
+    patch[c.key]=input?(parseFloat(input.value)||0):(Number(stored?.counters?.[c.key])||0);
+  }
+  try{patchDay(selected,{counters:patch});}
+  catch(err){toast(err.message||'No se pudo guardar el contador.',true);}
+}
+
+function commitHabitName(id,value){
+  const name=String(value||'').trim().slice(0,40);
+  const habit=habits.find(h=>h.id===id);
+  if(!habit)return;
+  if(!name){toast('El hábito necesita un nombre.',true);return;}
+  if(name.toLowerCase()!==habit.name.toLowerCase()&&habits.some(h=>h.name.toLowerCase()===name.toLowerCase())){
+    toast('Ya tienes un hábito con ese nombre.',true);return;
+  }
+  if(name===habit.name)return;
+  habits=saveHabit({...habit,name});
+  render();
+  toast('Hábito renombrado');
+}
+
+function syncNavBadges(){
+  const arrivals=shoreQueue(thoughts);
+  const count=arrivals.length;
+  const isNew=arrivals.some(t=>t.seen!==true);
+  document.querySelectorAll('.nav-badge').forEach(el=>{
+    el.textContent=count;
+    el.classList.toggle('is-new',isNew);
+    el.hidden=!count;
+  });
+  const quick=document.querySelector('.sea-quick');
+  if(quick){
+    const label=quick.querySelector('span');
+    if(label)label.textContent=count||groupBottles(thoughts).drifting.length||'';
+    quick.classList.toggle('has-new',isNew);
+  }
+}
+
+/* ---------- abrir, traer y volver a lanzar botellas ---------- */
+function openBottle(id){
+  const bottle=thoughts.find(t=>t.id===id);
+  if(!bottle)return;
+  if(bottle.status==='returned'&&bottle.seen!==true){
+    thoughts=updateThought(id,{seen:true});
+    syncNavBadges();
+  }
+  const modal=showModal(bottleModal(bottle,dateKey(),setup));
+  const again=()=>{modal.close();render();};
+  modal.onclick=event=>{
+    const act=event.target.closest('[data-modal]')?.dataset.modal;
+    if(!act){if(event.target===modal)modal.close();return;}
+    if(act==='close'){again();return;}
+    if(act==='reply'){
+      const value=(modal.querySelector('#bottle-reply')?.value||'').trim();
+      if(!value){toast('Escribe primero lo que quieres contestarte.',true);return;}
+      thoughts=updateThought(id,{reply:value,seen:true});
+      modal.close();render();openBottle(id);
+      toast('Le has respondido a tu yo de entonces');
+      return;
+    }
+    if(act==='reply-clear'){
+      thoughts=updateThought(id,{reply:''});
+      modal.close();render();openBottle(id);
+      return;
+    }
+    if(act==='keep'){
+      const keep=!bottle.kept;
+      thoughts=updateThought(id,{kept:keep,keptOn:keep?dateKey():null,seen:true});
+      again();
+      toast(keep?'Botella anclada a tu cuaderno':'Botella desanclada');
+      return;
+    }
+    if(act==='to-entry'){
+      try{
+        bottleToEntry(bottle);
+        again();
+        toast('Copiado en la entrada de hoy');
+      }catch(err){toast(err.message||'No se pudo copiar.',true);}
+      return;
+    }
+    if(act==='recall'){
+      thoughts=updateThought(id,{status:'returned',returnedAt:dateKey(),seen:true});
+      again();
+      toast('La marea te la trajo antes de tiempo');
+      return;
+    }
+    if(act==='recast'){
+      thoughts=recastThought(id);
+      again();
+      toast('La botella vuelve a navegar');
+      return;
+    }
+  };
+}
+
+function bottleToEntry(bottle){
+  const today=dateKey();
+  const entry=entries.find(x=>x.date===today);
+  const line=`Del mar (botella del ${longDate(bottle.castAt,{day:'numeric',month:'long'})}): «${bottle.text}»`;
+  const generalDay=[entry?.generalDay,line].filter(Boolean).join('\n\n');
+  patchDay(today,{
+    generalDay,
+    capsule:entry?.capsule||String(bottle.text).slice(0,240),
+    tags:[...new Set([...(entry?.tags||[]),'Pensamiento'])].slice(0,20)
+  });
+  thoughts=updateThought(bottle.id,{kept:true,keptOn:today,seen:true});
+  selected=today;
+  view='diary';
+}
+
+function sailBottleAway(bottle){
+  let layer=document.querySelector('#ocean-fx');
+  if(!layer){
+    layer=document.createElement('div');
+    layer.id='ocean-fx';
+    layer.className='ocean-fx';
+    document.body.appendChild(layer);
+  }
+  const composer=document.querySelector('#bottle-form');
+  const rect=composer?.getBoundingClientRect();
+  const el=document.createElement('div');
+  el.className='sail-away';
+  el.innerHTML=`<span class="sail-bottle">${bottleGlyph(bottle)}</span>`;
+  el.style.left=`${Math.round((rect?.left||80)+52)}px`;
+  el.style.top=`${Math.round((rect?.top||160)+40)}px`;
+  layer.appendChild(el);
+  setTimeout(()=>el.remove(),1500);
+}
+
+function castBottle(form){
+  const data=new FormData(form);
+  const value=(data.get('text')||'').toString().trim();
+  if(value.length<2){toast('Escribe algo antes de soltar la botella.',true);return;}
+  const moodRaw=data.get('mood');
+  const sea=data.get('sea')||'breeze';
+  try{
+    const id=crypto.randomUUID();
+    thoughts=saveThought({id,text:value,mood:moodRaw?+moodRaw:null,sea,castAt:dateKey()});
+    const bottle=thoughts.find(t=>t.id===id);
+    bottleDraft={text:'',mood:null,sea};
+    thoughtsTab='sea';
+    sailBottleAway(bottle||{});
+    setTimeout(()=>render(),950);
+    toast(bottle?`Botella al mar · la orilla la espera hacia el ${longDate(bottle.arriveOn,{day:'numeric',month:'long'})}`:'Botella al mar');
+  }catch(err){toast(err.message||'No se pudo echar la botella al mar.',true);}
+}
+
+function bindOceanForm(){
+  const form=document.querySelector('#bottle-form');
+  if(!form)return;
+  const text=form.querySelector('#bottle-text');
+  const words=form.querySelector('#bottle-words');
+  const sync=()=>{
+    const moodEl=form.querySelector('[name="mood"]:checked');
+    bottleDraft={
+      text:text?.value||'',
+      mood:moodEl?+moodEl.value:null,
+      sea:form.querySelector('[name="sea"]:checked')?.value||'breeze'
+    };
+    if(words)words.textContent=`${countWords(text?.value||'')} palabras`;
+  };
+  text?.addEventListener('input',sync);
+  form.addEventListener('change',sync);
+  form.addEventListener('submit',event=>{
+    event.preventDefault();
+    castBottle(form);
+  });
+}
+
+function requestDeleteBottle(id){
+  const bottle=thoughts.find(t=>t.id===id);
+  if(!bottle)return;
+  confirmDialog({
+    title:'¿Romper esta botella?',
+    text:'El pensamiento se borrará de este navegador. No se puede deshacer.',
+    confirmLabel:'Romperla',danger:true
+  }).then(ok=>{
+    if(!ok)return;
+    thoughts=deleteThought(id);
+    render();
+    toast('Botella rota');
+  });
+}
+
 /* ================= INTERACCIÓN ================= */
 function countWords(text){const t=String(text||'').trim();return t?t.split(/\s+/).length:0;}
 
@@ -879,9 +1386,17 @@ function collectForm(form){
   const customTag=(data.get('tagCustom')||'').toString().trim();
   const tags=[...new Set([...data.getAll('tags').map(t=>t.toString().trim()),customTag].filter(Boolean))];
   const counters={};
-  for(const c of COUNTERS)counters[c.key]=parseFloat(data.get(`counter_${c.key}`))||0;
+  for(const c of COUNTERS){
+    const input=form.querySelector(`[name="counter_${c.key}"]`);
+    counters[c.key]=input?(parseFloat(input.value)||0):(Number(current?.counters?.[c.key])||0);
+  }
+  // Hábitos, contadores y tareas de mañana pueden estar en la pestaña Rutina:
+  // si hoy no hay campos en el DOM, se conservan los valores guardados.
   const habitMap={};
-  for(const h of habits)habitMap[h.id]=Boolean(document.querySelector(`[name="habit_${h.id}"]`)?.checked ?? (data.get(`habit_${h.id}`)==='on'));
+  const habitInputs=[...form.querySelectorAll('[name^="habit_"]')];
+  for(const h of habits){
+    habitMap[h.id]=habitInputs.length?Boolean(form.querySelector(`[name="habit_${h.id}"]`)?.checked):Boolean(current?.habits?.[h.id]);
+  }
 
   const rawMood=+data.get('mood') || current?.mood || 3;
   const rawSleep=data.get('sleepHours');
@@ -913,8 +1428,10 @@ function collectForm(form){
     wordOfDay,
     capsule,
     gratitude:[0,1,2].map(i=>(data.get(`gratitude${i}`)||'').toString().trim()),
-    tomorrow:(data.get('tomorrow')||'').toString().trim(),
-    goals:data.getAll('goal').map(g=>g.toString().trim()).filter(Boolean),
+    tomorrow:data.has('tomorrow')?(data.get('tomorrow')||'').toString().trim():(current?.tomorrow||''),
+    goals:form.querySelector('[name="goal"]')
+      ?data.getAll('goal').map(g=>g.toString().trim()).filter(Boolean)
+      :(current?.goals||[]),
     tags,counters,habits:habitMap,
     createdAt:current?.createdAt
   };
@@ -1092,37 +1609,6 @@ function bindForm(){
     }
   });
 
-  document.querySelectorAll('.habit-check input').forEach(chk=>{
-    chk.addEventListener('change',()=>{
-      dirty=true;
-      const item=chk.closest('.habit-item');
-      if(item){
-        item.classList.toggle('is-done',chk.checked);
-        if(chk.checked){
-          item.classList.remove('just-checked');
-          void item.offsetWidth;
-          item.classList.add('just-checked');
-        }
-      }
-      const doneNow=document.querySelectorAll('.habit-check input:checked').length;
-      const badge=document.querySelector('#habits-badge');
-      const fill=document.querySelector('#habit-progress-fill');
-      const heroHabits=document.querySelector('#hero-habits-chip');
-      if(badge){
-        badge.textContent=`${doneNow}/${habits.length}`;
-        badge.classList.toggle('all-done',doneNow===habits.length&&habits.length>0);
-      }
-      if(fill&&habits.length)fill.style.width=`${Math.round((doneNow/habits.length)*100)}%`;
-      if(heroHabits)heroHabits.textContent=`${doneNow}/${habits.length} hábitos`;
-      if(chk.checked && doneNow===habits.length && habits.length>0){
-        toast('Todos los hábitos de hoy completados');
-      }
-      updateHabitMeta();
-      updateLiveIndicators(form);
-    });
-  });
-
-  updateHabitMeta();
   refreshCounterHints();
 }
 
@@ -1165,12 +1651,6 @@ function saveSetupFromForm(formEl){
   applyTheme(setup.theme,setup);
 }
 
-function updateHabitMeta(){
-  for(const h of habits){
-    const meta=document.querySelector(`.habit-meta[data-habit-id="${h.id}"]`);
-    if(meta)meta.innerHTML=`<b>${habitStreak(entries,h.id)}</b> d`;
-  }
-}
 function refreshCounterHints(){
   const form=document.querySelector('#diary-form');
   if(!form)return;
@@ -1490,7 +1970,7 @@ app.addEventListener('click',async event=>{
     return;
   }
   if(!actionButton)return;
-  const {action,date,range,mini,key,step,habit,name,word,tab,quote,index,layout,target,val,monthly}=actionButton.dataset;
+  const {action,date,range,mini,key,step,habit,name,word,tab,quote,index,layout,target,val,monthly,id,delta}=actionButton.dataset;
   switch(action){
     case 'menu':menu=!menu;render();break;
     case 'close-menu':menu=false;render();break;
@@ -1498,6 +1978,112 @@ app.addEventListener('click',async event=>{
     case 'archive-tab':archiveTab=tab||'list';render();break;
     case 'stats-tab':statsTab=tab||'pulse';render();break;
     case 'profile-tab':profileTab=tab||'personal';render();break;
+    case 'thoughts-tab':thoughtsTab=tab||'shore';render();break;
+    case 'routine-tab':routineTab=tab||'hoy';render();break;
+    case 'shift-day':{
+      const next=addDays(selected,parseInt(delta||'1',10));
+      if(next>dateKey()){toast('Ese día todavía no ha llegado.',true);break;}
+      selected=next;render();window.scrollTo({top:0,behavior:'smooth'});break;
+    }
+    case 'today-routine':selected=dateKey();render();break;
+    case 'focus-composer':{
+      const el=document.querySelector('#bottle-text');
+      if(el){el.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>el.focus(),250);}
+      break;
+    }
+    case 'toggle-habit':{
+      const day=date||selected;
+      if(day>dateKey()){toast('Ese día todavía no ha llegado.',true);break;}
+      const stored=entries.find(x=>x.date===day);
+      const map={...(stored?.habits||{})};
+      const next=!map[habit];
+      map[habit]=next;
+      try{
+        patchDay(day,{habits:map});
+        const created=!stored;
+        render();
+        const label=habits.find(h=>h.id===habit)?.name||'Hábito';
+        const total=habits.length;
+        const done=habits.filter(h=>map[h.id]).length;
+        if(next&&day===dateKey()&&total&&done===total)toast('Rutina de hoy completada');
+        else if(created&&next)toast(`«${label}» marcado · creé una entrada mínima para ese día`);
+        else toast(next?`«${label}» marcado`:`«${label}» desmarcado`);
+      }catch(err){toast(err.message||'No se pudo guardar el hábito.',true);}
+      break;
+    }
+    case 'add-suggested-habit':{
+      if(!name)break;
+      if(habits.length>=30){toast('Máximo 30 hábitos.',true);break;}
+      if(habits.some(h=>h.name.toLowerCase()===name.toLowerCase())){toast('Ya está en tu lista.',true);break;}
+      habits=saveHabit({name});
+      render();
+      toast(`«${name}» añadido a tu rutina`);
+      break;
+    }
+    case 'edit-habit':{
+      const row=actionButton.closest('.habit-stat-row');
+      const nameEl=row?.querySelector('.habit-stat-name strong');
+      const target=habits.find(h=>h.id===habit);
+      if(!nameEl||!target)break;
+      nameEl.outerHTML=`<input class="habit-rename" maxlength="40" value="${esc(target.name)}" aria-label="Renombrar hábito">`;
+      const input=row.querySelector('.habit-rename');
+      input.focus();
+      input.select();
+      input.addEventListener('keydown',event=>{
+        if(event.key==='Enter'){event.preventDefault();input.dataset.done='1';commitHabitName(habit,input.value);}
+        if(event.key==='Escape'){input.dataset.done='1';render();}
+      });
+      input.addEventListener('blur',()=>{if(input.dataset.done!=='1')commitHabitName(habit,input.value);});
+      break;
+    }
+    case 'routine-counter-plus':case 'routine-counter-minus':{
+      const input=document.querySelector(`[name="counter_${key}"]`);
+      if(!input)break;
+      const dir=action==='routine-counter-plus'?1:-1;
+      const s=parseFloat(step)||1;
+      const value=Math.min(parseFloat(input.max),Math.max(parseFloat(input.min),(parseFloat(input.value)||0)+dir*s));
+      input.value=Math.round(value*10)/10;
+      updateCounterRow(input,key,parseFloat(input.value));
+      clearTimeout(routineCounterTimer);
+      routineCounterTimer=setTimeout(saveRoutineCounters,400);
+      break;
+    }
+    case 'add-goal-routine':{
+      commitTomorrowFromDom();
+      const list=currentGoalsRaw().filter(Boolean);
+      list.push('');
+      try{
+        patchDay(selected,{goals:list});
+        render();
+        const inputs=document.querySelectorAll('#routine-goals .task-input');
+        inputs[inputs.length-1]?.focus();
+      }catch(err){toast(err.message||'No se pudo añadir la tarea.',true);}
+      break;
+    }
+    case 'remove-goal-routine':{
+      const list=currentGoalsRaw().filter((_,i)=>i!==+index);
+      const entry=entries.find(x=>x.date===selected);
+      try{
+        patchDay(selected,{goals:list.filter(Boolean),tomorrow:document.querySelector('#routine-tomorrow')?.value.trim()??(entry?.tomorrow||'')});
+        render();
+      }catch(err){toast(err.message||'No se pudo quitar la tarea.',true);}
+      break;
+    }
+    case 'open-bottle':openBottle(id);break;
+    case 'recall-bottle':{
+      thoughts=updateThought(id,{status:'returned',returnedAt:dateKey(),seen:true});
+      render();
+      toast('Botella recogida en la orilla');
+      break;
+    }
+    case 'recast-bottle':{
+      thoughts=recastThought(id);
+      render();
+      toast('Vuelve a estar en el agua');
+      break;
+    }
+    case 'delete-bottle':requestDeleteBottle(id);break;
+
     case 'toggle-more-details':{
       moreDetailsOpen=!moreDetailsOpen;
       const acc=document.querySelector('#extras-accordion');
@@ -1670,8 +2256,11 @@ app.addEventListener('click',async event=>{
       const habitName=input?.value.trim();
       if(!habitName){toast('Escribe un nombre para el hábito.',true);break;}
       if(habits.length>=30){toast('Máximo 30 hábitos.',true);break;}
+      if(habits.some(h=>h.name.toLowerCase()===habitName.toLowerCase())){toast('Ya existe un hábito con ese nombre.',true);break;}
       habits=saveHabit({name:habitName});
-      render();toast(`Hábito «${habitName}» añadido`);
+      render();
+      document.querySelector('#new-habit')?.focus();
+      toast(`Hábito «${habitName}» añadido`);
       break;
     }
     case 'delete-habit':{
@@ -1768,3 +2357,9 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 }
 
 render();
+
+/* Al abrir el cuaderno, si el mar trajo botellas que aún no has abierto, te lo dice. */
+const arrivalsAtBoot=shoreQueue(thoughts).filter(t=>t.seen!==true);
+if(arrivalsAtBoot.length){
+  setTimeout(()=>toast(`El mar te ha devuelto ${arrivalsAtBoot.length} ${arrivalsAtBoot.length===1?'pensamiento':'pensamientos'}`),820);
+}

@@ -11,6 +11,41 @@ export function habitStreak(entries,habitId){const dates=[...new Set(entries.fil
   const last=dates[dates.length-1],today=dateKey(),alive=daysBetween(last,today)<=1;
   return alive&&max===current?max:max;}
 export function habitCount(entries,habitId){return entries.filter(e=>e.habits?.[habitId]).length;}
+export function habitDates(entries,habitId){return [...new Set(entries.filter(e=>e.habits?.[habitId]).map(e=>e.date))].sort();}
+export function bestHabitStreak(entries,habitId){
+  const dates=habitDates(entries,habitId);
+  let max=0,current=0,previous;
+  for(const date of dates){current=previous&&daysBetween(previous,date)===1?current+1:1;max=Math.max(max,current);previous=date;}
+  return max;
+}
+export function liveHabitStreak(entries,habitId,today=dateKey()){
+  const dates=new Set(habitDates(entries,habitId));
+  if(!dates.size)return 0;
+  let d=dates.has(today)?today:addDays(today,-1),n=0;
+  while(dates.has(d)){n++;d=addDays(d,-1);}
+  return n;
+}
+/* Cuántos de los últimos `days` días cumpliste el hábito (solo cuenta días pasados). */
+export function habitRate(entries,habitId,days=28,today=dateKey()){
+  const start=addDays(today,1-days);
+  const done=entries.filter(e=>e.habits?.[habitId]&&e.date>=start&&e.date<=today).length;
+  const tracked=entries.filter(e=>e.date>=start&&e.date<=today).length;
+  const window=Math.min(days,daysBetween(start,today)+1);
+  return {done,tracked,window,pct:window?Math.round((done/window)*100):0};
+}
+/* Matriz hábitos × días para el «momentum grid» de la pestaña de Rutina.
+   `end` cierra la ventana (puede ser un día pasado) y `today` marca qué días son futuros. */
+export function habitMomentum(entries,habits,days=28,end=dateKey(),today=dateKey()){
+  const dates=Array.from({length:days},(_,i)=>addDays(end,i-days+1));
+  const byDate=new Map(entries.map(e=>[e.date,e]));
+  return {
+    dates,
+    rows:habits.map(h=>({
+      habit:h,
+      cells:dates.map(d=>({date:d,done:Boolean(byDate.get(d)?.habits?.[h.id]),future:d>today,recorded:byDate.has(d)}))
+    }))
+  };
+}
 export function tagFrequency(entries){const map=new Map();for(const e of entries)for(const t of e.tags||[])map.set(t,(map.get(t)||0)+1);return [...map.entries()].sort((a,b)=>b[1]-a[1]);}
 
 export function calculateStats(entries){

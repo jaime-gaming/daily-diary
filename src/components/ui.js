@@ -49,7 +49,18 @@ const ICONS={
   spark:'<path d="m12 3 1.9 5.8L20 10.8l-6.1 1.9L12 18.5l-1.9-5.8L4 10.8l6.1-2Z"/>',
   quote:'<path d="M10 11H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v6c0 2.7-1.3 4.4-4 5"/><path d="M19 11h-4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v6c0 2.7-1.3 4.4-4 5"/>',
   expand:'<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',
-  chevronDown:'<path d="m6 9 6 6 6-6"/>'
+  chevronDown:'<path d="m6 9 6 6 6-6"/>',
+  wave:'<path d="M2 9.5c2 0 2 1.8 4 1.8s2-1.8 4-1.8 2 1.8 4 1.8 2-1.8 4-1.8 2 1.8 4 1.8"/><path d="M2 15c2 0 2 1.8 4 1.8S8 15 10 15s2 1.8 4 1.8 2-1.8 4-1.8 2 1.8 4 1.8"/>',
+  tide:'<path d="M3 16.5c1.7 0 1.7 1.5 3.4 1.5s1.7-1.5 3.4-1.5 1.7 1.5 3.4 1.5 1.7-1.5 3.4-1.5 1.7 1.5 3.4 1.5"/><circle cx="17" cy="6" r="3"/><path d="M4 11c1.7 0 1.7 1.5 3.4 1.5S9.1 11 10.8 11"/>',
+  send:'<path d="M21.5 2.5 11 13"/><path d="M21.5 2.5 15 21.5l-4-8.5-8.5-4Z"/>',
+  anchor:'<circle cx="12" cy="5" r="2.6"/><path d="M12 7.6V21"/><path d="M8.5 10h7"/><path d="M3 14a9 9 0 0 0 18 0"/><path d="M3 14h3M18 14h3"/>',
+  bookmark:'<path d="M6.5 3h11a1 1 0 0 1 1 1v17l-6.5-4.6L5.5 21V4a1 1 0 0 1 1-1Z"/>',
+  reply:'<path d="M9 14 4 9l5-5"/><path d="M4 9h9.5A6.5 6.5 0 0 1 20 15.5V20"/>',
+  seal:'<circle cx="12" cy="12" r="8"/><path d="m12 7.6 1.5 2.9 3.2.4-2.3 2.3.6 3.2-3-1.6-3 1.6.6-3.2-2.3-2.3 3.2-.4Z"/>',
+  eye:'<path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/>',
+  grid:'<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/>',
+  listChecks:'<path d="M11 6h10M11 12h10M11 18h10"/><path d="m3 6 1.6 1.6L7.2 5M3 12l1.6 1.6 2.6-2.6M3 18l1.6 1.6 2.6-2.6"/>',
+  sail:'<path d="M3 18.5h18l-2.6 3.2H5.6Z"/><path d="M12.5 15V3.5L20 15Z"/><path d="M10.5 15 6 8.5 3.8 15Z"/>'
 };
 
 export const icon=name=>`<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]||''}</svg>`;
@@ -98,11 +109,12 @@ export function tagPicker(selected=[],tagsList=[]){
   </div>`;
 }
 
-export function counterSteppers(values={},counters=[],setup={}){
+export function counterSteppers(values={},counters=[],setup={},opts={}){
   const profile=getAgeProfile(setup);
   const activeSet=new Set(profile.activeCounterKeys||['water']);
   const visibleCounters=counters.filter(c=>activeSet.has(c.key)||(Number(values?.[c.key])||0)>0);
   const list=visibleCounters.length?visibleCounters:counters;
+  const prefix=opts.action?`${opts.action}-`:'';
 
   return `<div class="counters-grid">${list.map(c=>{
     const v=Number(values?.[c.key])||0;
@@ -116,12 +128,12 @@ export function counterSteppers(values={},counters=[],setup={}){
         ${goal?`<div class="counter-progress"><i style="width:${pct}%"></i></div>`:''}
       </div>
       <div class="stepper">
-        <button type="button" class="icon-button" data-action="counter-minus" data-key="${c.key}" data-step="${c.step}" aria-label="Restar ${c.label}">${icon('minus')}</button>
+        <button type="button" class="icon-button" data-action="${prefix}counter-minus" data-key="${c.key}" data-step="${c.step}" aria-label="Restar ${c.label}">${icon('minus')}</button>
         <div class="stepper-value">
-          <input type="number" name="counter_${c.key}" min="0" max="${c.max}" step="${c.step}" value="${v}" aria-label="${c.label}">
+          <input type="number" name="counter_${c.key}" min="0" max="${c.max}" step="${c.step}" value="${v}" aria-label="${c.label}" data-counter-input="${c.key}">
           <span>${c.unit}</span>
         </div>
-        <button type="button" class="icon-button" data-action="counter-plus" data-key="${c.key}" data-step="${c.step}" aria-label="Sumar ${c.label}">${icon('plus')}</button>
+        <button type="button" class="icon-button" data-action="${prefix}counter-plus" data-key="${c.key}" data-step="${c.step}" aria-label="Sumar ${c.label}">${icon('plus')}</button>
       </div>
     </div>`;
   }).join('')}</div>`;

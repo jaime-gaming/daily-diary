@@ -1,8 +1,10 @@
 import {dayNumber,dateKey} from './dates.js';
 import {COUNTERS,TEXT_FIELDS,THEMES,SETUP_PURPOSES,AGE_GROUPS,INTEREST_OPTIONS,WRITING_RITUALS,TONE_STYLES} from '../data/constants.js';
+import {SEAS,GLASS_TINTS,planVoyage,resolveBottle} from './ocean.js';
 const KEY='diario.entries.v1';
 const HABITS_KEY='diario.habits.v1';
 const SETUP_KEY='diario.setup.v1';
+const THOUGHTS_KEY='diario.thoughts.v1';
 
 export const DEFAULT_SETUP = {
   completed: false,
@@ -102,7 +104,7 @@ export function loadEntry(date){return loadEntries().find(e=>e.date===date)||nul
 function persist(entries){const normalized=normalize(entries);localStorage.setItem(KEY,JSON.stringify(normalized));return normalized;}
 export function saveEntry(entry){const clean=validateEntry(entry);clean.updatedAt=new Date().toISOString();const entries=loadEntries();return persist([...entries.filter(e=>e.date!==clean.date),clean]);}
 export function deleteEntry(date){return persist(loadEntries().filter(e=>e.date!==date));}
-export function clearEntries(){localStorage.removeItem(KEY);localStorage.removeItem(HABITS_KEY);localStorage.removeItem(SETUP_KEY);}
+export function clearEntries(){localStorage.removeItem(KEY);localStorage.removeItem(HABITS_KEY);localStorage.removeItem(SETUP_KEY);localStorage.removeItem(THOUGHTS_KEY);}
 
 /* ----- Hábitos (configuración) ----- */
 export function validateHabit(h){
@@ -116,6 +118,104 @@ export function loadHabits(){const raw=localStorage.getItem(HABITS_KEY);if(!raw)
 function persistHabits(habits){const list=habits.map(validateHabit);localStorage.setItem(HABITS_KEY,JSON.stringify(list));return list;}
 export function saveHabit(habit){const clean=validateHabit(habit);const habits=loadHabits();return persistHabits([...habits.filter(h=>h.id!==clean.id),clean]);}
 export function deleteHabit(id){return persistHabits(loadHabits().filter(h=>h.id!==id));}
+
+/* ----- Pensamientos en botella (el mar) ----- */
+const SEA_IDS=new Set(SEAS.map(s=>s.id));
+const GLASS_IDS=new Set(GLASS_TINTS.map(g=>g.id));
+const THOUGHT_STATUS=new Set(['drifting','returned','lost']);
+
+function isDateKey(value){
+  return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+export function validateThought(t){
+  if(!t||typeof t!=='object')throw new Error('El pensamiento no es válido.');
+  const text=cleanText(t.text??'','El pensamiento').trim().slice(0,1200);
+  if(!text)throw new Error('Escribe un pensamiento antes de echar la botella al mar.');
+  const castAt=isDateKey(t.castAt)&&t.castAt<=dateKey()?t.castAt:dateKey();
+  const sea=SEA_IDS.has(t.sea)?t.sea:'breeze';
+  const mood=Number.isInteger(t.mood)&&t.mood>=1&&t.mood<=5?t.mood:null;
+  const id=typeof t.id==='string'&&t.id?t.id:crypto.randomUUID();
+  // El viaje se sortea una sola vez, al echar la botella: después no se recalcula.
+  const voyage=Number.isInteger(t.driftDays)&&isDateKey(t.arriveOn)
+    ?{
+      returns:t.returns===true,
+      speed:Number.isFinite(t.speed)?Math.max(1,Math.round(t.speed)):10,
+      driftDays:Math.max(1,t.driftDays),
+      arriveOn:t.arriveOn,
+      lostOn:isDateKey(t.lostOn)?t.lostOn:null,
+      current:typeof t.current==='string'?t.current.slice(0,60):'',
+      mottoSeed:Number.isFinite(t.mottoSeed)?Math.round(t.mottoSeed):0
+    }
+    :planVoyage({text,castAt,sea,id});
+  return {
+    id,
+    text,
+    castAt,
+    mood,
+    sea,
+    ...voyage,
+    status:THOUGHT_STATUS.has(t.status)?t.status:'drifting',
+    glass:GLASS_IDS.has(t.glass)?t.glass:'amber',
+    returnedAt:isDateKey(t.returnedAt)?t.returnedAt:null,
+    lostAt:isDateKey(t.lostAt)?t.lostAt:null,
+    reply:cleanText(t.reply??'','La respuesta').trim().slice(0,1200),
+    kept:Boolean(t.kept),
+    keptOn:isDateKey(t.keptOn)?t.keptOn:null,
+    seen:t.seen===true,
+    createdAt:typeof t.createdAt==='string'?t.createdAt:new Date().toISOString(),
+    updatedAt:typeof t.updatedAt==='string'?t.updatedAt:new Date().toISOString()
+  };
+}
+
+function persistThoughts(list){
+  const today=dateKey();
+  const clean=list.map(validateThought).map(t=>t.castAt>today?{...t,castAt:today}:t).sort((a,b)=>a.castAt.localeCompare(b.castAt)||a.id.localeCompare(b.id));
+  localStorage.setItem(THOUGHTS_KEY,JSON.stringify(clean));
+  return loadThoughts(); // y de paso asienta lo que el mar ya debía haber decidido
+}
+
+/* Al abrir el cuaderno el mar reparte lo que tocaba: devuelve las botellas
+   cuyo día de pleamar llegó y hunde las que no volvieron a tiempo. */
+function settleThoughts(list){
+  const today=dateKey();
+  let changed=false;
+  const out=list.map(t=>{
+    const next=resolveBottle(t,today);
+    if(next!==t)changed=true;
+    return next;
+  });
+  if(changed)localStorage.setItem(THOUGHTS_KEY,JSON.stringify(out));
+  return out;
+}
+
+export function loadThoughts(){
+  const raw=localStorage.getItem(THOUGHTS_KEY);
+  if(!raw)return [];
+  const data=JSON.parse(raw);
+  if(!Array.isArray(data))throw new Error('No se ha podido leer tu mar de pensamientos.');
+  return settleThoughts(data.map(validateThought));
+}
+export function saveThought(thought){
+  const previous=loadThoughts().find(t=>t.id===thought?.id)||null;
+  // Una botella ya echada al mar conserva el viaje que salió sorteado el día que la soltaste.
+  const frozen=previous?Object.fromEntries(['sea','returns','speed','driftDays','arriveOn','lostOn','current','glass','mottoSeed','status'].map(k=>[k,previous[k]])):{};
+  const clean=validateThought({...previous,...thought,...frozen,updatedAt:new Date().toISOString()});
+  return persistThoughts([...loadThoughts().filter(t=>t.id!==clean.id),clean]);
+}
+export function updateThought(id,patch={}){
+  const list=loadThoughts();
+  return persistThoughts(list.map(t=>t.id===id?{...t,...patch,updatedAt:new Date().toISOString()}:t));
+}
+export function deleteThought(id){return persistThoughts(loadThoughts().filter(t=>t.id!==id));}
+/* Volver a lanzar la misma botella: se sortea un viaje nuevo desde hoy. */
+export function recastThought(id){
+  return updateThought(id,{
+    status:'drifting',castAt:dateKey(),
+    driftDays:null,arriveOn:null,lostOn:null,returnedAt:null,lostAt:null,
+    seen:false,reply:'',kept:false,keptOn:null
+  });
+}
 
 /* ----- Set Up y preferencias del usuario ----- */
 export function validateSetup(s = {}){
@@ -195,13 +295,14 @@ export function saveSetup(partial = {}){
 }
 
 /* ----- Exportar / importar ----- */
-export function exportData(entries,habits=loadHabits(),setup=loadSetup()){
+export function exportData(entries,habits=loadHabits(),setup=loadSetup(),thoughts=loadThoughts()){
   return JSON.stringify({
     app:'diario',
     version:1,
     exportedAt:new Date().toISOString(),
     entries:normalize(entries),
     habits:habits.map(validateHabit),
+    thoughts:thoughts.map(validateThought),
     setup:validateSetup(setup)
   },null,2);
 }
@@ -212,8 +313,9 @@ export function parseImport(text){
   const entries=data.entries.map(validateEntry);
   if(new Set(entries.map(e=>e.date)).size!==entries.length)throw new Error('La copia contiene fechas duplicadas.');
   const habits=Array.isArray(data.habits)?data.habits.map(validateHabit):[];
+  const thoughts=Array.isArray(data.thoughts)?data.thoughts.map(validateThought):[];
   const setup=data.setup?validateSetup(data.setup):null;
-  return {entries,habits,setup};
+  return {entries,habits,thoughts,setup};
 }
 export function importData(incoming){
   const current=loadEntries();
@@ -222,6 +324,9 @@ export function importData(incoming){
   const habitMap=new Map(loadHabits().map(h=>[h.id,h]));
   for(const h of incoming.habits)habitMap.set(h.id,validateHabit(h));
   persistHabits([...habitMap.values()]);
+  const thoughtMap=new Map(loadThoughts().map(t=>[t.id,t]));
+  for(const t of incoming.thoughts||[])thoughtMap.set(t.id,validateThought(t));
+  persistThoughts([...thoughtMap.values()]);
   if(incoming.setup)saveSetup(incoming.setup);
   return persist([...map.values()]);
 }
