@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  SEAS,hashSeed,mulberry32,tideInfo,nextSpringTide,planVoyage,fateOf,resolveBottle,
-  voyageProgress,seaPhrase,etaLabel,groupBottles,shoreQueue,oceanStats,tideNote,thoughtWordCount
+  SEAS,WEATHERS,MILESTONES,hashSeed,mulberry32,tideInfo,nextSpringTide,planVoyage,fateOf,resolveBottle,
+  voyageProgress,seaPhrase,etaLabel,groupBottles,shoreQueue,oceanStats,tideNote,thoughtWordCount,
+  weatherOf,describePart,waterLevel,seaForecast,arrivalDateOf,nextArrival,milestonesOf,driftX
 } from '../src/utils/ocean.js';
 import {addDays,daysBetween} from '../src/utils/dates.js';
 
@@ -178,4 +179,90 @@ test('utilidades sueltas', () => {
   const rnd=mulberry32(hashSeed('abc'));
   assert.deepEqual([rnd(),rnd()].map(x=>x>0&&x<1),[true,true]);
   assert.match(tideNote('2026-09-30'),/marea/i);
+});
+
+test('el parte del día es estable, razonable y suena a mar', () => {
+  const a=weatherOf('2026-10-04');
+  const b=weatherOf('2026-10-04');
+  assert.deepEqual(a.weather,b.weather,'la misma fecha da el mismo parte');
+  assert.ok(WEATHERS.some(w=>w.id===a.weather.id));
+  assert.ok(a.wind.kmh>=0&&a.wind.kmh<=70,'nudos verosímiles');
+  assert.ok(a.level>=0&&a.level<=1,'el agua, entre 0 y 1');
+  assert.ok(a.rough>=0&&a.rough<=1);
+  assert.ok(Number.isInteger(a.push)&&a.push>=0&&a.push<=3,'los días de retención, contados');
+  assert.match(describePart('2026-10-04'),/viento .*nudos/);
+  assert.equal(waterLevel('2026-10-04'),a.level);
+  /* el temporal existe, pero no es lo habitual */
+  let gales=0;
+  for(let i=0;i<200;i++)if(weatherOf(addDays('2026-01-01',i)).weather.id==='gale')gales++;
+  assert.ok(gales>0&&gales<50,`los temporales se ven, pero poco (${gales}/200)`);
+});
+
+test('el parte cambia de verdad la travesía: velocidad y pleamar', () => {
+  const texts=['un pensamiento algo largo para sembrar el azar','otra nota distinta y más larga todavía','tercera'];
+  let changed=false;
+  for(const text of texts){
+    for(const sea of SEAS){
+      for(const date of ['2026-02-03','2026-05-17','2026-08-12','2026-11-29']){
+        const p=planVoyage({text,castAt:date,sea:sea.id,id:text});
+        const part=weatherOf(date);
+        assert.equal(p.weather,part.weather.id,'el parte queda escrito en la botella');
+        assert.equal(p.wind,part.wind.label);
+        assert.ok(p.speed>=4,'nunca se detiene del todo');
+        if(p.returns){
+          assert.equal(tideInfo(p.arriveOn).key,'spring','entra en pleamar');
+          assert.ok(p.arriveOn>=addDays(date,1));
+        }
+        if(part.push>0&&p.returns)changed=true;
+      }
+    }
+  }
+  assert.ok(changed,'hay días en que el mar retiene las botellas');
+});
+
+test('el pronóstico de la costa cuenta las llegadas día a día', () => {
+  const bottles=[
+    bottle({id:'llegahoy',arriveOn:'2026-09-10',castAt:'2026-08-01'}),
+    bottle({id:'llegamasadelante',arriveOn:'2026-09-12',castAt:'2026-08-02'}),
+    bottle({id:'noexisteese',arriveOn:'2026-11-30',castAt:'2026-08-03'}),
+    bottle({id:'perdida',arriveOn:'2026-09-11',returns:false,lostOn:'2026-10-20',status:'lost',lostAt:'2026-10-20'})
+  ];
+  const fc=seaForecast({today:'2026-09-10',bottles,days:14});
+  assert.equal(fc.length,14);
+  assert.equal(fc.filter(f=>f.isToday).length,1,'solo un hoy');
+  assert.equal(fc[0].marker,'hoy');
+  assert.equal(fc[1].marker,'mañana');
+  assert.deepEqual(fc[0].arrivalIds,['llegahoy']);
+  assert.equal(fc[2].arrivalCount,1);
+  assert.deepEqual(fc[2].arrivalIds,['llegamasadelante']);
+  assert.equal(fc.find(f=>f.date==='2026-11-30'),undefined,'fuera de la ventana no se ve');
+  const perdida=fc.find(f=>f.date==='2026-10-20');
+  assert.ok(!perdida||perdida.arrivalCount===0,'lo perdido no llega a ninguna orilla');
+  for(const f of fc){
+    assert.equal(f.tide.key,tideInfo(f.date).key);
+    assert.ok(f.level>=0&&f.level<=1);
+  }
+});
+
+test('la próxima botella en llegar y los hitos del viaje', () => {
+  const bottles=[
+    bottle({id:'cerca',arriveOn:'2026-09-14'}),
+    bottle({id:'lejos',arriveOn:'2026-12-01'})
+  ];
+  const next=nextArrival(bottles,'2026-09-10');
+  assert.equal(next.bottle.id,'cerca');
+  assert.equal(next.daysLeft,4);
+  assert.equal(nextArrival([],'2026-09-10'),null);
+  assert.equal(nextArrival([bottle({id:'ya',arriveOn:'2026-09-01'})],'2026-09-10'),null,'lo que ya tocó tierra no cuenta');
+
+  const m=milestonesOf(bottle({castAt:'2026-09-01',arriveOn:'2026-09-15'}),'2026-09-08');
+  assert.equal(m.list.length,MILESTONES.length);
+  assert.ok(m.list[0].reached,'el puerto siempre se pasa');
+  assert.ok(!m.list[m.list.length-1].reached,'y la rompiente, todavía no');
+  assert.ok(m.next,'hay un hito siguiente que anunciar');
+  const done=milestonesOf(bottle({status:'returned',returnedAt:'2026-09-15'}),'2026-09-15');
+  assert.ok(done.list.every(h=>h.reached),'de vuelta: todos pasados');
+
+  assert.ok(driftX(0)<driftX(.5)&&driftX(.5)<driftX(1));
+  assert.ok(driftX(-3)===driftX(0)&&driftX(9)===driftX(1),'no se sale del agua');
 });

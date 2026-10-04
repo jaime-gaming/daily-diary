@@ -27,13 +27,32 @@ También puedes servir la carpeta `docs/` (build de producción) con cualquier s
   dedicación con atajos, «Tu página de hoy» (nota libre + palabra del día), etiquetas, energía,
   estrés y tres cosas buenas. Los resúmenes se generan con reglas, nunca con IA.
 - **Pensamientos (el mar)** — notas rápidas que se escriben, se sellan en una botella y se echan
-  al mar. Cada botella sortea su travesía (cuatro mares posibles, de «a la orilla» a «alta mar»):
-  puede volver a ti en un día de marea viva o perderse para siempre. Al volver puedes leerla,
-  responder a tu yo de entonces, anclarla al cuaderno o volver a lanzarla. Todo el azar se
-  calcula en tu navegador con una semilla derivada de tus palabras y de la fecha.
+  al mar. Cada botella sortea su travesía (cuatro mares, de «a la orilla» a «alta mar») y el
+  **parte del día** manda de verdad: con viento a favor entra en la primera pleamar; con temporal
+  o viento de tierra se queda fuera uno o dos días más. Puede volver a ti en un día de marea viva
+  o perderse para siempre. Al volver puedes leerla, responder a tu yo de entonces, anclarla al
+  cuaderno o volver a lanzarla. Todo el azar se calcula en tu navegador con una semilla derivada
+  de tus palabras, la fecha y el mar elegido — y solo vuelven pensamientos tuyos: no hay otros
+  navegantes ni textos generados.
+  El mar se puede leer: **el parte de hoy** (clima, viento, marea, luna), **la costa en dos
+  semanas** (cuánto sube el agua y qué días toca tierra algo) y los **hitos del viaje** de cada
+  botella (el puerto, la boya, el cabo, la rompiente).
 - **Rutina** — pestaña propia para la tasklist: hábitos del día con rachas, rejilla de constancia
   (35 días, se puede pintar cualquier día pasado), contadores (agua, ejercicio, lectura, pausa)
   y la lista de «para mañana». Todo se guarda al instante, sin botón de guardar.
+- **Guardado a prueba de pestañas cerradas** — dos capas: (1) cada tecla escribe un *borrador*
+  local con su hora (`diario.drafts.v1`) y (2) si dejas de escribir dos segundos, el día se
+  autoguarda en el cuaderno. Al volver, lo que estaba a medias se recupera solo y te lo dice
+  («Recuperado de donde lo dejaste · hace 6 min»), con opciones de *Dejarlo escrito ya* o
+  *Descartar*. Un chip en la barra superior lista todos los textos pendientes. Se autoguarda
+  también al cambiar de día, al pulsar `Esc`, al cambiar de app y al cerrar la pestaña
+  (`pagehide`), y si otra pestaña modifica el cuaderno, esta se refresca sola. Nunca se crea una
+  entrada vacía por autoguardar.
+- **Movimiento** — un pequeño sistema de animaciones (curvas `--ease-ink`, `--ease-tide`,
+  `--ease-pop`) para la barra lateral con indicador deslizante, la entrada escalonada de las
+  tarjetas, el chapuzón de la botella, el papel que se despliega al abrirla, la espuma de la
+  orilla y las transiciones de vista. Todo se apaga solo si el sistema pide
+  `prefers-reduced-motion`.
 - **Resumen del día** generado con plantillas `if/else` y frases fijas (sin ningún modelo).
 - **Historial** — tarjetas con búsqueda y filtro por estado; ver, editar y eliminar con confirmación.
 - **Calendario** — los días registrados se marcan con el color de su estado de ánimo.
@@ -49,15 +68,20 @@ También puedes servir la carpeta `docs/` (build de producción) con cualquier s
 src/
 ├── components/
 │   ├── ui.js             # piezas de interfaz (calendario, gráfico SVG, iconos…)
-│   ├── ocean.js          # el mar: olas SVG, botellas, orilla, ficha y modal de la botella
+│   ├── ocean.js          # el mar: olas, parte, pronóstico, botellas, ficha y modal
 │   └── habits.js         # rutina: tablero de hábitos, rejilla de constancia, contadores
 ├── data/constants.js     # estados de ánimo, mareas visuales, etiquetas
 ├── styles/main.css       # diseño mobile-first, temas de papel, animaciones suaves
 ├── utils/
 │   ├── dates.js          # fechas, número de día, semanas, meses, calendario
 │   ├── stats.js          # medias, rachas (diario y por hábito), resúmenes, tendencias
-│   ├── ocean.js          # mareas, sorteo determinista del viaje y estado de cada botella
+│   ├── ocean.js          # mareas, parte del día, sorteo del viaje y estado de cada botella
+│   ├── drafts.js         # los borradores: que nada se quede a medias
 │   └── storage.js        # validar, guardar, cargar, borrar, exportar, importar
+├── styles/
+│   ├── main.css          # identidad de papel, portada, diario, rutina, archivo, progreso
+│   ├── sea.css           # el mar y sus animaciones (panel, parte, pronóstico, botellas)
+│   └── motion.css        # sistema de movimiento, barra lateral y transiciones de vista
 └── main.js               # navegación (Hoy · Pensamientos · Archivo · Rutina · Progreso · Perfil)
 public/                   # icono, manifest y service worker offline
 tests/                    # pruebas de las funciones puras y de pintado (npm test)
@@ -66,6 +90,9 @@ tests/                    # pruebas de las funciones puras y de pintado (npm tes
 ## Datos
 
 Cada entrada se guarda como JSON en `localStorage` (`diario.entries.v1`):
+
+El parte (clima, viento, nivel del agua) es una función determinista de la fecha, así que se
+guarda dentro de la botella y no necesita red:
 
 ```json
 {
@@ -90,6 +117,9 @@ El número de día se calcula automáticamente desde la fecha de la primera entr
 
 Los pensamientos viajan en `diario.thoughts.v1`; cada botella guárdala así:
 
+El parte (clima, viento, nivel del agua) es una función determinista de la fecha, así que se
+guarda dentro de la botella y no necesita red:
+
 ```json
 {
   "id": "…",
@@ -107,13 +137,28 @@ Los pensamientos viajan en `diario.thoughts.v1`; cada botella guárdala así:
   "status": "drifting",
   "returnedAt": null,
   "reply": "",
+  "weather": "wind",
+  "wind": "poniente",
+  "windSpeed": 19,
+  "push": 0,
   "kept": false,
   "seen": false
 }
 ```
 
 `status` pasa de `drifting` a `returned` (la marea viva la devolvió) o `lost` (se hundió) al abrir
-el cuaderno, y `reply`/`kept` son tu respuesta y si la anclaste. Nunca sale del dispositivo.
+el cuaderno; `reply`/`kept` son tu respuesta y si la anclaste; `weather`, `wind`, `windSpeed` y
+`push` recuerdan el parte del día en que la soltaste (y por qué tardó lo que tardó). Nunca sale
+del dispositivo.
+
+Los textos a medias viven aparte, en `diario.drafts.v1`, con esta pinta:
+
+```json
+{ "entrada:2026-10-04": { "data": { "generalDay": "lo que estaba escribiendo…" }, "savedAt": "…" } }
+```
+
+Un borrador solo se recupera si es **más reciente** que lo ya guardado, así que nunca te devuelve
+texto viejo ni duplica nada.
 
 ## Desplegar en GitHub Pages (por branch, sin Actions)
 

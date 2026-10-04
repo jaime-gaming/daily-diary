@@ -1,0 +1,194 @@
+/* ============================================================
+   SISTEMA DE MOVIMIENTO
+   ------------------------------------------------------------
+   Unas pocas curvas y duraciones para toda la app, la barra lateral
+   con indicador deslizante, las transiciones de vista y los avisos de
+   guardado. Todo se apaga con prefers-reduced-motion o con
+   data-motion="calm" (lo decide el propio navegador del usuario).
+   ============================================================ */
+:root{
+  --dur-1:.16s;
+  --dur-2:.28s;
+  --dur-3:.45s;
+  --dur-4:.8s;
+  --ease-ink:cubic-bezier(.22,1,.36,1);
+  --ease-tide:cubic-bezier(.45,.05,.55,.95);
+  --ease-pop:cubic-bezier(.34,1.56,.64,1);
+  --ease-soft:cubic-bezier(.4,0,.2,1);
+}
+
+/* ---------- la barra lateral ---------- */
+.sidebar{transition:width var(--dur-4) var(--ease-ink),padding var(--dur-4) var(--ease-ink),transform var(--dur-3) var(--ease-ink)}
+.nav-wrap{position:relative}
+.sidebar-nav{position:relative;z-index:2}
+.nav-rail{
+  position:absolute;left:0;top:var(--rail-y,0);width:3px;height:var(--rail-h,0);z-index:3;
+  background:var(--red);border-radius:0 3px 3px 0;opacity:0;pointer-events:none;
+  transition:top var(--dur-4) var(--ease-tide),height var(--dur-3) var(--ease-tide),opacity var(--dur-2) linear
+}
+.nav-rail.is-ready{opacity:1}
+.nav-item{overflow:hidden}
+.nav-item::before{
+  content:"";position:absolute;inset:0;z-index:0;border-radius:4px;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--red) 26%,transparent),color-mix(in srgb,var(--red) 4%,transparent) 70%,transparent);
+  transform:scaleX(0);transform-origin:left center;opacity:.001;
+  transition:transform var(--dur-3) var(--ease-ink),opacity var(--dur-2) linear
+}
+.nav-item:hover::before,.nav-item:focus-visible::before{transform:scaleX(1);opacity:1}
+.nav-item.active::before{transform:scaleX(1);opacity:1;background:linear-gradient(90deg,color-mix(in srgb,var(--red) 34%,transparent),color-mix(in srgb,var(--red) 8%,transparent) 78%,transparent)}
+.nav-item>*{position:relative;z-index:1}
+.nav-item-icon{position:relative;display:grid;place-items:center;flex:none}
+.nav-item .nav-item-icon .icon{transition:transform .3s var(--ease-pop),color .25s}
+.nav-item:hover .nav-item-icon .icon{transform:translateY(-2px) rotate(-6deg) scale(1.1)}
+.nav-item.active .nav-item-icon .icon{color:#fff}
+.nav-item.active{border-left-color:transparent}
+.nav-icon-ping{
+  position:absolute;inset:-5px;border-radius:50%;border:1px solid var(--red);
+  animation:ping 2.4s var(--ease-soft) 1.1s 2 both;pointer-events:none
+}
+@keyframes ping{
+  0%{transform:scale(.6);opacity:.9}
+  100%{transform:scale(1.9);opacity:0}
+}
+.nav-item .nav-label,.nav-item .nav-index{transition:max-width var(--dur-4) var(--ease-ink),opacity var(--dur-2) var(--ease-soft),margin var(--dur-3)}
+.sidebar.is-collapsed .nav-label,
+.sidebar.is-collapsed .nav-index{max-width:0;opacity:0;margin:0;overflow:hidden}
+.sidebar.is-collapsed .nav-group-label{opacity:0;height:0;margin:0;padding:0}
+.sidebar.is-collapsed .ex-libris-meta,.sidebar.is-collapsed .local-note,.sidebar.is-collapsed .save-note small{transition:opacity var(--dur-2)}
+.nav-group-label{transition:opacity var(--dur-3) var(--ease-soft),padding var(--dur-3)}
+.nav-group{transition:transform var(--dur-4) var(--ease-ink)}
+.ex-libris-card,.local-note,.save-note{transition:border-color var(--dur-2),background var(--dur-2),transform var(--dur-2) var(--ease-ink),opacity var(--dur-2)}
+
+/* entrada escalonada, solo al montar la carcasa */
+.sidebar.is-mounting .nav-item{animation:navIn .5s var(--ease-ink) both;animation-delay:calc(60ms + var(--nav-i,0)*55ms)}
+.sidebar.is-mounting .nav-group-label{animation:ruleIn .5s var(--ease-ink) both;animation-delay:calc(var(--nav-i,0)*40ms)}
+.sidebar.is-mounting .ex-libris-card,.sidebar.is-mounting .brand{animation:navIn .55s var(--ease-ink) both}
+.sidebar.is-mounting .sidebar-bottom>*{animation:navIn .6s var(--ease-ink) both;animation-delay:.32s}
+@keyframes navIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+@keyframes ruleIn{from{opacity:0;letter-spacing:.6em}to{opacity:1}}
+
+/* el cajón móvil entra con inercia y su fondo se desenfoca */
+@media (max-width:980px){
+  .sidebar{transform:translateX(-104%);box-shadow:24px 0 60px -30px rgba(0,0,0,.5)}
+  .sidebar.is-open{transform:translateX(0)}
+  .sidebar-backdrop{backdrop-filter:blur(0)}
+  .sidebar-backdrop.is-visible{backdrop-filter:blur(4px)}
+}
+
+/* la barra inferior: mismo criterio, en horizontal */
+.tabbar-wrap{position:relative}
+.tabbar-rail{
+  position:absolute;bottom:6px;left:var(--rail-x,0);width:var(--rail-w,60px);height:calc(100% - 12px);z-index:0;
+  border-radius:99px;background:color-mix(in srgb,var(--paper-2) 70%,transparent);
+  box-shadow:inset 0 0 0 1px var(--rule-strong);
+  opacity:0;pointer-events:none;
+  transition:left var(--dur-4) var(--ease-tide),width var(--dur-3) var(--ease-tide),opacity var(--dur-2)
+}
+.tabbar-rail.is-ready{opacity:1}
+.tabbar-item{position:relative;z-index:1;background:none!important}
+.tabbar-item.active .tabbar-icon .icon{animation:tabBounce .55s var(--ease-pop)}
+@keyframes tabBounce{0%{transform:translateY(0)}35%{transform:translateY(-7px) scale(1.16)}100%{transform:none}}
+
+/* ---------- la página: entrada y transiciones de vista ---------- */
+.view-enter{animation:viewIn var(--dur-3) var(--ease-ink) both}
+@keyframes viewIn{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+main .is-entering{animation:cardEnter .52s var(--ease-ink) both;animation-delay:calc(var(--enter-i,0)*46ms)}
+@keyframes cardEnter{from{opacity:0;transform:translateY(14px) scale(.994)}to{opacity:1;transform:none}}
+/* Al mudar de vista solo se mueve la página: la barra lateral y la barra superior se quedan quietos. */
+@supports (view-transition-name:none){
+  main#main{view-transition-name:notebook-page}
+  ::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
+  ::view-transition-old(notebook-page){animation:vtOut var(--dur-2) var(--ease-soft) both}
+  ::view-transition-new(notebook-page){animation:vtIn var(--dur-3) var(--ease-ink) both}
+  ::view-transition-group(notebook-page){animation-duration:var(--dur-3);z-index:1}
+}
+@keyframes vtOut{from{opacity:1}to{opacity:.35}}
+@keyframes vtIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* ---------- indicadores de guardado y borradores ---------- */
+.save-status{
+  display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:99px;
+  font-family:var(--font-mono);font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-faint);border:1px solid var(--rule);background:var(--paper-2);
+  transition:color var(--dur-2),border-color var(--dur-2),background var(--dur-2)
+}
+.save-status .icon{width:13px;height:13px}
+.save-status.is-ok{color:var(--green);border-color:color-mix(in srgb,var(--green) 42%,var(--rule))}
+.save-status.is-working{color:var(--ochre);border-color:color-mix(in srgb,var(--ochre) 45%,var(--rule))}
+.save-status.is-draft{color:var(--sea-deep);border-color:color-mix(in srgb,var(--sea-1) 60%,var(--rule))}
+.save-status.is-error{color:var(--red);border-color:var(--red);background:var(--red-soft)}
+.save-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 18%,transparent)}
+.save-dot.is-working{background:var(--ochre);box-shadow:0 0 0 3px color-mix(in srgb,var(--ochre) 22%,transparent);animation:softPulse 1.4s var(--ease-soft) infinite}
+.save-dot.is-draft{background:var(--sea-1);box-shadow:0 0 0 3px color-mix(in srgb,var(--sea-1) 22%,transparent)}
+.save-dot.is-error{background:var(--red);box-shadow:0 0 0 3px color-mix(in srgb,var(--red) 24%,transparent)}
+.save-note{
+  display:flex;gap:10px;align-items:flex-start;padding:11px 12px;border-radius:3px;font-size:.78rem;line-height:1.45;
+  border:1px dashed rgba(243,239,230,.24);color:rgba(243,239,230,.66)
+}
+.save-note .save-dot{margin-top:5px}
+.save-note strong{display:block;color:var(--sidebar-fg);font-weight:500;font-family:var(--font-display)}
+.save-note small{font-family:var(--font-mono);font-size:.62rem;letter-spacing:.04em}
+.save-note.has-pending{border-style:solid;border-color:color-mix(in srgb,var(--sea-1) 70%,transparent)}
+#save-note:has(.is-error){border-color:var(--red)}
+.draft-chip{
+  display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:99px;cursor:pointer;
+  font-family:var(--font-mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--sea-deep);background:color-mix(in srgb,var(--sea-1) 22%,var(--paper-2));
+  border:1px solid color-mix(in srgb,var(--sea-1) 60%,var(--rule));
+  animation:chipIn var(--dur-3) var(--ease-pop) both
+}
+.draft-chip .icon{width:14px;height:14px}
+.draft-chip:hover{background:var(--sea-1);color:var(--paper-2);transform:translateY(-1px)}
+@keyframes chipIn{from{opacity:0;transform:translateY(-6px) scale(.9)}to{opacity:1;transform:none}}
+.draft-note{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 16px;padding:10px 14px;border-radius:4px;
+  background:linear-gradient(100deg,color-mix(in srgb,var(--ochre) 14%,var(--paper-2)),var(--paper-2));
+  border:1px dashed color-mix(in srgb,var(--ochre) 55%,var(--rule-strong));
+  font-size:.84rem;color:var(--ink-soft);animation:noteIn var(--dur-3) var(--ease-ink) both
+}
+.draft-note .icon{width:16px;height:16px;color:var(--ochre)}
+.draft-note b{color:var(--ink)}
+.draft-note.is-live .icon{animation:penScratch 1.2s var(--ease-soft) infinite}
+@keyframes penScratch{0%,100%{transform:none}40%{transform:translateX(2px) rotate(-8deg)}}
+.draft-note .text-button{margin-left:auto}
+.draft-note .text-button+.text-button{margin-left:0}
+#entry-draft-slot:not(:empty){display:block;animation:noteIn var(--dur-3) var(--ease-ink) both}
+@keyframes noteIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.draft-list{list-style:none;margin:16px 0;padding:0;display:grid;gap:9px;max-height:min(46vh,340px);overflow-y:auto}
+.draft-row{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:12px 14px;
+  border:1px solid var(--rule);border-radius:4px;background:var(--paper-2);
+  animation:cardEnter .45s var(--ease-ink) both
+}
+.draft-row:hover{border-color:var(--rule-strong)}
+.draft-row-main{min-width:0;display:flex;flex-direction:column;gap:3px}
+.draft-row-main strong{font-family:var(--font-display);font-size:1rem;font-weight:500}
+.draft-row-main small{font-family:var(--font-mono);font-size:.66rem;letter-spacing:.04em;color:var(--ink-faint)}
+.draft-row-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.draft-row.is-empty{justify-content:center;color:var(--green);font-size:.9rem;border-style:dashed}
+.entry-status.is-flash{animation:statusFlash 1.1s var(--ease-soft)}
+@keyframes statusFlash{
+  0%{background:color-mix(in srgb,var(--green) 34%,transparent);transform:scale(1.04)}
+  100%{background:transparent;transform:none}
+}
+.filter-chip{
+  display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:14px;padding:9px 13px;border-radius:99px;
+  background:var(--red-soft);border:1px solid color-mix(in srgb,var(--red) 40%,transparent);
+  font-family:var(--font-mono);font-size:.68rem;letter-spacing:.06em;color:var(--ink);
+  animation:noteIn var(--dur-3) var(--ease-ink) both
+}
+.filter-chip .icon{width:14px;color:var(--red)}
+.filter-chip .text-button{margin-left:auto}
+
+/* ---------- cuando el usuario quiere poco movimiento ---------- */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.001s!important;animation-iteration-count:1!important;
+    transition-duration:.001s!important;scroll-behavior:auto!important
+  }
+}
+:root[data-motion="calm"] *,:root[data-motion="calm"] *::before,:root[data-motion="calm"] *::after{
+  animation-duration:.001s!important;animation-iteration-count:1!important;
+  transition-duration:.001s!important
+}
+:root[data-motion="calm"] .nav-rail,:root[data-motion="calm"] .tabbar-rail{transition:none}

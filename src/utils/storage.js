@@ -1,6 +1,6 @@
 import {dayNumber,dateKey} from './dates.js';
 import {COUNTERS,TEXT_FIELDS,THEMES,SETUP_PURPOSES,AGE_GROUPS,INTEREST_OPTIONS,WRITING_RITUALS,TONE_STYLES} from '../data/constants.js';
-import {SEAS,GLASS_TINTS,planVoyage,resolveBottle} from './ocean.js';
+import {SEAS,GLASS_TINTS,WEATHERS,planVoyage,resolveBottle} from './ocean.js';
 const KEY='diario.entries.v1';
 const HABITS_KEY='diario.habits.v1';
 const SETUP_KEY='diario.setup.v1';
@@ -121,6 +121,7 @@ export function deleteHabit(id){return persistHabits(loadHabits().filter(h=>h.id
 
 /* ----- Pensamientos en botella (el mar) ----- */
 const SEA_IDS=new Set(SEAS.map(s=>s.id));
+const WEATHER_IDS=new Set(WEATHERS.map(w=>w.id));
 const GLASS_IDS=new Set(GLASS_TINTS.map(g=>g.id));
 const THOUGHT_STATUS=new Set(['drifting','returned','lost']);
 
@@ -145,7 +146,12 @@ export function validateThought(t){
       arriveOn:t.arriveOn,
       lostOn:isDateKey(t.lostOn)?t.lostOn:null,
       current:typeof t.current==='string'?t.current.slice(0,60):'',
-      mottoSeed:Number.isFinite(t.mottoSeed)?Math.round(t.mottoSeed):0
+      mottoSeed:Number.isFinite(t.mottoSeed)?Math.round(t.mottoSeed):0,
+      /* el parte del día en que se soltó se conserva para poder contarlo */
+      weather:WEATHER_IDS.has(t.weather)?t.weather:null,
+      wind:typeof t.wind==='string'?t.wind.slice(0,24):'',
+      windSpeed:Number.isFinite(t.windSpeed)?Math.max(0,Math.round(t.windSpeed)):null,
+      push:Number.isInteger(t.push)?Math.max(0,Math.min(4,t.push)):0
     }
     :planVoyage({text,castAt,sea,id});
   return {

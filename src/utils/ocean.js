@@ -119,6 +119,125 @@ export function nextSpringTide(fromDate,maxPush=16){
   return fromDate;
 }
 
+/* ---------- el parte del día ---------- */
+/* El mar no es un decorado: el clima del día en que sueltas la botella decide
+   cuán rápido navega y si la deja entrar en la siguiente pleamar o en la
+   siguiente a esa. Todo sale de la fecha, así que el parte se puede consultar,
+   repetir y auditar sin tocar la red. */
+export const WEATHERS=[
+  {id:'calm',label:'mar en calma',short:'calma',desc:'Agua plana: la botella avanza despacio, pero no se pierde de vista.',speed:.82,push:0,water:.34,rough:0},
+  {id:'haze',label:'bruma',short:'bruma',desc:'Niebla espesa: se pierde la referencia de la orilla algún día más.',speed:.92,push:1,water:.3,rough:.25},
+  {id:'wind',label:'viento a favor',short:'viento',desc:'Sopla hacia fuera y hacia casa: la travesía se acelera.',speed:1.24,push:0,water:.58,rough:.5},
+  {id:'rain',label:'lluvia',short:'lluvia',desc:'Llueve sobre el agua: corrientes revueltas, llegadas inciertas.',speed:1.05,push:1,water:.66,rough:.62},
+  {id:'gale',label:'temporal',short:'temporal',desc:'Con este mar no entra nada en la bahía: la botella espera fuera.',speed:1.42,push:2,water:.92,rough:1}
+];
+const WIND_DIRS=[
+  {id:'levante',label:'levante'},{id:'poniente',label:'poniente'},
+  {id:'noroeste',label:'el noroeste'},{id:'gallego',label:'el gallego'},
+  {id:'suroeste',label:'suroeste'},{id:'mistral',label:'el mistral'},
+  {id:'libeccio',label:'libeccio'},{id:'gregal',label:'gregal'}
+];
+/* Los vientos que soplan desde tierra retrasan la vuelta; los de mar, no. */
+const OFFSHORE=new Set(['levante','el mistral','gregal','suroeste']);
+
+export function weatherOf(dateStr=dateKey()){
+  const rnd=mulberry32(hashSeed(`parte|${dateStr}`));
+  const r1=rnd(),r2=rnd(),r3=rnd();
+  /* sesgo hacia mar suave: los temporales son la excepción */
+  const idx=Math.min(WEATHERS.length-1,Math.floor(Math.pow(r1,1.7)*WEATHERS.length));
+  const weather=WEATHERS[idx];
+  const dir=WIND_DIRS[Math.floor(r2*WIND_DIRS.length)%WIND_DIRS.length];
+  const kmh=Math.round(4+r3*12+weather.rough*38);
+  const tide=tideInfo(dateStr);
+  return {
+    date:dateStr,
+    weather,
+    wind:{...dir,kmh,offshore:OFFSHORE.has(dir.id)},
+    /* 0..1: hasta dónde sube el agua en la orilla este día */
+    level:clamp01(weather.water*.7+tide.strength*.42),
+    rough:clamp01(weather.rough*.72+(tide.strength-.5)*.4),
+    speed:weather.speed,
+    push:OFFSHORE.has(dir.id)?weather.push+1:weather.push,
+    tide
+  };
+}
+
+/* Una línea legible para el registro y para la portada. */
+export function describePart(dateStr=dateKey()){
+  const d=weatherOf(dateStr);
+  return `${d.weather.label} · viento ${d.wind.label}, ${d.wind.kmh} nudos · ${d.tide.name.toLowerCase()}`;
+}
+export function waterLevel(dateStr=dateKey()){
+  return weatherOf(dateStr).level;
+}
+
+/* ---------- hitos de la travesía ---------- */
+export const MILESTONES=[
+  {id:'port',at:0,label:'el puerto',note:'todavía se oye la playa'},
+  {id:'buoy',at:.26,label:'la boya',note:'doblado el canal'},
+  {id:'cabo',at:.56,label:'el cabo',note:'ya no se ve tierra'},
+  {id:'rompiente',at:.86,label:'la rompiente',note:'a un pulso de la arena'}
+];
+export function milestonesOf(bottle,today=dateKey()){
+  const p=voyageProgress(bottle,today);
+  const settled=p.fate!=='drifting';
+  let last=-1;
+  const list=MILESTONES.map(m=>{
+    const reached=settled||p.pct>=m.at;
+    if(reached)last=MILESTONES.findIndex(x=>x.id===m.id);
+    return {...m,reached};
+  });
+  return {list,current:Math.max(0,last),next:list.find(m=>!m.reached)||null,pct:p.pct,fate:p.fate};
+}
+/* Posición (0..1) de la botella sobre el agua según su deriva. */
+export function driftX(pct){
+  return clamp01(.05+clamp01(pct)*.86);
+}
+
+/* ---------- la costa en los próximos días ---------- */
+export function arrivalDateOf(bottle){
+  if(!bottle)return null;
+  if(bottle.status==='returned')return bottle.returnedAt||bottle.arriveOn||null;
+  if(bottle.status==='lost'||bottle.returns===false)return null;
+  return bottle.arriveOn||null;
+}
+export function seaForecast({today=dateKey(),bottles=[],days=14}={}){
+  const out=[];
+  for(let i=0;i<days;i++){
+    const date=addDays(today,i);
+    const part=weatherOf(date);
+    const arrivals=bottles.filter(b=>arrivalDateOf(b)===date);
+    const sinking=bottles.filter(b=>b.status==='drifting'&&b.returns===false&&b.lostOn===date);
+    out.push({
+      ...part,
+      date,
+      day:i,
+      arrivalCount:arrivals.length,
+      arrivalIds:arrivals.map(b=>b.id),
+      sinkingIds:sinking.map(b=>b.id),
+      isToday:i===0,
+      marker:i===0?'hoy':i===1?'mañana':null
+    });
+  }
+  return out;
+}
+export function nextArrival(bottles=[],today=dateKey()){
+  let best=null;
+  for(const b of bottles){
+    if(fateOf(b,today)!=='drifting')continue;
+    const date=arrivalDateOf(b);
+    if(!date||date<today)continue;
+    if(!best||date<best.date)best={date,bottle:b,daysLeft:daysBetween(today,date)};
+  }
+  return best;
+}
+/* Días de margen hasta la próxima pleamar con botellas esperando. */
+export function nextSpringWithArrivals(bottles=[],today=dateKey()){
+  const n=nextArrival(bottles,today);
+  if(!n)return null;
+  return {...n,tide:tideInfo(n.date)};
+}
+
 /* ---------- el viaje ---------- */
 export function seaById(id='breeze'){
   return SEAS.find(s=>s.id===id)||SEAS.find(s=>s.id==='breeze');
@@ -128,11 +247,15 @@ export function planVoyage({text='',castAt=dateKey(),sea='breeze',id=''}={}){
   const s=seaById(sea);
   const rnd=mulberry32(hashSeed(`${castAt}|${s.id}|${id}|${String(text).trim().slice(0,220)}`));
   const r1=rnd(),r2=rnd(),r3=rnd(),r4=rnd();
+  const part=weatherOf(castAt);            /* el parte del día en que se suelta */
   const rawDays=Math.max(1,Math.round(s.min+r1*(s.max-s.min)));
   const returns=r2<s.chance;
-  const speed=Math.max(4,Math.round(s.miles*(.7+r3*.6)));
+  const speed=Math.max(4,Math.round(s.miles*(.7+r3*.6)*part.speed));
   const target=addDays(castAt,rawDays);
-  const arriveOn=returns?nextSpringTide(target):target;
+  /* Con viento a favor entra en la próxima pleamar; con temporal o viento de
+     tierra se queda fuera hasta la siguiente. El mar manda de verdad. */
+  const enterFrom=part.push>0?addDays(target,part.push):target;
+  const arriveOn=returns?nextSpringTide(enterFrom):target;
   const grace=Math.max(3,Math.round(rawDays*.22));
   return {
     sea:s.id,
@@ -143,7 +266,11 @@ export function planVoyage({text='',castAt=dateKey(),sea='breeze',id=''}={}){
     lostOn:returns?null:addDays(castAt,rawDays+grace),
     current:pick(CURRENTS,rnd),
     glass:pick(GLASS_TINTS,rnd),
-    mottoSeed:Math.floor(r4*1e6)
+    mottoSeed:Math.floor(r4*1e6),
+    weather:part.weather.id,
+    wind:part.wind.label,
+    windSpeed:part.wind.kmh,
+    push:part.push
   };
 }
 

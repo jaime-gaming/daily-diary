@@ -7,6 +7,8 @@ import '@fontsource/space-grotesk/700.css';
 import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/500.css';
 import './styles/main.css';
+import './styles/sea.css';
+import './styles/motion.css';
 
 import {
   MOODS,ENERGY_LABELS,STRESS_LABELS,COUNTERS,THEMES,
@@ -23,8 +25,18 @@ import {
   loadHabits,saveHabit,deleteHabit,loadSetup,saveSetup,ageGroupFromAge,
   loadThoughts,saveThought,updateThought,deleteThought,recastThought
 } from './utils/storage.js';
-import {tideInfo,tideNote,seaById,groupBottles,shoreQueue,voyageProgress} from './utils/ocean.js';
-import {seaPanel,bottleComposer,bottleCard,bottleModal,oceanLedger,shoreTeaser,emptySea,bottleGlyph,tideRule} from './components/ocean.js';
+import {
+  tideInfo,tideNote,seaById,groupBottles,shoreQueue,voyageProgress,
+  weatherOf,seaForecast,nextArrival,arrivalDateOf
+} from './utils/ocean.js';
+import {
+  seaPanel,bottleComposer,bottleCard,bottleModal,oceanLedger,shoreTeaser,emptySea,bottleGlyph,tideRule,
+  seaPartCard,seaForecastStrip,castSplash
+} from './components/ocean.js';
+import {
+  DRAFT_SCOPES,setDraft,draftData,clearDraft,draftIsNewer,draftSummary,
+  pendingDrafts,clearAllDrafts,listDrafts,draftMinutes
+} from './utils/drafts.js';
 import {habitBoard,momentumGrid,habitStatsList,habitComposer,countersBoard,tomorrowBoard,routineTeaser,progressRing} from './components/habits.js';
 import {
   detectCrisisRisk,getWritingPrompt,calculateEntryCompletion,getGreeting,getAgeProfile,
@@ -43,7 +55,15 @@ let entries=[],habits=[],thoughts=[],setup=loadSetup(),storageError='',view='dia
     period=7,dirty=false,menu=false,sidebarCollapsed=false,historyQuery='',historyMood='',historyTag='',historyLayout='grid',
     archiveTab='list',statsTab='pulse',profileTab='personal',moreDetailsOpen=false,
     pendingImport=null,wordOffset=0,tipOffset=0,promptOffset=0,quoteOffset=0,showWritingPrompt=false,focusWriting=false,
-    crisisBannerDismissed=false,breathingTimer=null,pageTurnDir='';
+    crisisBannerDismissed=false,breathingTimer=null,pageTurnDir='',
+    oceanFilter='',lastView='',saveState='idle',saveAt=0,shellMounted=false,motionOn=true;
+/* Movimiento: quien pide poco movimiento en el sistema lo recibe. */
+try{
+  const mq=window.matchMedia('(prefers-reduced-motion: reduce)');
+  motionOn=!mq.matches;
+  mq.addEventListener?.('change',e=>{motionOn=!e.matches;document.documentElement.dataset.motion=motionOn?'full':'calm';});
+}catch{}
+document.documentElement.dataset.motion=motionOn?'full':'calm';
 
 function applyTheme(themeId,customSetup=setup){
   const themeObj=THEMES.find(t=>t.id===themeId)||THEMES[0];
@@ -89,15 +109,17 @@ const pageName=id=>getNavs().find(n=>n[0]===id)?.[2]||'Hoy';
 
 function navBadge(id){
   if(id!=='thoughts')return '';
-  const arrivals=shoreQueue(thoughts).length;
-  if(!arrivals)return '';
-  const unseen=shoreQueue(thoughts).filter(t=>t.seen!==true).length;
-  return `<span class="nav-badge ${unseen?'is-new':''}">${arrivals}</span>`;
+  const queue=shoreQueue(thoughts);
+  const unseen=queue.some(t=>t.seen!==true);
+  return `<span class="nav-badge ${unseen?'is-new':''}" ${queue.length?'':'hidden'} data-count="${queue.length}">${queue.length}</span>`;
 }
 
 function navButton([id,ico,label],index){
+  const arrivals=id==='thoughts'?shoreQueue(thoughts).filter(t=>t.seen!==true).length:0;
   return `<button class="nav-item ${view===id?'active':''}" style="--nav-i:${index}" data-view="${id}" title="${esc(label)}" data-tooltip="${esc(label)}" ${view===id?'aria-current="page"':''}>
-    ${icon(ico)}<span class="nav-label">${esc(label)}</span>${navBadge(id)}
+    <span class="nav-index">${String(index+1).padStart(2,'0')}</span>
+    <span class="nav-item-icon">${icon(ico)}${arrivals?'<i class="nav-icon-ping" aria-hidden="true"></i>':''}</span>
+    <span class="nav-label">${esc(label)}</span>${navBadge(id)}
   </button>`;
 }
 
@@ -114,78 +136,274 @@ function mobileTabs(){
     ${MOBILE_TABS.map(id=>{
       const item=getNavs().find(n=>n[0]===id);
       if(!item)return '';
-      return `<button type="button" class="tabbar-item ${view===id?'active':''}" data-view="${id}">
+      return `<button type="button" class="tabbar-item ${view===id?'active':''}" data-view="${id}" ${view===id?'aria-current="page"':''}>
         <span class="tabbar-icon">${icon(item[1])}${navBadge(id)}</span>
-        <span>${esc(item[2])}</span>
+        <span class="tabbar-label">${esc(item[2])}</span>
       </button>`;
     }).join('')}
   </nav>`;
 }
 
-function render(){
-  applyTheme(setup.theme,setup);
-  const currentThemeObj=THEMES.find(t=>t.id===setup.theme)||THEMES[0];
-  const turnClass=pageTurnDir?`page-turn-${pageTurnDir}`:'view-enter';
-  pageTurnDir='';
-  app.innerHTML=`
-  <div class="sidebar-backdrop ${menu?'is-visible':''}" data-action="close-menu" aria-hidden="true"></div>
-  <aside class="sidebar ${menu?'is-open':''} ${sidebarCollapsed?'is-collapsed':''}" aria-label="Menú principal">
+/* ============================================================
+   LA CARCASA (sidebar, barra superior, avisos) se monta una sola vez.
+   Así la barra lateral puede animar su indicador deslizante, el scroll
+   se conserva y los avisos no parpadean en cada repintado.
+   ============================================================ */
+function shell(){
+  return `
+  <div class="sidebar-backdrop" data-action="close-menu" aria-hidden="true"></div>
+  <aside class="sidebar" aria-label="Menú principal">
     <div class="sidebar-top-row">
       <a href="#" class="brand" data-action="today" title="Ir a hoy">
         <span class="brand-mark"><span class="brand-full">diario</span><span class="brand-short">d</span><span class="brand-period">.</span></span>
       </a>
-      <button type="button" class="icon-button sidebar-collapse-btn" data-action="toggle-sidebar" title="${sidebarCollapsed?'Desplegar menú (Ctrl+B)':'Plegar menú (Ctrl+B)'}" aria-label="${sidebarCollapsed?'Desplegar menú':'Plegar menú'}" aria-expanded="${!sidebarCollapsed}">
-        ${icon(sidebarCollapsed?'right':'left')}
+      <button type="button" class="icon-button sidebar-collapse-btn" data-action="toggle-sidebar" aria-label="Plegar o desplegar el menú">
+        ${icon('left')}
       </button>
     </div>
     <div class="brand-rule"></div>
-    ${exLibrisBadge(setup,entries.length)}
-    <nav class="sidebar-nav" aria-label="Navegación principal">${navGroups()}</nav>
-    <div class="sidebar-bottom">
-      <div class="local-note">${icon('lock')}<div><strong>Guardado en tu dispositivo</strong>${setup.name?`Cuaderno de ${esc(setup.name)}.`:'Sin cuentas ni servidores externos.'}</div></div>
+    <div id="ex-libris-slot">${exLibrisBadge(setup,entries.length)}</div>
+    <div class="nav-wrap">
+      <span class="nav-rail" aria-hidden="true"></span>
+      <nav class="sidebar-nav" id="sidebar-nav" aria-label="Navegación principal">${navGroups()}</nav>
     </div>
+    <div class="sidebar-bottom" id="sidebar-bottom">${sidebarBottom()}</div>
   </aside>
   <div class="shell">
     <header class="topbar">
       <div class="topbar-left">
-        <button class="icon-button ghost mobile-menu" data-action="menu" aria-label="Abrir navegación" aria-expanded="${menu}">${icon('menu')}</button>
-        <button class="icon-button ghost desktop-sidebar-toggle" data-action="toggle-sidebar" title="${sidebarCollapsed?'Desplegar menú (Ctrl+B)':'Plegar menú (Ctrl+B)'}" aria-label="Alternar barra lateral">${icon('sidebar')}</button>
-        <span class="breadcrumb">${setup.name?`Cuaderno de ${esc(setup.name)}`:'Diario'} <span>/</span> ${esc(pageName(view))}</span>
+        <button class="icon-button ghost mobile-menu" data-action="menu" aria-label="Abrir navegación" aria-expanded="false">${icon('menu')}</button>
+        <button class="icon-button ghost desktop-sidebar-toggle" data-action="toggle-sidebar" aria-label="Alternar barra lateral">${icon('sidebar')}</button>
+        <span class="breadcrumb"><span id="breadcrumb-owner">${setup.name?`Cuaderno de ${esc(setup.name)}`:'Diario'}</span> <span>/</span> <span id="breadcrumb-view">${esc(pageName(view))}</span></span>
       </div>
       <div class="topbar-right">
-        <button type="button" class="sea-quick ${shoreQueue(thoughts).some(t=>t.seen!==true)?'has-new':''}" data-view="thoughts" title="Pensamientos en el mar">
+        <span id="draft-chip-slot"></span>
+        <button type="button" id="sea-quick" class="sea-quick" data-view="thoughts" title="Pensamientos en el mar">
           ${icon('wave')}
-          <span>${shoreQueue(thoughts).length||groupBottles(thoughts).drifting.length||''}</span>
+          <span id="sea-quick-count"></span>
         </button>
-        <button type="button" class="theme-pill" data-action="cycle-theme" title="Cambiar papel e icono (${esc(currentThemeObj.name)})">
-          <span class="topbar-favicon-mini">${generateThemeFaviconSvg(setup.theme,setup)}</span>
-          <span>${esc(currentThemeObj.name)}</span>
+        <button type="button" id="theme-pill" class="theme-pill" data-action="cycle-theme">
+          <span class="topbar-favicon-mini" id="theme-pill-favicon">${generateThemeFaviconSvg(setup.theme,setup)}</span>
+          <span id="theme-pill-label"></span>
         </button>
-        <button type="button" class="avatar" data-action="open-setup-wizard" title="Personalizar mi perfil, edad y gustos" aria-label="Personalizar mi perfil">
-          ${setup.name?`<span class="avatar-initial">${esc(setup.name.slice(0,1).toUpperCase())}</span>`:icon('user')}
-        </button>
+        <button type="button" class="avatar" id="avatar-slot" data-action="open-setup-wizard" title="Personalizar mi perfil, edad y gustos" aria-label="Personalizar mi perfil"></button>
       </div>
     </header>
-    <main id="main" class="${turnClass}">
-      ${storageError?`<div class="error-banner" role="alert">${esc(storageError)}</div>`:''}
-      ${page()}
-    </main>
-    ${mobileTabs()}
+    <main id="main"></main>
+    <div class="tabbar-wrap">
+      <span class="tabbar-rail" aria-hidden="true"></span>
+      <nav class="tabbar" id="tabbar" aria-label="Navegación inferior">${mobileTabs()}</nav>
+    </div>
     <footer class="page-footer">
-      <span>${icon('leaf')} ${esc(setup.motto||'Un día a la vez.')}</span>
-      <span>${setup.name?`Cuaderno de ${esc(setup.name)}`:'Guardado localmente en este navegador'}</span>
+      <span id="footer-motto">${icon('leaf')} ${esc(setup.motto||'Un día a la vez.')}</span>
+      <span id="footer-owner">${setup.name?`Cuaderno de ${esc(setup.name)}`:'Guardado localmente en este navegador'}</span>
     </footer>
   </div>
-  <div id="floating-save" class="floating-save-bar ${dirty?'is-visible':''}" aria-live="polite">
-    <span>${icon('pen')} Cambios sin guardar</span>
+  <div id="floating-save" class="floating-save-bar" aria-live="polite">
+    <span id="floating-save-text">${icon('pen')} Cambios sin guardar</span>
     <button type="button" class="button solid small-btn" data-action="quick-save">${icon('stamp')} Guardar</button>
   </div>
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="stamp" aria-hidden="true"></div>
   <dialog id="modal"></dialog>`;
+}
+
+function sidebarBottom(){
+  const pend=pendingDrafts();
+  return `<div class="local-note">${icon('lock')}<div><strong>Guardado en tu dispositivo</strong>${setup.name?`Cuaderno de ${esc(setup.name)}.`:'Sin cuentas ni servidores externos.'}</div></div>
+    <div class="save-note ${pend.total?'has-pending':''}" id="save-note">
+      <span class="save-dot" data-state="${saveState}"></span>
+      <div>
+        <strong>${saveNoteTitle()}</strong>
+        <small>${esc(saveNoteDetail())}</small>
+      </div>
+    </div>`;
+}
+
+function saveNoteTitle(){
+  if(storageError)return 'Sin guardar';
+  switch(saveState){
+    case 'typing':case 'saving':return 'Guardando…';
+    case 'draft':return 'Borrador a salvo';
+    case 'error':return 'No se pudo guardar';
+    default:return saveAt?`Guardado ${timeAgo(saveAt)}`:'Todo guardado';
+  }
+}
+function saveNoteDetail(){
+  const pend=pendingDrafts();
+  if(saveState==='error')return 'Tus palabras siguen en el borrador de este navegador.';
+  if(saveState==='draft'&&pend.total)return `${pend.total} ${pend.total===1?'texto a medias':'textos a medias'} recuperables.`;
+  if(storageError)return 'Revisa el almacenamiento del navegador o descarga una copia.';
+  return 'Se guarda solo, sin nube ni cuentas.';
+}
+function timeAgo(isoOrMs){
+  const t=typeof isoOrMs==='number'?isoOrMs:Date.parse(isoOrMs);
+  if(!Number.isFinite(t))return '';
+  const mins=Math.round((Date.now()-t)/60000);
+  if(mins<1)return 'ahora mismo';
+  if(mins<60)return `hace ${mins} min`;
+  if(mins<60*24)return `hace ${Math.round(mins/60)} h`;
+  return `el ${new Date(t).toLocaleDateString('es-ES',{day:'numeric',month:'short'})}`;
+}
+
+function initShell(){
+  bindDraftListeners();
+  const sidebar=app.querySelector('.sidebar');
+  if(sidebar){
+    sidebar.classList.add('is-mounting');
+    setTimeout(()=>sidebar.classList.remove('is-mounting'),900);
+  }
+  window.addEventListener('resize',()=>positionRails());
+  document.fonts?.ready?.then(()=>positionRails());
+}
+
+/* El indicador de sección se desliza: es un elemento persistente que se recoloca. */
+function positionRails(){
+  const nav=app.querySelector('.nav-wrap');
+  const rail=app.querySelector('.nav-rail');
+  if(nav&&rail){
+    const active=nav.querySelector('.nav-item.active')||nav.querySelector('.nav-item');
+    if(active){
+      rail.style.setProperty('--rail-y',`${active.offsetTop}px`);
+      rail.style.setProperty('--rail-h',`${active.offsetHeight}px`);
+      rail.classList.add('is-ready');
+    }
+  }
+  const bar=app.querySelector('#tabbar');
+  const tabRail=app.querySelector('.tabbar-rail');
+  if(bar&&tabRail){
+    const active=bar.querySelector('.tabbar-item.active')||bar.querySelector('.tabbar-item');
+    if(active){
+      tabRail.style.setProperty('--rail-x',`${active.offsetLeft}px`);
+      tabRail.style.setProperty('--rail-w',`${active.offsetWidth}px`);
+      tabRail.classList.add('is-ready');
+    }
+  }
+}
+
+function syncShell(){
+  const themeObj=THEMES.find(t=>t.id===setup.theme)||THEMES[0];
+  const sidebar=app.querySelector('.sidebar');
+  const backdrop=app.querySelector('.sidebar-backdrop');
+  const menuBtn=app.querySelector('.mobile-menu');
+  if(sidebar){
+    sidebar.classList.toggle('is-open',menu);
+    sidebar.classList.toggle('is-collapsed',sidebarCollapsed);
+    sidebar.classList.toggle('is-ready',true);
+  }
+  if(backdrop)backdrop.classList.toggle('is-visible',menu);
+  if(menuBtn)menuBtn.setAttribute('aria-expanded',String(menu));
+  for(const sel of ['.sidebar-collapse-btn','.desktop-sidebar-toggle']){
+    const btn=app.querySelector(sel);
+    if(!btn)continue;
+    btn.title=`${sidebarCollapsed?'Desplegar menú (Ctrl+B)':'Plegar menú (Ctrl+B)'}`;
+    btn.setAttribute('aria-expanded',String(!sidebarCollapsed));
+  }
+  const collapseIcon=app.querySelector('.sidebar-collapse-btn .icon');
+  if(collapseIcon)collapseIcon.outerHTML=icon(sidebarCollapsed?'right':'left');
+
+  app.querySelectorAll('#sidebar-nav .nav-item, #tabbar .tabbar-item').forEach(btn=>{
+    const on=btn.dataset.view===view;
+    btn.classList.toggle('active',on);
+    if(on)btn.setAttribute('aria-current','page');else btn.removeAttribute('aria-current');
+  });
+
+  const arrivals=shoreQueue(thoughts);
+  const unseen=arrivals.some(t=>t.seen!==true);
+  app.querySelectorAll('[data-view="thoughts"] .nav-badge').forEach(el=>{
+    el.textContent=arrivals.length;
+    el.hidden=!arrivals.length;
+    el.classList.toggle('is-new',unseen);
+  });
+  const quick=app.querySelector('#sea-quick');
+  if(quick){
+    quick.classList.toggle('has-new',unseen);
+    const count=app.querySelector('#sea-quick-count');
+    if(count)count.textContent=`${arrivals.length||groupBottles(thoughts).drifting.length||''}`;
+  }
+  const exSlot=app.querySelector('#ex-libris-slot');
+  if(exSlot)exSlot.innerHTML=exLibrisBadge(setup,entries.length);
+  const bottom=app.querySelector('#sidebar-bottom');
+  if(bottom)bottom.innerHTML=sidebarBottom();
+  const owner=app.querySelector('#breadcrumb-owner');
+  if(owner)owner.textContent=setup.name?`Cuaderno de ${setup.name}`:'Diario';
+  const crumb=app.querySelector('#breadcrumb-view');
+  if(crumb)crumb.textContent=pageName(view);
+  const pillLabel=app.querySelector('#theme-pill-label');
+  if(pillLabel)pillLabel.textContent=themeObj.name;
+  const pill=app.querySelector('#theme-pill');
+  if(pill)pill.title=`Cambiar papel e icono (${themeObj.name})`;
+  const fav=app.querySelector('#theme-pill-favicon');
+  if(fav)fav.innerHTML=generateThemeFaviconSvg(setup.theme,setup);
+  const avatar=app.querySelector('#avatar-slot');
+  if(avatar)avatar.innerHTML=setup.name?`<span class="avatar-initial">${esc(setup.name.slice(0,1).toUpperCase())}</span>`:icon('user');
+  const motto=app.querySelector('#footer-motto');
+  if(motto)motto.innerHTML=`${icon('leaf')} ${esc(setup.motto||'Un día a la vez.')}`;
+  const footerOwner=app.querySelector('#footer-owner');
+  if(footerOwner)footerOwner.textContent=setup.name?`Cuaderno de ${setup.name}`:'Guardado localmente en este navegador';
+  syncDraftChip();
+  positionRails();
+}
+
+function render(opts={}){
+  const run=()=>{
+    applyTheme(setup.theme,setup);
+    if(!shellMounted){
+      app.innerHTML=shell();
+      shellMounted=true;
+      initShell();
+    }
+    renderPage(opts);
+    syncShell();
+  };
+  /* La API de transiciones de vista hace el fundido entre páginas sin trampa ni cartón. */
+  if(opts.transition&&motionOn&&typeof document.startViewTransition==='function'){
+    document.startViewTransition(run);
+  }else{
+    run();
+  }
+}
+
+function renderPage(opts={}){
+  const main=document.querySelector('#main');
+  if(!main)return;
+  if(view==='thoughts')primeBottleDraft();
+  const viewChanged=lastView!==view;
+  const keepScroll=window.scrollY;
+  const turnClass=pageTurnDir?`page-turn-${pageTurnDir}`:(viewChanged?'view-enter':'');
+  pageTurnDir='';
+  main.innerHTML=`
+    ${storageError?`<div class="error-banner" role="alert">${esc(storageError)}</div>`:''}
+    ${page()}`;
+  main.className=`${turnClass}`;
+  if(viewChanged||pageTurnDir){
+    main.classList.remove('view-enter');
+    void main.offsetWidth;
+    main.classList.add('view-enter');
+    staggerCards(main);
+  }
   bindForm();
   bindOceanForm();
   bindRoutineForm();
+  restoreAfterRender();
+  if(viewChanged){
+    lastView=view;
+    window.scrollTo({top:0,behavior:opts.instant?'auto':'smooth'});
+  }else if(keepScroll){
+    window.scrollTo(0,keepScroll);
+  }
+  syncSaveIndicators();
+}
+
+/* Entrada escalonada de las tarjetas: solo al cambiar de vista. */
+function staggerCards(main){
+  if(!motionOn)return;
+  const cards=[...main.querySelectorAll('.page-heading, .sea-panel, .card, .forecast-card, .day-hero')].slice(0,12);
+  cards.forEach((c,i)=>{
+    c.style.setProperty('--enter-i',i);
+    c.classList.add('is-entering');
+    setTimeout(()=>c.classList.remove('is-entering'),520+i*55);
+  });
 }
 
 function pageHeader(eyebrow,title,subtitle,action=''){
@@ -253,7 +471,8 @@ function hero(e,profile){
             :atSea?`<button type="button" class="chip chip-link" data-view="thoughts">${icon('wave')} ${atSea} en el mar</button>`
             :`<button type="button" class="chip chip-link" data-view="thoughts">${icon('pen')} Echar un pensamiento al mar</button>`}
           ${profile.interests.slice(0,2).map(i=>`<span class="chip personal-interest-chip">${icon(i.icon)} ${esc(i.label.split(' ')[0])}</span>`).join('')}
-          ${e?`<span class="entry-status">${icon('check')} Guardado</span>`:`<span class="entry-status pending">Borrador</span>`}
+          ${e?`<span class="entry-status">${icon('check')} Escrito en el cuaderno</span>`:`<span class="entry-status pending">Aún sin cerrar</span>`}
+          <span class="save-status" data-save-status>${saveStatusHtml()}</span>
         </div>
       </div>
     </div>
@@ -339,7 +558,8 @@ function diaryPage(){
   <div id="crisis-alert-slot">${crisisBanner(risk,setup)}</div>
   <div class="diary-layout ${focusWriting?'is-focus-writing':''}">
     <div class="diary-main">
-      <form id="diary-form" style="${moodColor?`--active-mood:${moodColor}`:''}">
+      <form id="diary-form" style="${moodColor?`--active-mood:${moodColor}`:''}" autocomplete="off">
+        <div id="entry-draft-slot" data-live="1"></div>
 
         <!-- 1 · CAPTURA RÁPIDA -->
         <section class="card mood-card-section quick-capture" style="--i:1">
@@ -512,6 +732,7 @@ function thoughtsPage(){
     <span class="count-badge">${thoughts.length} ${thoughts.length===1?'botella':'botellas'} en tu mar</span>
   `)}
   ${seaPanel(thoughts,today)}
+  ${seaForecastStrip(seaForecast({today,bottles:thoughts,days:14}))}
   <div class="tide-rule-wrap is-after-sea">${tideRule()}</div>
   <div class="ocean-layout">
     <div class="ocean-main">
@@ -524,6 +745,7 @@ function thoughtsPage(){
       <div id="ocean-body" class="tab-panel-enter">${oceanTabBody(groups,today)}</div>
     </div>
     <aside class="ocean-aside">
+      ${seaPartCard(today,thoughts)}
       ${tideCard(today)}
       ${seaRulesCard(groups,today)}
       ${oceanLedger(thoughts,today)}
@@ -531,12 +753,20 @@ function thoughtsPage(){
   </div>`;
 }
 
+function groupsForFilter(){
+  const today=dateKey();
+  return thoughts.filter(b=>arrivalDateOf(b)===oceanFilter&&fateOf(b,today)==='drifting');
+}
 function oceanTabBody(groups,today){
-  if(!thoughts.length)return emptySea();
+  if(!thoughts.length)return emptySea(thoughtsTab);
   const map={shore:groups.returned,sea:groups.drifting,kept:groups.kept,lost:groups.lost};
-  const list=map[thoughtsTab]??groups.returned;
-  if(!list.length)return oceanEmptyFor(thoughtsTab);
-  return `<div class="bottle-grid">${list.map((b,i)=>bottleCard(b,today,i)).join('')}</div>`;
+  let list=map[thoughtsTab]??groups.returned;
+  if(oceanFilter){
+    list=list.filter(b=>arrivalDateOf(b)===oceanFilter||b.lostOn===oceanFilter);
+    if(!list.length)return oceanEmptyFor(thoughtsTab);
+  }
+  const chip=oceanFilter?`<div class="filter-chip">${icon('calendar')} Botellas que tocan tierra el ${esc(longDate(oceanFilter,{day:'numeric',month:'long'}))}<button type="button" class="text-button" data-action="clear-sea-filter">${icon('close')} Quitar el filtro</button></div>`:'';
+  return `${chip}<div class="bottle-grid">${list.map((b,i)=>bottleCard(b,today,i)).join('')}</div>`;
 }
 
 function oceanEmptyFor(tab){
@@ -575,9 +805,10 @@ function seaRulesCard(groups,today){
     <p class="section-index">${icon('compass')} Cómo funciona</p>
     <ol class="sea-rules-list">
       <li><b>Escribe</b> un pensamiento suelto: una duda, un deseo, una rabia, una frase que no va a ningún sitio.</li>
+      <li><b>Mira el parte.</b> El clima del día en que la sueltas no es decorado: con viento a favor entra en la primera pleamar; con temporal o viento de tierra se queda fuera uno o dos días más.</li>
       <li><b>Elige el mar.</b> Cuanto más lejos lo lances, más tarda y más fácil es que no regrese.</li>
-      <li><b>El azar se calcula aquí.</b> Sale de tus propias palabras y de la fecha; no hay servidores, ni cuentas, ni IA.</li>
-      <li><b>Espérate a la marea.</b> En marea viva puede aparecer en la orilla; tú decides si la abres o la vuelves a lanzar.</li>
+      <li><b>El azar se calcula aquí.</b> Sale de tus propias palabras, del día y del mar elegido; no hay servidores, ni cuentas, ni IA.</li>
+      <li><b>Espérate a la marea.</b> Solo vuelve en marea viva. Tú decides si la abres, la anclas o la vuelves a lanzar; si se hundió, se quedó perdida para siempre (aunque se puede leer).</li>
     </ol>
     ${nearest?`<p class="sea-rules-now">${icon('wave')} <span>La más cercana: <b>${esc(seaById(nearest.sea).label.toLowerCase())}</b>, ${eta.total-eta.atSea<=1?'a un día de la orilla':`${eta.total-eta.atSea} días por delante`}.</span></p>`:'<p class="sea-rules-now"><span>Nada en el agua ahora mismo.</span></p>'}
   </section>`;
@@ -1163,8 +1394,10 @@ function bindRoutineForm(){
   const textarea=document.querySelector('#routine-tomorrow');
   if(!textarea)return;
   textarea.addEventListener('change',commitTomorrowFromDom);
+  textarea.addEventListener('input',()=>draftDebounce('manana',commitTomorrowFromDom,500));
   document.querySelectorAll('#routine-goals .task-input').forEach(inp=>{
     inp.addEventListener('change',commitTomorrowFromDom);
+    inp.addEventListener('input',()=>draftDebounce('manana-tarea',commitTomorrowFromDom,600));
     inp.addEventListener('keydown',event=>{
       if(event.key==='Enter'){event.preventDefault();commitTomorrowFromDom();render();}
       if(event.key==='Escape')render();
@@ -1213,6 +1446,21 @@ function commitHabitName(id,value){
   toast('Hábito renombrado');
 }
 
+/* Pequeño destello en la casilla recién marcada, para que se vea el efecto del clic. */
+function flashHabit(id){
+  if(!motionOn)return;
+  const row=document.querySelector(`.habit-toggle[data-habit="${id}"]`);
+  if(row){
+    row.classList.add('is-flashed');
+    setTimeout(()=>row.classList.remove('is-flashed'),700);
+  }
+  const cell=document.querySelector(`.momentum-cell[data-habit="${id}"]`);
+  if(cell){
+    cell.classList.add('is-flashed');
+    setTimeout(()=>cell.classList.remove('is-flashed'),700);
+  }
+}
+
 function syncNavBadges(){
   const arrivals=shoreQueue(thoughts);
   const count=arrivals.length;
@@ -1238,7 +1486,9 @@ function openBottle(id){
     thoughts=updateThought(id,{seen:true});
     syncNavBadges();
   }
-  const modal=showModal(bottleModal(bottle,dateKey(),setup));
+  const replyDraft=bottle.reply?'':(draftData(DRAFT_SCOPES.reply(id))?.text||'');
+  const modal=showModal(bottleModal({...bottle,replyDraft},dateKey(),setup));
+  playModalUncork(modal);
   const again=()=>{modal.close();render();};
   modal.onclick=event=>{
     const act=event.target.closest('[data-modal]')?.dataset.modal;
@@ -1247,12 +1497,16 @@ function openBottle(id){
     if(act==='reply'){
       const value=(modal.querySelector('#bottle-reply')?.value||'').trim();
       if(!value){toast('Escribe primero lo que quieres contestarte.',true);return;}
-      thoughts=updateThought(id,{reply:value,seen:true});
+      draftCancel(`respuesta:${id}`);
+      thoughts=updateThought(id,{reply:value,seen:true,repliedAt:new Date().toISOString()});
+      clearDraft(DRAFT_SCOPES.reply(id));
       modal.close();render();openBottle(id);
       toast('Le has respondido a tu yo de entonces');
       return;
     }
     if(act==='reply-clear'){
+      draftCancel(`respuesta:${id}`);
+      clearDraft(DRAFT_SCOPES.reply(id));
       thoughts=updateThought(id,{reply:''});
       modal.close();render();openBottle(id);
       return;
@@ -1302,23 +1556,35 @@ function bottleToEntry(bottle){
   view='diary';
 }
 
-function sailBottleAway(bottle){
-  let layer=document.querySelector('#ocean-fx');
-  if(!layer){
-    layer=document.createElement('div');
-    layer.id='ocean-fx';
-    layer.className='ocean-fx';
-    document.body.appendChild(layer);
+/* El momento del chapuzón: arco, golpe de agua, ondas y la superficie agitándose. */
+function playCastSplash(bottle){
+  const layerHost=document.querySelector('#ocean-fx')||document.body;
+  if(layerHost===document.body){
+    const created=document.createElement('div');
+    created.id='ocean-fx';
+    created.className='ocean-fx';
+    document.body.appendChild(created);
   }
-  const composer=document.querySelector('#bottle-form');
-  const rect=composer?.getBoundingClientRect();
+  const layer=document.querySelector('#ocean-fx');
+  const target=document.querySelector('.sea-panel')||document.querySelector('#bottle-form');
+  const rect=target?.getBoundingClientRect();
   const el=document.createElement('div');
-  el.className='sail-away';
-  el.innerHTML=`<span class="sail-bottle">${bottleGlyph(bottle)}</span>`;
-  el.style.left=`${Math.round((rect?.left||80)+52)}px`;
-  el.style.top=`${Math.round((rect?.top||160)+40)}px`;
+  el.className='splash-wrap';
+  el.innerHTML=castSplash(bottle);
+  if(rect){
+    el.style.setProperty('--to-x',`${Math.round(rect.left+rect.width*.5)}px`);
+    el.style.setProperty('--to-y',`${Math.round(rect.top+rect.height*.42)}px`);
+  }
   layer.appendChild(el);
-  setTimeout(()=>el.remove(),1500);
+  document.documentElement.classList.add('is-casting');
+  setTimeout(()=>document.documentElement.classList.remove('is-casting'),1400);
+  setTimeout(()=>el.remove(),motionOn?1500:60);
+}
+function playModalUncork(modal){
+  const card=modal.querySelector('.bottle-modal');
+  if(!card||!motionOn)return;
+  card.classList.add('is-uncorking');
+  setTimeout(()=>card.classList.remove('is-uncorking'),1100);
 }
 
 function castBottle(form){
@@ -1331,11 +1597,19 @@ function castBottle(form){
     const id=crypto.randomUUID();
     thoughts=saveThought({id,text:value,mood:moodRaw?+moodRaw:null,sea,castAt:dateKey()});
     const bottle=thoughts.find(t=>t.id===id);
+    draftCancel('botella');
+    clearDraft(DRAFT_SCOPES.bottle());
     bottleDraft={text:'',mood:null,sea};
+    bottleDraftRestored='';
     thoughtsTab='sea';
-    sailBottleAway(bottle||{});
-    setTimeout(()=>render(),950);
-    toast(bottle?`Botella al mar · la orilla la espera hacia el ${longDate(bottle.arriveOn,{day:'numeric',month:'long'})}`:'Botella al mar');
+    oceanFilter='';
+    playCastSplash(bottle||{});
+    setSaveState('saved');
+    setTimeout(()=>render(),motionOn?1150:0);
+    const part=weatherOf(dateKey());
+    toast(bottle
+      ?`Botella al mar${bottle.push?` · el ${part.weather.short} la retiene ${bottle.push} ${bottle.push===1?'día':'días'}`:''} · la orilla la espera hacia el ${longDate(bottle.arriveOn,{day:'numeric',month:'long'})}`
+      :'Botella al mar');
   }catch(err){toast(err.message||'No se pudo echar la botella al mar.',true);}
 }
 
@@ -1353,8 +1627,18 @@ function bindOceanForm(){
     };
     if(words)words.textContent=`${countWords(text?.value||'')} palabras`;
   };
-  text?.addEventListener('input',sync);
-  form.addEventListener('change',sync);
+  const submit=form.querySelector('button[type="submit"]');
+  const arm=()=>{
+    if(!submit)return;
+    const has=Boolean((text?.value||'').trim());
+    submit.disabled=!has;
+    submit.classList.toggle('is-armed',has);
+  };
+  sync();
+  arm();
+  text?.addEventListener('input',()=>{sync();arm();});
+  form.addEventListener('change',()=>{sync();arm();});
+  if(document.activeElement===text&&text.value)text.setSelectionRange(text.value.length,text.value.length);
   form.addEventListener('submit',event=>{
     event.preventDefault();
     castBottle(form);
@@ -1374,6 +1658,504 @@ function requestDeleteBottle(id){
     render();
     toast('Botella rota');
   });
+}
+
+/* ============================================================
+   EL GUARDADO — que nada se quede a medias
+   ------------------------------------------------------------
+   Dos capas:
+   1. Borrador local (diario.drafts.v1): cada tecla guarda lo escrito,
+      con su hora. Si cierras la pestaña, al volver sigue ahí.
+   2. Autoguardado de la entrada: tras un rato sin teclear, el día se
+      escribe solo en el cuaderno (nunca si está vacío).
+   ============================================================ */
+const ENTRY_TEXT_FIELDS=['generalDay','bestOfDay','differentToday','capsule','wordOfDay','tomorrow','gratitude0','gratitude1','gratitude2','tagCustom'];
+const draftTimers=new Map();
+let bottleDraftRestored='',autosavePending=false;
+
+function draftCancel(key){
+  const timer=draftTimers.get(key);
+  if(timer){clearTimeout(timer);draftTimers.delete(key);}
+}
+function draftCancelAll(matcher){
+  for(const key of [...draftTimers.keys()]){if(matcher(key)){draftCancel(key);}}
+}
+function draftDebounce(key,fn,ms=460){
+  clearTimeout(draftTimers.get(key));
+  draftTimers.set(key,setTimeout(()=>{draftTimers.delete(key);fn();},ms));
+}
+function draftFlushNow(key,fn){
+  if(draftTimers.has(key)){clearTimeout(draftTimers.get(key));draftTimers.delete(key);fn();}
+}
+function entryScope(){return DRAFT_SCOPES.entry(selected);}
+
+function rawFormValues(form){
+  const out={};
+  if(!form)return out;
+  for(const name of ENTRY_TEXT_FIELDS){
+    const el=form.querySelector(`[name="${name}"]`);
+    if(el&&typeof el.value==='string')out[name]=el.value;
+  }
+  for(const name of ['mood','energy','stress']){
+    const el=form.querySelector(`[name="${name}"]:checked`);
+    if(el)out[name]=Number(el.value);
+  }
+  for(const name of ['sleepHours','studyHours']){
+    const el=form.querySelector(`[name="${name}"]`);
+    if(el&&el.value!=='')out[name]=Number(el.value);
+  }
+  const tags=[...form.querySelectorAll('[name="tags"]:checked')].map(e=>e.value);
+  if(tags.length)out.tags=tags;
+  const counters={};
+  for(const el of form.querySelectorAll('[name^="counter_"]'))counters[el.name.slice(8)]=Number(el.value)||0;
+  if(Object.keys(counters).length)out.counters=counters;
+  const habitsOn={};
+  for(const el of form.querySelectorAll('[name^="habit_"]'))habitsOn[el.name.slice(6)]=el.checked;
+  if(Object.keys(habitsOn).length)out.habits=habitsOn;
+  const goals=[...form.querySelectorAll('[name="goal"]')].map(e=>e.value).filter(v=>v.trim());
+  if(goals.length)out.goals=goals;
+  return out;
+}
+
+/* ¿El formulario dice hoy lo mismo que el cuaderno? Entonces no hay borrador. */
+function entryMatchesStored(values){
+  const stored=entries.find(x=>x.date===selected);
+  if(!stored)return !Object.keys(values).length;
+  for(const key of ENTRY_TEXT_FIELDS){
+    if(!(key in values))continue;
+    let had='';
+    if(key.startsWith('gratitude'))had=(stored.gratitude||[])[+key.slice(9)]||'';
+    else if(key==='tagCustom')continue;
+    else had=stored[key]??'';
+    if(String(values[key]??'').trim()!==String(had).trim())return false;
+  }
+  for(const key of ['mood','energy','stress','sleepHours','studyHours']){
+    if(values[key]===undefined)continue;
+    const storedVal=stored[key];
+    if(storedVal===null||storedVal===undefined){if(Number(values[key])!==0&&values[key]!==3)return false;continue;}
+    if(Number(values[key])!==Number(storedVal))return false;
+  }
+  const storedCounters=stored.counters||{};
+  for(const [k,v] of Object.entries(values.counters||{})){
+    if(Number(v)!==Number(storedCounters[k]||0))return false;
+  }
+  const storedHabits=stored.habits||{};
+  for(const [k,v] of Object.entries(values.habits||{})){
+    if(Boolean(v)!==Boolean(storedHabits[k]))return false;
+  }
+  if((stored.tags||[]).slice().sort().join('|')!==(values.tags||[]).slice().sort().join('|'))return false;
+  if((stored.goals||[]).join('|')!==(values.goals||[]).join('|'))return false;
+  return true;
+}
+
+function captureEntryDraft(){
+  const form=document.querySelector('#diary-form');
+  if(!form)return;
+  const values=rawFormValues(form);
+  if(entryMatchesStored(values)){
+    const had=clearDraft(entryScope());
+    if(had)setSaveState('saved');
+    else setSaveState(saveState==='typing'?'saved':saveState);
+    renderDraftSlot();
+    return;
+  }
+  const meta=setDraft(entryScope(),values);
+  if(meta&&!meta.ok)setSaveState('error');
+  else if(meta)setSaveState('draft');
+  renderDraftSlot();
+}
+
+function captureBottleDraft(){
+  const form=document.querySelector('#bottle-form');
+  if(!form)return;
+  const meta=setDraft(DRAFT_SCOPES.bottle(),{
+    text:form.querySelector('#bottle-text')?.value||'',
+    mood:+(form.querySelector('[name="mood"]:checked')?.value||0)||null,
+    sea:form.querySelector('[name="sea"]:checked')?.value||'breeze'
+  });
+  if(meta&&!meta.ok)setSaveState('error');
+}
+
+function captureReplyDraft(id,el){
+  if(!el||!document.contains(el))return;   // el modal ya se cerró: nada que guardar
+  setDraft(DRAFT_SCOPES.reply(id),{text:el.value||''});
+}
+
+function onEntryEdit(){
+  setSaveState('typing');
+  draftDebounce('entrada',captureEntryDraft,420);
+  draftDebounce('autosave',()=>commitEntry({silent:true}),2400);
+}
+function onBottleEdit(){
+  const form=document.querySelector('#bottle-form');
+  if(!form)return;
+  const text=form.querySelector('#bottle-text');
+  bottleDraft={
+    text:text?.value||'',
+    mood:+(form.querySelector('[name="mood"]:checked')?.value||0)||null,
+    sea:form.querySelector('[name="sea"]:checked')?.value||'breeze'
+  };
+  setSaveState('typing');
+  draftDebounce('botella',captureBottleDraft,380);
+}
+function captureSetupDraft(){
+  const form=document.querySelector('#setup-page-form');
+  if(!form)return;
+  const data={};
+  for(const el of form.querySelectorAll('textarea,input[type="text"],input:not([type])')){
+    if(!el.name)continue;
+    data[el.name]=el.value;
+  }
+  const quotes=form.querySelector('#new-custom-quote');
+  if(quotes?.value)data.customQuote=quotes.value;
+  setDraft(DRAFT_SCOPES.setup(),data);
+}
+function onSetupEdit(){
+  draftDebounce('perfil',captureSetupDraft,700);
+}
+
+function bindDraftListeners(){
+  app.addEventListener('input',event=>{
+    const el=event.target;
+    if(!el||!el.closest)return;
+    if(el.closest('#diary-form')){onEntryEdit();return;}
+    if(el.closest('#bottle-form')){onBottleEdit();return;}
+    if(el.closest('#setup-page-form')){onSetupEdit();return;}
+    if(el.id==='bottle-reply'&&el.closest('#modal')){
+      const id=el.closest('[data-modal-bottle]')?.dataset.modalBottle;
+      if(id)draftDebounce(`respuesta:${id}`,()=>captureReplyDraft(id,el),360);
+    }
+  });
+  app.addEventListener('change',event=>{
+    const el=event.target;
+    if(!el||!el.closest)return;
+    if(el.closest('#diary-form'))onEntryEdit();
+    if(el.closest('#bottle-form'))onBottleEdit();
+  });
+  /* Al irse, cerrar la pestaña o cambiar de app: se guarda lo último sin preguntar. */
+  window.addEventListener('pagehide',flushAllDrafts);
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushAllDrafts();});
+}
+function flushAllDrafts(){
+  draftFlushNow('entrada',captureEntryDraft);
+  draftFlushNow('botella',captureBottleDraft);
+  draftFlushNow('manana',commitTomorrowFromDom);
+  draftFlushNow('manana-tarea',commitTomorrowFromDom);
+  for(const [key,timer] of [...draftTimers.entries()]){
+    if(key.startsWith('respuesta:')){clearTimeout(timer);draftTimers.delete(key);}
+  }
+  if(document.querySelector('#diary-form')&&!autosavePending&&saveState==='draft')commitEntry({silent:true,final:true});
+}
+
+/* ---------- recuperar lo escrito a medias ---------- */
+function restoreAfterRender(){
+  restoreEntryDraft();
+  renderDraftSlot();
+}
+function applyToField(form,name,value){
+  if(value===undefined||value===null)return;
+  const el=form.querySelector(`[name="${name}"]`);
+  if(!el)return;
+  if(el.type==='radio'){
+    const target=form.querySelector(`[name="${name}"][value="${value}"]`);
+    if(target)target.checked=true;
+    return;
+  }
+  el.value=Array.isArray(value)?value.join('\n'):value;
+}
+function restoreEntryDraft(){
+  const form=document.querySelector('#diary-form');
+  if(!form)return;
+  const stored=entries.find(x=>x.date===selected);
+  if(!draftIsNewer(entryScope(),stored?.updatedAt))return;
+  const data=draftData(entryScope());
+  if(!data)return;
+  for(const key of ENTRY_TEXT_FIELDS)applyToField(form,key,data[key]);
+  for(const key of ['mood','energy','stress','sleepHours','studyHours']){
+    if(data[key]!==undefined)applyToField(form,key,data[key]);
+  }
+  if(Array.isArray(data.tags)){
+    form.querySelectorAll('[name="tags"]').forEach(box=>{box.checked=data.tags.includes(box.value);});
+  }
+  if(data.counters){
+    for(const [k,v] of Object.entries(data.counters)){
+      const input=form.querySelector(`[name="counter_${k}"]`);
+      if(input)input.value=v;
+    }
+  }
+  if(data.habits){
+    for(const [k,v] of Object.entries(data.habits)){
+      const box=form.querySelector(`[name="habit_${k}"]`);
+      if(box)box.checked=Boolean(v);
+    }
+  }
+  if(Array.isArray(data.goals)){
+    const rows=[...form.querySelectorAll('[name="goal"]')];
+    rows.forEach((row,i)=>{if(data.goals[i]!==undefined)row.value=data.goals[i];});
+  }
+  form.dispatchEvent(new Event('input',{bubbles:true}));
+  setSaveState('draft');
+}
+function renderDraftSlot(){
+  const slot=document.querySelector('#entry-draft-slot');
+  if(!slot)return;
+  const stored=entries.find(x=>x.date===selected);
+  const live=slot.dataset.live==='1';
+  if(!live&&!draftIsNewer(entryScope(),stored?.updatedAt)){slot.innerHTML='';return;}
+  const summary=draftSummary(entryScope());
+  if(!summary){slot.innerHTML='';return;}
+  slot.innerHTML=`<div class="draft-note ${live?'is-live':''}" role="status">
+    ${icon(live?'pen':'refresh')}
+    <span>${live
+      ?`Escribiendo: guardado <b>${esc(summary.when||'ahora mismo')}</b> · ${summary.words} palabras`
+      :`Recuperado de donde lo dejaste <b>${esc(summary.when)}</b> · ${summary.words} palabras`}</span>
+    <button type="button" class="text-button" data-action="commit-draft">${icon('stamp')} Dejarlo escrito ya</button>
+    <button type="button" class="text-button is-danger" data-action="discard-draft">${icon('close')} Descartar</button>
+  </div>`;
+}
+function primeBottleDraft(){
+  if(bottleDraft.text||bottleDraftRestored)return;
+  const data=draftData(DRAFT_SCOPES.bottle());
+  if(!data?.text)return;
+  bottleDraft={text:data.text,mood:data.mood||null,sea:data.sea||'breeze'};
+  bottleDraftRestored=draftSummary(DRAFT_SCOPES.bottle())?.when||'';
+}
+
+/* ---------- el autoguardado ---------- */
+function entryHasSubstance(values){
+  const words=ENTRY_TEXT_FIELDS
+    .map(k=>String(values[k]||''))
+    .join(' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+  if(words>3)return true;
+  if(Object.values(values.counters||{}).some(v=>Number(v)>0))return true;
+  if(Object.values(values.habits||{}).some(Boolean))return true;
+  if((values.tags||[]).length)return true;
+  if((values.gratitude0||'').trim()||(values.gratitude1||'').trim()||(values.gratitude2||'').trim())return true;
+  return false;
+}
+function commitEntry({silent=false,final=false}={}){
+  const form=document.querySelector('#diary-form');
+  if(!form||storageError)return false;
+  const values=rawFormValues(form);
+  if(silent&&!entryHasSubstance(values))return false;
+  autosavePending=true;
+  /* lo que había en el tintero del debounce ya no hace falta: se guarda ahora */
+  draftCancel('entrada');
+  draftCancel('autosave');
+  try{
+    const entry=validateForForm(collectForm(form));
+    entries=saveEntry(entry);
+    clearDraft(entryScope());
+    dirty=false;
+    setSaveState(silent?'autosaved':'saved');
+    syncHeroChips(entries.find(x=>x.date===selected));
+    if(!silent){
+      render();
+      showStamp();
+      toast('Día guardado');
+      document.querySelector('.daily-summary')?.classList.add('reveal');
+      const risk=detectCrisisRisk(entry);
+      if(risk.triggered&&risk.level==='high')setTimeout(()=>openCrisisModal('help'),550);
+    }else if(final){
+      /* La pestaña se cierra: el write sí o sí tiene que entrar. */
+      try{localStorage.setItem('diario.lastflush.v1',JSON.stringify({at:new Date().toISOString(),date:selected}));}catch{}
+    }
+    return true;
+  }catch(err){
+    setSaveState('error');
+    if(!silent)toast(err.message||'No se ha podido guardar este día.',true);
+    else if(!String(err.message||'').includes('Ese día'))toast('No he podido autoguardar; tu texto sigue a salvo en el borrador.',true);
+    return false;
+  }finally{
+    autosavePending=false;
+  }
+}
+function syncHeroChips(entry){
+  const stored=entry||entries.find(x=>x.date===selected);
+  const chip=document.querySelector('#hero-words-chip');
+  if(chip&&stored)chip.textContent=`${wordCount(stored)} palabras`;
+  const status=document.querySelector('.entry-status');
+  if(status){
+    status.textContent=stored?.updatedAt?`Autoguardado ${timeAgo(stored.updatedAt)}`:'Sin escribir todavía';
+    status.classList.remove('is-flash');
+    void status.offsetWidth;
+    status.classList.add('is-flash');
+  }
+  syncDraftChip();
+}
+
+/* ---------- indicadores ---------- */
+function setSaveState(next){
+  if(next==='saved'||next==='autosaved')saveAt=Date.now();
+  saveState=next;
+  syncSaveIndicators();
+}
+function saveStatusHtml(){
+  const map={
+    typing:['pen','Escribiendo…','is-working'],
+    saving:['save','Guardando…','is-working'],
+    draft:['paper','Borrador a salvo, sin enviar','is-draft'],
+    error:['close','Sin guardar · reintenta','is-error'],
+    autosaved:['check','Autoguardado','is-ok'],
+    idle:['check',saveAt?`Guardado ${timeAgo(saveAt)}`:'Todo guardado','is-ok']
+  };
+  const [name,text,cls]=map[saveState]||map.idle;
+  return `<span class="save-dot ${cls}"></span>${icon(name)}<span>${esc(text)}</span>`;
+}
+function syncSaveIndicators(){
+  document.querySelectorAll('[data-save-status]').forEach(el=>{
+    el.className=`save-status ${saveState==='draft'?'is-draft':''} ${saveState==='error'?'is-error':''} ${saveState==='typing'||saveState==='saving'?'is-working':''}`;
+    el.innerHTML=saveStatusHtml();
+  });
+  const note=document.querySelector('#save-note');
+  if(note){
+    note.outerHTML=`<div class="save-note ${pendingDrafts().total?'has-pending':''}" id="save-note">
+      <span class="save-dot ${saveState==='error'?'is-error':saveState==='draft'?'is-draft':'is-ok'}"></span>
+      <div><strong>${saveNoteTitle()}</strong><small>${esc(saveNoteDetail())}</small></div>
+    </div>`;
+  }
+  const bar=document.querySelector('#floating-save');
+  if(bar){
+    const show=saveState==='error'||dirty;
+    bar.classList.toggle('is-visible',show);
+    const text=document.querySelector('#floating-save-text');
+    if(text)text.innerHTML=saveState==='error'
+      ?`${icon('close')} El autoguardado falló · tu texto está en el borrador`
+      :`${icon('pen')} Cambios sin guardar`;
+  }
+  syncDraftChip();
+}
+function syncDraftChip(){
+  const slot=document.querySelector('#draft-chip-slot');
+  if(!slot)return;
+  const pend=pendingDrafts();
+  if(!pend.total){
+    if(slot.firstElementChild)slot.innerHTML='';
+    return;
+  }
+  slot.innerHTML=`<button type="button" class="draft-chip" data-action="show-drafts" title="${pend.total} ${pend.total===1?'texto a medias guardado':'textos a medias guardados'}">
+    ${icon('paper')}<span>${pend.total}</span>
+  </button>`;
+}
+
+/* ---------- el inventario de borradores ---------- */
+function draftBrief(d){
+  const text=Object.entries(d.data||{})
+    .filter(([,v])=>typeof v==='string')
+    .map(([,v])=>v)
+    .join(' ')
+    .replace(/\s+/g,' ')
+    .trim();
+  const words=text?text.split(/\s+/).length:0;
+  const minutes=draftMinutes(d.scope);
+  const when=minutes===null?'':minutes<1?'hace un momento':minutes<60?`hace ${minutes} min`:`el ${new Date(d.savedAt).toLocaleDateString('es-ES',{day:'numeric',month:'short'})}`;
+  return {
+    scope:d.scope,
+    label:draftLabel(d.scope),
+    words,
+    when,
+    preview:text?`«${text.slice(0,76)}${text.length>76?'…':''}»`:'(solo cifras y marcas)',
+    goto:d.scope.startsWith('entrada:')?d.scope.slice(8):''
+  };
+}
+function draftsModalHtml(){
+  const list=listDrafts().map(draftBrief);
+  const rows=list.length?list.map(d=>`
+    <li class="draft-row">
+      <div class="draft-row-main">
+        <strong>${esc(d.label)}</strong>
+        <small>${d.words} palabras · ${esc(d.when)} · ${esc(d.preview)}</small>
+      </div>
+      <div class="draft-row-actions">
+        ${d.goto?`<button type="button" class="text-button" data-modal="goto" data-date="${esc(d.goto)}">${icon('arrow')} Ir a recuperarlo</button>`:''}
+        <button type="button" class="text-button is-danger" data-modal="drop" data-scope="${esc(d.scope)}">${icon('close')} Descartar</button>
+      </div>
+    </li>`).join(''):`<li class="draft-row is-empty">${icon('check')} No hay nada a medias: todo está escrito ya en el cuaderno.</li>`;
+  return `<div class="modal-card drafts-modal">
+    <button type="button" class="icon-button ghost bottle-close" data-modal="close" aria-label="Cerrar">${icon('close')}</button>
+    <p class="eyebrow">${icon('paper')} Lo que se quedó a medias</p>
+    <h2>Ni una palabra perdida</h2>
+    <p class="modal-lead">Esto es lo que escribiste y todavía no está cerrado en el cuaderno. Se guarda solo en este dispositivo: nada viaja a ningún sitio.</p>
+    <ul class="draft-list">${rows}</ul>
+    <div class="modal-actions">
+      <button class="button outline" data-modal="close">Cerrar</button>
+      ${list.length?`<button class="button danger" data-modal="drop-all">${icon('trash')} Descartar todos</button>`:''}
+      <button class="button solid" data-modal="save-all">${icon('stamp')} Escribirlo todo ahora</button>
+    </div>
+  </div>`;
+}
+function draftLabel(scope){
+  if(scope.startsWith('entrada:'))return `La entrada del ${longDate(scope.slice(8),{day:'numeric',month:'long'})}`;
+  if(scope==='botella')return 'Una botella a medio escribir';
+  if(scope.startsWith('respuesta:'))return 'Una respuesta a una botella';
+  if(scope==='perfil')return 'Tu perfil';
+  return 'Un texto pendiente';
+}
+function openDraftsModal(){
+  const modal=showModal(draftsModalHtml());
+  modal.onclick=event=>{
+    const btn=event.target.closest('[data-modal]');
+    const act=btn?.dataset.modal;
+    if(!act){if(event.target===modal)modal.close();return;}
+    if(act==='close'){modal.close();render();return;}
+    if(act==='drop'){
+      clearDraft(btn.dataset.scope);
+      modal.innerHTML=draftsModalHtml();
+      setSaveState(pendingDrafts().total?'draft':'saved');
+      render();
+      modal.showModal();
+      toast('Borrador descartado');
+      return;
+    }
+    if(act==='drop-all'){
+      clearAllDrafts();
+      modal.close();
+      render();
+      toast('Todos los borradores descartados');
+      return;
+    }
+    if(act==='save-all'){
+      const before=pendingDrafts().total;
+      for(const d of listDrafts()){
+        if(d.scope.startsWith('entrada:')){
+          selected=d.scope.slice(8);
+          view='diary';
+          renderPage();
+          commitEntry({silent:false});
+        }else if(d.scope==='botella'&&draftData('botella')?.text){
+          castBottleFromDraft(draftData('botella'));
+        }else if(d.scope.startsWith('respuesta:')){
+          const rid=d.scope.slice(10);
+          const text=draftData(d.scope)?.text;
+          if(text){thoughts=updateThought(rid,{reply:text,seen:true,repliedAt:new Date().toISOString()});toast('Respuesta guardada');}
+        }
+      }
+      modal.close();
+      clearAllDrafts();
+      render();
+      toast(before?`Cerrados ${before} textos a medias`:'No había nada que escribir');
+      return;
+    }
+    if(act==='goto'){
+      modal.close();
+      openDay(btn.dataset.date);
+      return;
+    }
+  };
+}
+function castBottleFromDraft(data){
+  if(!data?.text)return;
+  try{
+    const id=crypto.randomUUID();
+    thoughts=saveThought({id,text:data.text,mood:data.mood||null,sea:data.sea||'breeze',castAt:dateKey()});
+    clearDraft(DRAFT_SCOPES.bottle());
+    bottleDraft={text:'',mood:null,sea:data.sea||'breeze'};
+    bottleDraftRestored='';
+    toast('Tu botella a medias ya está en el mar');
+  }catch(err){toast(err.message||'No se pudo echar la botella al mar.',true);}
 }
 
 /* ================= INTERACCIÓN ================= */
@@ -1452,7 +2234,7 @@ function updateLiveIndicators(form){
   if(wordsChip)wordsChip.textContent=`${wordCount(draft)} palabras`;
 
   const floatBar=document.querySelector('#floating-save');
-  if(floatBar)floatBar.classList.toggle('is-visible',dirty);
+  if(floatBar)floatBar.classList.toggle('is-visible',dirty||saveState==='error');
 
   const risk=detectCrisisRisk(draft);
   const slot=document.querySelector('#crisis-alert-slot');
@@ -1537,19 +2319,7 @@ function bindForm(){
   form.addEventListener('submit',event=>{
     event.preventDefault();
     if(storageError)return;
-    try{
-      const entry=validateForForm(collectForm(form));
-      const risk=detectCrisisRisk(entry);
-      entries=saveEntry(entry);
-      dirty=false;
-      render();
-      showStamp();
-      toast('Día guardado');
-      document.querySelector('.daily-summary')?.classList.add('reveal');
-      if(risk.triggered && risk.level==='high'){
-        setTimeout(()=>openCrisisModal('help'),550);
-      }
-    }catch(err){toast(err.message||'No se ha podido guardar este día.',true);}
+    commitEntry();
   });
   form.addEventListener('input',event=>{
     dirty=true;
@@ -1911,10 +2681,15 @@ function readEntry(date){
 
 function openDay(date,dir=''){
   if(date>dateKey()){toast('Ese día todavía no ha llegado.',true);return;}
-  if(dirty&&!window.confirm('Tienes cambios sin guardar. ¿Quieres salir igualmente?'))return;
+  savePendingText();
   pageTurnDir=dir||(date<selected?'prev':date>selected?'next':'');
-  dirty=false;selected=date;view='diary';menu=false;crisisBannerDismissed=false;render();
-  window.scrollTo({top:0,behavior:'smooth'});
+  dirty=false;selected=date;view='diary';menu=false;crisisBannerDismissed=false;render({transition:true});
+}
+/* Antes de mudar de página o de día: se guarda lo escrito (y se autocommite si hay materia). */
+function savePendingText(){
+  draftFlushNow('entrada',captureEntryDraft);
+  draftFlushNow('botella',captureBottleDraft);
+  if(document.querySelector('#diary-form')&&saveState==='draft')commitEntry({silent:true});
 }
 
 function toggleSidebar(){
@@ -1935,6 +2710,9 @@ function toggleSidebar(){
       btn.title=sidebarCollapsed?'Desplegar menú (Ctrl+B)':'Plegar menú (Ctrl+B)';
       btn.setAttribute('aria-expanded',String(!sidebarCollapsed));
     }
+    sb.classList.add('is-animating');
+    setTimeout(()=>{sb.classList.remove('is-animating');positionRails();},420);
+    setTimeout(()=>positionRails(),60);
   }
 }
 
@@ -1963,10 +2741,12 @@ app.addEventListener('click',async event=>{
   if(event.target.closest('.brand')){event.preventDefault();openDay(dateKey());return;}
   if(viewButton&&!actionButton){
     const next=viewButton.dataset.view;
-    if(dirty&&!window.confirm('Tienes cambios sin guardar. ¿Quieres salir igualmente?'))return;
-    dirty=false;view=next;menu=false;
+    savePendingText();
+    dirty=false;
+    if(next!==view){oceanFilter='';}
+    view=next;menu=false;
     if(view==='diary')selected=dateKey();
-    render();window.scrollTo({top:0,behavior:'smooth'});
+    render({transition:true});
     return;
   }
   if(!actionButton)return;
@@ -1978,7 +2758,43 @@ app.addEventListener('click',async event=>{
     case 'archive-tab':archiveTab=tab||'list';render();break;
     case 'stats-tab':statsTab=tab||'pulse';render();break;
     case 'profile-tab':profileTab=tab||'personal';render();break;
-    case 'thoughts-tab':thoughtsTab=tab||'shore';render();break;
+    case 'thoughts-tab':thoughtsTab=tab||'shore';oceanFilter='';render();break;
+    case 'sea-day':{
+      oceanFilter=oceanFilter===date?'':date;
+      if(oceanFilter&&!groupsForFilter().length){oceanFilter='';toast('Ese día no toca tierra ninguna botella.',true);}
+      thoughtsTab=oceanFilter?'sea':thoughtsTab;
+      render();
+      if(oceanFilter)setTimeout(()=>document.querySelector('#ocean-body')?.scrollIntoView({behavior:motionOn?'smooth':'auto',block:'center'}),80);
+      break;
+    }
+    case 'clear-sea-filter':oceanFilter='';render();break;
+    case 'show-drafts':openDraftsModal();break;
+    case 'commit-draft':commitEntry();break;
+    case 'discard-draft':{
+      confirmDialog({
+        title:'¿Descartar lo escrito a medias?',
+        text:'Se borrar el borrador de este día en este dispositivo. Lo que ya está guardado en el cuaderno se queda.',
+        confirmLabel:'Descartarlo',danger:true
+      }).then(ok=>{
+        if(!ok)return;
+        draftCancel('entrada');
+        draftCancel('autosave');
+        clearDraft(entryScope());
+        setSaveState('saved');
+        render();
+        toast('Borrador descartado');
+      });
+      break;
+    }
+    case 'discard-bottle-draft':{
+      draftCancel('botella');
+      clearDraft(DRAFT_SCOPES.bottle());
+      bottleDraft={text:'',mood:null,sea:bottleDraft.sea||'breeze'};
+      bottleDraftRestored='';
+      render();
+      toast('Borrador de la botella descartado');
+      break;
+    }
     case 'routine-tab':routineTab=tab||'hoy';render();break;
     case 'shift-day':{
       const next=addDays(selected,parseInt(delta||'1',10));
@@ -2002,6 +2818,7 @@ app.addEventListener('click',async event=>{
         patchDay(day,{habits:map});
         const created=!stored;
         render();
+        flashHabit(habit);
         const label=habits.find(h=>h.id===habit)?.name||'Hábito';
         const total=habits.length;
         const done=habits.filter(h=>map[h.id]).length;
@@ -2345,8 +3162,19 @@ window.addEventListener('keydown',event=>{
   }
 });
 
+/* El autoguardado ya escribe solo: solo molestamos si algo no ha podido guardarse. */
 window.addEventListener('beforeunload',event=>{
-  if(dirty){event.preventDefault();event.returnValue='';}
+  flushAllDrafts();
+  if(saveState==='error'){event.preventDefault();event.returnValue='';}
+});
+/* Otra pestaña toca el cuaderno: se refresca y el texto en curso sigue en el borrador. */
+window.addEventListener('storage',event=>{
+  if(!event.key||!String(event.key).startsWith('diario.'))return;
+  try{
+    refresh();
+    render();
+    toast('Otra pestaña cambió el cuaderno: lo he actualizado');
+  }catch(err){toast('No pude refrescar los datos: '+err.message,true);}
 });
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
@@ -2357,9 +3185,31 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 }
 
 render();
+setSaveState('idle');
 
-/* Al abrir el cuaderno, si el mar trajo botellas que aún no has abierto, te lo dice. */
+/* Al abrir el cuaderno: si el mar trajo botellas que aún no has abierto, te lo
+   dice y las varadas entran despacio, saliendo del agua. */
 const arrivalsAtBoot=shoreQueue(thoughts).filter(t=>t.seen!==true);
 if(arrivalsAtBoot.length){
-  setTimeout(()=>toast(`El mar te ha devuelto ${arrivalsAtBoot.length} ${arrivalsAtBoot.length===1?'pensamiento':'pensamientos'}`),820);
+  setTimeout(()=>{
+    toast(`El mar te ha devuelto ${arrivalsAtBoot.length} ${arrivalsAtBoot.length===1?'pensamiento':'pensamientos'}`);
+    document.querySelectorAll('.shore-bottle').forEach((el,i)=>{
+      el.style.setProperty('--wash-delay',`${i*140}ms`);
+      el.classList.add('is-washing');
+    });
+    document.querySelector('.sea-panel')?.classList.add('is-rising');
+    setTimeout(()=>document.querySelector('.sea-panel')?.classList.remove('is-rising'),2600);
+  },820);
+}
+
+/* Y si algo se quedó a medias, se recupera solo: basta con decirlo. */
+const pend=awaitPendingNotice();
+function awaitPendingNotice(){
+  const drafts=pendingDrafts();
+  if(!drafts.total)return drafts;
+  const bits=[];
+  if(drafts.entries)bits.push(`${drafts.entries} ${drafts.entries===1?'entrada':'entradas'}`);
+  if(drafts.bottles)bits.push(`${drafts.bottles} ${drafts.bottles===1?'botella':'botellas'} a medio escribir`);
+  if(bits.length)setTimeout(()=>toast(`Recuperado lo que dejaste a medias: ${bits.join(' y ')}`),arrivalsAtBoot.length?2400:1100);
+  return drafts;
 }

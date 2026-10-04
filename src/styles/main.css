@@ -231,15 +231,17 @@ input,textarea,select{font:inherit;color:inherit}
   }
   .sidebar.is-collapsed .brand-full{display:none}
   .sidebar.is-collapsed .brand-short{display:inline}
+  /* las etiquetas se encogen (no desaparecen) para que el pliegue se anime */
+  .sidebar.is-collapsed .nav-index,
+  .sidebar.is-collapsed .nav-label{display:block}
   .sidebar.is-collapsed .brand-subtitle,
   .sidebar.is-collapsed .ex-libris-meta,
-  .sidebar.is-collapsed .nav-index,
-  .sidebar.is-collapsed .nav-label,
-  .sidebar.is-collapsed .local-note,
   .sidebar.is-collapsed .sidebar-decoration,
   .sidebar.is-collapsed .version{
     display:none;
   }
+  .sidebar.is-collapsed .nav-item{gap:0}
+  .sidebar.is-collapsed .local-note{display:none}
   .sidebar.is-collapsed .ex-libris-card{
     justify-content:center;
     padding:8px;
@@ -1501,291 +1503,6 @@ dialog::backdrop{background:rgba(20,18,14,.55);backdrop-filter:blur(4px);animati
 }
 
 /* ============================================================
-   EL MAR DE LOS PENSAMIENTOS
-   ============================================================ */
-@keyframes waveShift{to{transform:translateX(calc(-1 * var(--wp,240px)))}}
-@keyframes bob{0%,100%{transform:translateY(0) rotate(-5deg)}50%{transform:translateY(-7px) rotate(4deg)}}
-@keyframes beacon{0%,72%{opacity:.22}82%,100%{opacity:1}}
-@keyframes shoreGlow{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--red) 30%,transparent)}50%{box-shadow:0 0 0 8px color-mix(in srgb,var(--red) 0%,transparent)}}
-@keyframes ripple{0%{transform:scale(.6);opacity:.5}100%{transform:scale(1.9);opacity:0}}
-@keyframes sailAway{
-  0%{opacity:0;transform:translate(-30px,14px) scale(.6) rotate(-12deg)}
-  18%{opacity:1;transform:translate(0,0) scale(1) rotate(-4deg)}
-  100%{opacity:0;transform:translate(42vw,-26vh) scale(.85) rotate(14deg)}
-}
-@keyframes sealPop{0%{transform:scale(.4) rotate(-24deg);opacity:0}60%{transform:scale(1.12) rotate(6deg);opacity:1}100%{transform:scale(1) rotate(-6deg);opacity:1}}
-
-.bottle-glyph{width:26px;height:26px;flex:none;display:block}
-
-/* ---- panel de mar ---- */
-.sea-panel{
-  position:relative;overflow:hidden;border:1px solid var(--ink);border-radius:6px;margin-bottom:22px;
-  box-shadow:var(--shadow);color:var(--ink);
-  background:
-    radial-gradient(120% 70% at 82% -10%,color-mix(in srgb,var(--sea-foam) 70%,transparent),transparent 60%),
-    linear-gradient(180deg,var(--sea-sky) 0%,color-mix(in srgb,var(--sea-sky) 74%,var(--sea-1)) 42%,var(--sea-1) 48%,var(--sea-2) 74%,var(--sea-deep) 100%);
-  animation:rise .6s var(--ease-out) both
-}
-.sea-sky{position:relative;z-index:3;padding:clamp(20px,2.6vw,30px) clamp(18px,3vw,34px) 10px;max-width:62ch}
-.sea-tide-pill{
-  display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:99px;margin-bottom:12px;
-  font-family:var(--font-mono);font-size:.64rem;letter-spacing:.16em;text-transform:uppercase;
-  background:color-mix(in srgb,var(--paper-2) 74%,transparent);border:1px solid color-mix(in srgb,var(--ink) 22%,transparent)
-}
-.sea-tide-pill .icon{width:14px;height:14px;color:var(--sea-deep)}
-.sea-headline{font-family:var(--font-display);font-style:italic;font-size:clamp(1.5rem,3.1vw,2.2rem);line-height:1.16;letter-spacing:-.01em}
-.sea-panel.has-shore .sea-headline{color:var(--ink);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--red) 55%,transparent);text-underline-offset:8px;text-decoration-thickness:2px}
-.sea-sub{margin-top:8px;font-size:.9rem;color:color-mix(in srgb,var(--ink) 78%,transparent);max-width:52ch}
-.sea-water{position:relative;height:clamp(150px,20vw,208px);z-index:2}
-.sea-wave-svg{position:absolute;inset:0;width:100%;height:100%;display:block}
-.sea-wave-svg .wave{transform-origin:0 50%;animation:waveShift linear infinite}
-.wave-1{fill:color-mix(in srgb,var(--sea-deep) 92%,var(--ink));--wp:150px;opacity:.96}
-.wave-2{fill:color-mix(in srgb,var(--sea-2) 88%,var(--sea-deep));--wp:190px;opacity:.85}
-.wave-3{fill:color-mix(in srgb,var(--sea-1) 78%,var(--sea-2));--wp:240px;opacity:.7}
-.wave-4{fill:color-mix(in srgb,var(--sea-foam) 62%,var(--sea-1));--wp:300px;opacity:.45}
-.sea-horizon-line{position:absolute;left:0;right:0;top:34%;border-top:1px dashed color-mix(in srgb,var(--paper-2) 40%,transparent)}
-.sea-lighthouse{position:absolute;left:clamp(10px,3vw,34px);bottom:38%;width:46px;z-index:2;opacity:.9}
-.sea-lighthouse svg{width:100%;display:block;filter:drop-shadow(0 6px 10px color-mix(in srgb,var(--ink) 30%,transparent))}
-.sea-beacon{animation:beacon 4.6s ease-in-out infinite}
-.sea-beam{transform-origin:36px 25px;animation:beacon 4.6s ease-in-out infinite}
-.sea-fleet{position:absolute;inset:0;margin:0;padding:0;list-style:none}
-.sea-float{position:absolute;left:var(--x);bottom:var(--lift,52%);transform:translateX(-50%)}
-.sea-float-btn{
-  display:grid;justify-items:center;gap:4px;padding:6px 8px;border-radius:8px;cursor:pointer;
-  background:color-mix(in srgb,var(--paper-2) 26%,transparent);border:1px solid transparent;
-  animation:bob 4.4s var(--ease-out) infinite;animation-delay:var(--delay);transition:all .2s
-}
-.sea-float-btn .bottle-glyph{width:30px;height:30px;filter:drop-shadow(0 4px 6px color-mix(in srgb,var(--ink) 40%,transparent))}
-.sea-float-tag{
-  font-family:var(--font-mono);font-size:.56rem;letter-spacing:.1em;text-transform:uppercase;
-  padding:2px 7px;border-radius:99px;background:color-mix(in srgb,var(--ink) 62%,transparent);color:var(--paper-2);
-  opacity:0;transform:translateY(-3px);transition:.2s;white-space:nowrap
-}
-.sea-float-btn:hover,.sea-float-btn:focus-visible{background:color-mix(in srgb,var(--paper-2) 72%,transparent);border-color:var(--paper-2);outline:none}
-.sea-float-btn:hover .sea-float-tag,.sea-float-btn:focus-visible .sea-float-tag{opacity:1;transform:none}
-.sea-shore{
-  position:relative;z-index:3;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
-  padding:12px clamp(14px,2.4vw,24px);
-  background:linear-gradient(180deg,color-mix(in srgb,var(--sand) 82%,var(--paper-2)),var(--sand));
-  border-top:1px dashed color-mix(in srgb,var(--ink) 26%,transparent)
-}
-.sea-shore-label{
-  display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:.62rem;letter-spacing:.18em;
-  text-transform:uppercase;color:color-mix(in srgb,var(--ink) 70%,transparent);flex:none
-}
-.sea-shore-label .icon{width:14px}
-.shore-list{display:flex;gap:10px;flex-wrap:wrap;flex:1}
-.shore-bottle{
-  display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer;padding:8px 14px 8px 8px;border-radius:99px;
-  background:color-mix(in srgb,var(--paper-2) 82%,transparent);border:1px solid color-mix(in srgb,var(--ink) 20%,transparent);
-  transition:all .22s var(--ease-out);max-width:min(360px,100%)
-}
-.shore-bottle:hover{transform:translateY(-2px);border-color:var(--ink);background:var(--paper-2)}
-.shore-bottle.is-new{border-color:var(--red);animation:shoreGlow 3s var(--ease-out) infinite}
-.shore-bottle-glow{display:grid;place-items:center;width:34px;height:34px;flex:none}
-.shore-bottle .bottle-glyph{width:28px;height:28px}
-.shore-bottle-meta{min-width:0;display:flex;flex-direction:column}
-.shore-bottle-meta strong{font-family:var(--font-mono);font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;color:var(--red)}
-.shore-bottle-meta small{font-family:var(--font-display);font-style:italic;font-size:.9rem;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.shore-new-dot{width:8px;height:8px;border-radius:50%;background:var(--red);flex:none}
-.sea-foot{
-  position:relative;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
-  padding:10px clamp(14px,2.4vw,24px);background:color-mix(in srgb,var(--sea-deep) 70%,var(--ink));color:var(--paper-2)
-}
-.sea-foot .text-button{color:var(--paper-2);border-color:color-mix(in srgb,var(--paper-2) 60%,transparent);font-size:.66rem}
-.sea-foot .text-button:hover{color:#fff;border-color:#fff}
-.sea-lost-note{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;opacity:.85}
-.sea-lost-note .icon{width:15px}
-
-/* ---- compositor ---- */
-.bottle-composer{border-top:3px solid var(--sea-2)}
-.bottle-text{min-height:118px;font-family:var(--font-display);font-size:1.06rem;line-height:1.72}
-.composer-foot-note{display:flex;align-items:center;gap:7px;margin-top:10px;font-family:var(--font-display);font-style:italic;font-size:.86rem;color:var(--ink-faint)}
-.composer-foot-note .icon{width:14px;color:var(--sea-2)}
-.bottle-composer .composer-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-top:12px}
-.composer-moods{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.composer-bar-label{font-family:var(--font-mono);font-size:.64rem;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint)}
-.mini-mood{position:relative;cursor:pointer}
-.mini-mood input{position:absolute;opacity:0;pointer-events:none}
-.mini-mood span{
-  display:grid;place-items:center;width:38px;height:38px;border:1px solid var(--rule-strong);border-radius:8px;
-  font-size:1.25rem;filter:grayscale(.7);transition:all .22s var(--ease-spring);background:var(--paper-2)
-}
-.mini-mood:hover span{filter:grayscale(.15);transform:translateY(-2px)}
-.mini-mood:has(input:checked) span{filter:none;border-color:var(--mood-color);background:color-mix(in srgb,var(--mood-color) 16%,var(--paper-2));transform:scale(1.06)}
-.sea-picker{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:12px}
-.sea-option{
-  position:relative;cursor:pointer;display:flex;flex-direction:column;gap:5px;padding:13px 15px;border-radius:5px;
-  border:1px solid var(--rule-strong);background:var(--paper-2);transition:all .22s var(--ease-out);overflow:hidden
-}
-.sea-option input{position:absolute;opacity:0;pointer-events:none}
-.sea-option:hover{border-color:var(--ink);transform:translateY(-2px)}
-.sea-option:has(input:checked){border-color:var(--sea-deep);background:color-mix(in srgb,var(--sea-2) 14%,var(--paper-2));box-shadow:3px 3px 0 color-mix(in srgb,var(--sea-deep) 22%,transparent)}
-.sea-option-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
-.sea-option-top strong{font-family:var(--font-display);font-size:1.02rem;font-weight:500}
-.sea-option-top small{font-family:var(--font-mono);font-size:.64rem;letter-spacing:.06em;color:var(--sea-deep)}
-.sea-option-desc{font-size:.84rem;color:var(--ink-soft);line-height:1.45}
-.sea-option-odds{display:block;height:4px;border-radius:99px;background:var(--paper-3);overflow:hidden;margin-top:4px}
-.sea-option-odds i{display:block;height:100%;background:linear-gradient(90deg,var(--sea-2),var(--sea-deep))}
-.sea-option-note{font-family:var(--font-mono);font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint)}
-
-/* ---- listado de botellas ---- */
-.ocean-layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(250px,.8fr);gap:22px;align-items:start}
-.ocean-main{min-width:0}
-.ocean-aside{display:flex;flex-direction:column;gap:18px;position:sticky;top:84px}
-.ocean-aside .card{margin-bottom:0}
-.ocean-tabs{margin:4px 0 16px;flex-wrap:wrap}
-.ocean-tabs button{display:inline-flex;align-items:center;gap:7px}
-.seg-count{
-  font-size:.62rem;letter-spacing:.06em;padding:1px 6px;border-radius:99px;
-  background:color-mix(in srgb,var(--ink) 10%,transparent);color:inherit
-}
-.sea-quick:has(span:empty){padding:7px 9px}
-.bottle-grid{display:grid;gap:16px}
-.bottle-card{position:relative;margin-bottom:0;padding-left:clamp(20px,2.4vw,26px);border-left:4px solid var(--tint)}
-.bottle-card.is-returned{border-color:var(--red);box-shadow:5px 5px 0 color-mix(in srgb,var(--red) 12%,transparent)}
-.bottle-card.is-lost{opacity:.82;background:var(--paper-3)}
-.bottle-card-head{display:flex;align-items:flex-start;gap:13px;flex-wrap:wrap}
-.bottle-card-mark{
-  display:grid;place-items:center;width:44px;height:44px;flex:none;border-radius:10px;
-  background:color-mix(in srgb,var(--tint) 16%,var(--paper-3));border:1px solid color-mix(in srgb,var(--tint) 45%,transparent)
-}
-.bottle-card-mark .bottle-glyph{width:30px;height:30px}
-.bottle-card-who{flex:1;min-width:0}
-.bottle-card-who .eyebrow{margin-bottom:4px}
-.bottle-card-who h3{font-family:var(--font-display);font-size:1.1rem;font-weight:500;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-.bottle-card-status{
-  font-family:var(--font-mono);font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;
-  padding:3px 9px;border-radius:99px;border:1px solid currentColor
-}
-.bottle-card-status.s-drifting{color:var(--sea-deep)}
-.bottle-card-status.s-returned{color:var(--red);background:var(--red-soft)}
-.bottle-card-status.s-lost{color:var(--ink-faint)}
-.bottle-card-text{
-  margin:14px 0 4px;font-family:var(--font-display);font-size:1.04rem;line-height:1.78;color:var(--ink);
-  white-space:pre-wrap;max-width:68ch
-}
-.bottle-card-text.is-short{font-size:1.24rem;font-style:italic}
-.bottle-card-reply{
-  margin-top:10px;padding:10px 13px;border-left:3px solid var(--sea-2);background:var(--paper-3);
-  font-family:var(--font-display);font-style:italic;font-size:.94rem;color:var(--ink-soft)
-}
-.bottle-card-reply span{font-style:normal;font-family:var(--font-mono);font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sea-deep);display:flex;align-items:center;gap:5px}
-.bottle-card-reply .icon{width:13px}
-.drift-track{position:relative;margin:16px 0 4px;padding-top:16px}
-.drift-line{display:block;height:3px;border-radius:99px;background:repeating-linear-gradient(90deg,var(--rule-strong) 0 7px,transparent 7px 13px)}
-.drift-line::after{
-  content:'';position:absolute;left:0;top:16px;height:3px;border-radius:99px;width:var(--pct,20%);
-  background:linear-gradient(90deg,var(--sea-1),var(--sea-deep));transition:width .6s var(--ease-out)
-}
-.drift-marker{
-  position:absolute;top:6px;left:calc(var(--pct,20%) - 10px);width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
-  background:var(--paper-2);border:1.5px solid var(--sea-deep);color:var(--sea-deep);transition:left .6s var(--ease-out)
-}
-.drift-marker .icon{width:13px;height:13px}
-.is-returned .drift-marker{border-color:var(--red);color:var(--red);background:var(--red-soft)}
-.drift-caption{display:block;margin-top:12px;font-family:var(--font-display);font-style:italic;font-size:.9rem;color:var(--ink-soft)}
-.bottle-card-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--rule)}
-.bottle-card-foot .chiplet{
-  display:inline-flex;align-items:center;gap:5px;font-family:var(--font-mono);font-size:.68rem;letter-spacing:.04em;
-  border:1px solid var(--rule);border-radius:3px;padding:4px 9px;color:var(--ink-soft);background:var(--paper-2)
-}
-.bottle-card-foot .icon{width:13px;height:13px}
-.bottle-card-actions{display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap}
-
-/* ---- modal de la botella ---- */
-.bottle-modal{position:relative;max-width:620px;border-top:4px solid var(--tint)}
-.bottle-close{position:absolute;top:14px;right:14px}
-.bottle-wax{
-  display:grid;place-items:center;width:62px;height:62px;border-radius:50%;margin-bottom:14px;
-  background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--tint) 55%,var(--paper-2)),var(--tint));
-  box-shadow:0 8px 20px -10px color-mix(in srgb,var(--tint) 80%,transparent);
-  animation:sealPop .5s var(--ease-spring) both
-}
-.bottle-wax .bottle-glyph{width:34px;height:34px}
-.bottle-modal-title{font-size:1.5rem;margin:4px 0 8px}
-.bottle-modal-mood{font-family:var(--font-mono);font-size:.72rem;letter-spacing:.08em;color:var(--ink-soft)}
-.bottle-modal-text{
-  margin:18px 0;padding:20px 22px;border:1px dashed var(--rule-strong);border-radius:4px;background:var(--paper-3);
-  font-family:var(--font-display);font-size:1.16rem;line-height:1.82;white-space:pre-wrap;position:relative
-}
-.bottle-modal-text::first-letter{font-size:2.4rem;line-height:1;color:var(--tint);font-weight:500}
-.bottle-modal-voyage{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));border:1px solid var(--rule-strong);border-radius:4px;overflow:hidden;margin-top:6px}
-.bottle-modal-voyage .ledger-cell{border-bottom:0}
-.bottle-modal-foot-note{
-  display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-family:var(--font-mono);font-size:.72rem;
-  letter-spacing:.04em;color:var(--green);line-height:1.6
-}
-.bottle-modal-foot-note.is-lost{color:var(--ink-faint)}
-.bottle-modal-foot-note .icon{width:15px;flex:none;margin-top:2px}
-.bottle-reply-box{margin-top:16px;padding:14px 16px;border-left:3px solid var(--sea-2);background:var(--paper-3);border-radius:0 4px 4px 0}
-.bottle-reply-box span{display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:.64rem;letter-spacing:.12em;text-transform:uppercase;color:var(--sea-deep);margin-bottom:6px}
-.bottle-reply-box .icon{width:14px}
-.bottle-reply-box p{font-family:var(--font-display);font-style:italic;font-size:1rem;line-height:1.7}
-.bottle-reply-form{margin-top:16px}
-.bottle-reply-form label{display:block;font-family:var(--font-mono);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px}
-.bottle-reply-form textarea{min-height:82px}
-
-/* ---- aside del mar ---- */
-.tide-card{border-top:3px solid var(--sea-2)}
-.tide-card[data-tide="spring"]{border-top-color:var(--red)}
-.tide-headline{font-family:var(--font-display);font-style:italic;font-size:1.04rem;line-height:1.6;margin:10px 0 14px}
-.tide-dial{display:grid;gap:6px}
-.tide-track{position:relative;display:block;height:6px;border-radius:99px;background:var(--paper-3);border:1px solid var(--rule);overflow:visible}
-.tide-track i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--sea-1),var(--sea-deep));transition:width .6s var(--ease-out)}
-.tide-pin{position:absolute;top:-4px;left:var(--pct,50%);width:14px;height:14px;border-radius:50%;background:var(--paper-2);border:2px solid var(--red);transform:translateX(-50%)}
-.tide-track-labels{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}
-.tide-track-labels small{display:inline-flex;align-items:center;gap:5px}
-.tide-track-labels .icon{width:12px}
-.sea-rules{background:var(--paper-3)}
-.sea-rules-list{margin:12px 0 0;padding:0;list-style:none;display:grid;gap:12px;counter-reset:rule}
-.sea-rules-list li{
-  position:relative;padding-left:34px;font-size:.9rem;color:var(--ink-soft);line-height:1.6;counter-increment:rule
-}
-.sea-rules-list li::before{
-  content:counter(rule,decimal-leading-zero);position:absolute;left:0;top:1px;
-  font-family:var(--font-mono);font-size:.68rem;color:var(--red);border:1px solid color-mix(in srgb,var(--red) 40%,var(--rule-strong));
-  border-radius:3px;padding:1px 5px;background:var(--red-soft)
-}
-.sea-rules-list b{color:var(--ink);font-weight:600}
-.sea-rules-now{
-  display:flex;align-items:flex-start;gap:8px;margin-top:16px;padding-top:12px;border-top:1px dashed var(--rule-strong);
-  font-family:var(--font-display);font-style:italic;font-size:.92rem;color:var(--ink-soft)
-}
-.sea-rules-now .icon{width:16px;color:var(--sea-deep);flex:none;margin-top:2px}
-.sea-rules-now b{font-style:normal;font-family:var(--font-text);font-size:.86rem}
-
-/* ---- teaser del mar en la portada ---- */
-.sea-teaser{position:relative;overflow:hidden;border-top:3px solid var(--sea-2)}
-.sea-teaser.is-arrival{border-top-color:var(--red);box-shadow:5px 5px 0 color-mix(in srgb,var(--red) 12%,transparent)}
-.sea-teaser-waves{position:absolute;inset:auto 0 -8px;height:74px;opacity:.5;pointer-events:none}
-.sea-teaser-waves .sea-wave-svg{height:100%}
-.sea-teaser>*{position:relative}
-.sea-teaser h2{font-size:1.24rem;margin-bottom:6px}
-.sea-teaser-quote{font-family:var(--font-display);font-style:italic;font-size:.98rem;line-height:1.6;color:var(--ink-soft)}
-.sea-teaser-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px}
-.sea-teaser-count{font-family:var(--font-mono);font-size:.64rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}
-.sea-empty .sea-empty-art{position:relative;display:inline-grid;place-items:center;padding:26px}
-.sea-empty .sea-empty-art .bottle-glyph{width:64px;height:64px;animation:bob 5s var(--ease-out) infinite}
-.sea-empty-ripple{position:absolute;inset:auto 0 16px;height:14px;border-radius:50%;border:1px solid var(--sea-1);animation:ripple 3.4s var(--ease-out) infinite}
-
-/* ---- animación de soltar la botella ---- */
-/* ---- línea de marea ---- */
-.tide-rule-wrap{margin:2px 0 22px;line-height:0}
-.tide-rule{width:100%;height:16px;display:block;overflow:hidden}
-.tide-rule-path{
-  fill:none;stroke:color-mix(in srgb,var(--sea-2) 60%,var(--rule-strong));stroke-width:1.6;stroke-linecap:round;
-  animation:tideSlide 16s linear infinite
-}
-.is-after-sea .tide-rule-path{stroke:color-mix(in srgb,var(--sea-deep) 45%,transparent)}
-@keyframes tideSlide{to{transform:translateX(-120px)}}
-
-.ocean-fx{position:fixed;inset:0;pointer-events:none;z-index:80}
-.sail-away{position:fixed;animation:sailAway 1.45s var(--ease-out) forwards}
-.sail-bottle{display:grid;place-items:center}
-.sail-bottle .bottle-glyph{width:44px;height:44px;filter:drop-shadow(0 8px 12px color-mix(in srgb,var(--ink) 30%,transparent))}
-
-/* ============================================================
    PESTAÑA RUTINA
    ============================================================ */
 .routine-layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(250px,.8fr);gap:22px;align-items:start}
@@ -1937,6 +1654,7 @@ dialog::backdrop{background:rgba(20,18,14,.55);backdrop-filter:blur(4px);animati
 /* ---- palabra y consejo del día: rejilla y tipografía ---- */
 .daily-inspiration-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:16px;margin-bottom:20px}
 .diary-aside .daily-inspiration-grid{grid-template-columns:1fr;margin-bottom:0}
+.word-of-day-card{background:linear-gradient(180deg,color-mix(in srgb,var(--red) 7%,var(--paper-2)),var(--paper-2) 62%)}
 .diary-aside .inspiration-card{padding:20px 22px}
 .daily-word-main{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:8px 0 12px}
 .daily-word-title{font-family:var(--font-display);font-size:clamp(1.6rem,3vw,2.1rem);font-weight:500;letter-spacing:-.02em;line-height:1.05;display:block}
@@ -1960,6 +1678,46 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 @media (prefers-reduced-motion:reduce){
   .sea-float-btn,.sea-beacon,.sea-beam,.shore-bottle.is-new,.sea-empty .bottle-glyph,.sea-empty-ripple,.sail-away,.nav-badge.is-new,.tide-rule-path,.sea-wave-svg .wave{animation:none!important}
 }
+
+/* ---------------- escalas, campos sueltos y remates ---------------- */
+.field-title{
+  display:flex;align-items:center;gap:8px;margin:0 0 4px;
+  font-family:var(--font-mono);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft)
+}
+.field-title .icon{width:15px;height:15px;color:var(--red)}
+.field-title small{margin-left:auto;letter-spacing:.06em;text-transform:none;color:var(--ink-faint)}
+.scale-field{padding:2px 0 0}
+.scale-field>small{
+  display:block;margin-top:9px;font-family:var(--font-display);font-style:italic;font-size:.88rem;color:var(--ink-soft)
+}
+.level-scale{display:flex;gap:6px;margin-top:9px}
+.level-option{
+  flex:1;position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 4px 7px;
+  border:1px solid var(--rule-strong);border-radius:4px;background:var(--paper-2);cursor:pointer;
+  transition:transform .2s var(--ease-out),border-color .2s,background .2s,box-shadow .25s
+}
+.level-option:hover{transform:translateY(-2px);border-color:var(--ink)}
+.level-option input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.level-option:focus-within{box-shadow:0 0 0 2px color-mix(in srgb,var(--red) 45%,transparent)}
+.level-num{font-family:var(--font-mono);font-size:1.04rem;color:var(--ink);transition:color .2s}
+.level-text{
+  font-family:var(--font-mono);font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-faint);text-align:center;transition:color .2s
+}
+.level-option:has(input:checked){background:var(--ink);border-color:var(--ink);box-shadow:0 8px 18px -12px var(--ink)}
+.level-option:has(input:checked) .level-num{color:var(--paper-2);animation:popCheck .32s var(--ease-pop)}
+.level-option:has(input:checked) .level-text{color:color-mix(in srgb,var(--paper-2) 82%,transparent)}
+
+.quote-text{font-family:var(--font-display);font-style:italic;font-size:1.16rem;line-height:1.55;margin:8px 0 6px;color:var(--ink)}
+.writing-tools-bar{display:flex;align-items:center;gap:8px}
+.prompt-trigger-btn{display:inline-flex;align-items:center;gap:6px;font-size:.66rem}
+.prompt-trigger-btn .icon{width:14px;height:14px}
+.quick-capture{border-top:3px solid var(--red)}
+.writing-card-section{border-top:3px solid var(--ink)}
+.habit-board-card{border-top:3px solid var(--green)}
+.delete-button{width:30px;height:30px;opacity:.42;transition:opacity .2s,background .2s,color .2s,transform .2s var(--ease-pop)}
+.delete-button:hover{opacity:1;color:var(--red);background:var(--red-soft);transform:scale(1.08)}
+.delete-button .icon{width:15px;height:15px}
 
 /* ---- responsive ---- */
 @media (max-width:1120px){
@@ -1991,3 +1749,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 }
 
 .tide-now{flex:1 1 auto;font-family:var(--font-mono);font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;color:var(--red);text-align:center;line-height:1.4}
+
+/* destello de la casilla de hábito al cambiar de estado */
+.habit-toggle.is-flashed,.momentum-cell.is-flashed{animation:flashCell .7s var(--ease-soft)}
+@keyframes flashCell{
+  0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--green) 55%,transparent);transform:scale(1.015)}
+  60%{box-shadow:0 0 0 7px color-mix(in srgb,var(--green) 0%,transparent)}
+  100%{box-shadow:0 0 0 0 transparent;transform:none}
+}

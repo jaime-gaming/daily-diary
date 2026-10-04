@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {seaPanel,bottleComposer,bottleCard,bottleModal,oceanLedger,shoreTeaser,emptySea,bottleGlyph,wavesSvg} from '../src/components/ocean.js';
+import {
+  seaPanel,bottleComposer,bottleCard,bottleModal,oceanLedger,shoreTeaser,emptySea,bottleGlyph,wavesSvg,
+  seaPartCard,seaForecastStrip,milestoneTrack,castSplash,partLine,tideRule,weatherIcon,roseAngle
+} from '../src/components/ocean.js';
+import {seaForecast} from '../src/utils/ocean.js';
 import {habitBoard,momentumGrid,habitStatsList,habitComposer,countersBoard,tomorrowBoard,routineTeaser,progressRing} from '../src/components/habits.js';
 import {counterSteppers} from '../src/components/ui.js';
 import {COUNTERS} from '../src/data/constants.js';
@@ -92,4 +96,43 @@ test('rutina: los botones llevan la acción y el día correctos', () => {
   assert.match(grid,/is-future/, 'los días futuros salen marcados');
   assert.match(tomorrowBoard(entries[0]),/Repasar tema/);
   assert.match(tomorrowBoard(entries[0]),/id="routine-goals"/);
+});
+
+test('el parte, el pronóstico y los hitos se pintan bien formados', () => {
+  const bottles=[
+    bottle(),
+    bottle({id:'b2',status:'returned',returnedAt:'2026-09-28',seen:false,arriveOn:'2026-09-28'}),
+    bottle({id:'b3',arriveOn:'2026-10-03',castAt:'2026-09-05',driftDays:28})
+  ];
+  sane(seaPartCard(TODAY,bottles),'el parte de hoy');
+  sane(seaPanel(bottles,TODAY),'el panel del mar con parte');
+  sane(seaForecastStrip(seaForecast({today:TODAY,bottles,days:14})),'el pronóstico de la costa');
+  assert.equal(seaForecastStrip([]),'','sin días no hay pronóstico que pintar');
+  sane(milestoneTrack(bottle(),TODAY),'los hitos del viaje');
+  sane(castSplash(bottle()),'el chapuzón');
+  sane(partLine(TODAY),'la línea del parte');
+  sane(tideRule(),'la regla de marea');
+  for(const id of ['calm','haze','wind','rain','gale','nada']){
+    sane(weatherIcon(id),`el icono del clima ${id}`);
+  }
+  assert.ok(/svg|path/.test(weatherIcon('rain')));
+  assert.ok(Number.isFinite(roseAngle('levante'))&&Number.isFinite(roseAngle('desconocido')));
+
+  const panel=seaPanel(bottles,TODAY);
+  assert.match(panel,/data-weather="(calm|haze|wind|rain|gale)"/,'el panel declara el clima');
+  assert.match(panel,/--water:\d/,'y el nivel del agua');
+  assert.match(panel,/ribbon-day/,'con su ribete de días');
+  assert.equal((panel.match(/class="ribbon-day/g)||[]).length,7,'siete días en el ribete');
+  const strip=seaForecastStrip(seaForecast({today:TODAY,bottles,days:14}));
+  assert.equal((strip.match(/class="forecast-day/g)||[]).length,14,'catorce días en el pronóstico');
+  assert.match(strip,/has-arrival/,'y alguno con botellas que llegan');
+  assert.match(seaPanel(bottles,TODAY),/ribbon-day/,'el ribete marca los días con llegada');
+  const card=bottleCard(bottle(),TODAY);
+  assert.equal((card.match(/class="mile /g)||[]).length,4,'cuatro hitos en la ficha');
+  assert.match(card,/<article class="card bottle-card/);
+  sane(bottleComposer(setup,TODAY,{text:'algo escrito',mood:3,sea:'deep',restoredFrom:'hace 3 min'}),'el compositor con borrador recuperado');
+  assert.ok(bottleComposer(setup,TODAY,{text:''}).includes('disabled'),'sin texto, el botón de echar al mar sale apagado');
+  sane(bottleModal(bottle({replyDraft:'Respuesta a medias'}),TODAY,setup),'la botella con respuesta a medias');
+  sane(shoreTeaser(bottles),'el teaser del mar con parte');
+  for(const tab of ['shore','sea','kept','lost','raro'])sane(emptySea(tab),`el mar vacío (${tab})`);
 });
