@@ -483,10 +483,11 @@ function entryPartsFields(e){
     ${parts.map(p=>{
       const name=`part_${p.key}`;
       const value=e?.parts?.[p.key]||'';
+      /* el texto de ayuda va bajo el título; repetirlo en el hueco sería gritar dos veces lo mismo */
       const label=`<label for="${name}">${esc(p.label)}${p.hint?`<small>${esc(p.hint)}</small>`:''}</label>`;
       const field=p.type==='line'
-        ?`<input id="${name}" name="${name}" class="clean-line-input" maxlength="600" placeholder="${esc(p.hint||'…')}" value="${esc(value)}">`
-        :`<textarea id="${name}" name="${name}" maxlength="4000" rows="3" placeholder="${esc(p.hint||'…')}">${esc(value)}</textarea>`;
+        ?`<input id="${name}" name="${name}" class="clean-line-input" maxlength="600" value="${esc(value)}">`
+        :`<textarea id="${name}" name="${name}" maxlength="4000" rows="3">${esc(value)}</textarea>`;
       return `<div class="writing-field part-field" data-part="${p.key}">${label}${field}</div>`;
     }).join('')}
   </div>`;
