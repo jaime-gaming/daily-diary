@@ -8,7 +8,7 @@
 import {icon,escape as esc} from './ui.js';
 import {MOODS} from '../data/constants.js';
 import {dateKey} from '../utils/dates.js';
-import {GLASS_TINTS,fateOf,canOpenBottle,groupBottles,thoughtWordCount,hashSeed,weatherOf,sunPosition} from '../utils/ocean.js';
+import {GLASS_TINTS,fateOf,canOpenBottle,groupBottles,thoughtWordCount,hashSeed,weatherOf,sunPosition,tideInfo} from '../utils/ocean.js';
 
 export const tintOf=bottle=>GLASS_TINTS.find(g=>g.id===bottle?.glass)||GLASS_TINTS[0];
 
@@ -29,37 +29,93 @@ export function bottleGlyph(bottle={},opts={}){
 }
 
 /* ---------- olas ---------- */
-function wavePath(width=2400,amp=8,y=110,period=240){
-  let d=`M0 ${y}`;
-  for(let x=0;x<width;x+=period){
-    d+=` q ${period/4} ${-amp} ${period/2} 0 q ${period/4} ${amp} ${period/2} 0`;
+function waveLinePath(width=1440,amp=4,y=40,period=480,phase=0){
+  const start=-period+phase;
+  let d=`M${start} ${y}`;
+  for(let x=start;x<width+period;x+=period){
+    d+=` C${x+period*.25} ${y-amp} ${x+period*.25} ${y-amp} ${x+period*.5} ${y}`;
+    d+=` C${x+period*.75} ${y+amp} ${x+period*.75} ${y+amp} ${x+period} ${y}`;
   }
-  return `${d} L${width} 240 L0 240 Z`;
+  return d;
 }
 export function wavesSvg(seed=0,rough=0){
-  const layer=(amp,y,period,cls,dur)=>{
-    const shift=(seed%7)*9;
-    const speed=(dur*(1-Math.min(.55,rough*.45))).toFixed(1);
-    return `<path class="${cls}" style="--wave-dur:${speed}s;--wave-delay:-${(shift/100*speed).toFixed(2)}s" d="${wavePath(2400,amp,y,period)}"/>`;
+  const phase=(Math.abs(Number(seed)||0)%7)*11;
+  const seaState=Math.max(0,Math.min(1,Number(rough)||0));
+  const line=(name,y,amp,period,duration,delay)=>{
+    const height=Math.round(amp+seaState*amp*.75);
+    const speed=(duration*(1-Math.min(.35,seaState*.2))).toFixed(1);
+    return `<path class="thoughts-wave-line ${name}" style="--wave-dur:${speed}s;--wave-delay:${delay}s" d="${waveLinePath(1440,height,y,period,phase)}"/>`;
   };
-  return `<svg class="sea-wave-svg" viewBox="0 0 1200 240" preserveAspectRatio="none" aria-hidden="true">
-    ${layer(7,126,300,'wave wave-4',28)}
-    ${layer(9,142,240,'wave wave-3',21)}
-    ${layer(11,160,190,'wave wave-2',16)}
-    ${layer(13,182,150,'wave wave-1',11)}
+  return `<svg class="sea-wave-svg thoughts-wave-scene" viewBox="0 0 1440 180" preserveAspectRatio="none" aria-hidden="true">
+    ${line('wave-line-surface',22,3,480,8,-1.7)}
+    ${line('wave-line-middle',69,4,400,10,-4.1)}
+    ${line('wave-line-distance',123,3,360,12,-7.3)}
   </svg>`;
 }
 
+export function castSplashPoint(bottle={}){
+  const seed=hashSeed(`${bottle.id||''}|${bottle.castAt||''}`);
+  const side=(seed&1)===1;
+  const offset=(seed>>>3)%14;
+  return {
+    x:side?79+offset:8+offset,
+    depth:13+(seed>>>7)%8
+  };
+}
 export function islandSceneSvg(){
   return `<svg class="thoughts-island-scenery" viewBox="0 0 1440 620" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-    <ellipse class="scene-island-shadow" cx="720" cy="548" rx="610" ry="42"/>
-    <path class="scene-island-foliage scene-island-foliage-back" d="M0 496c40-36 83-48 125-37 11-53 53-83 101-74 12-55 60-78 107-51 21-66 84-84 132-43 31-70 102-82 149-32 45-70 114-76 155-21 46-65 118-68 158-16 44-60 110-51 141-5 45-47 107-37 137 4 47-30 102-23 135 19 40-5 77 7 110 36v324H0Z"/>
-    <path class="scene-island-foliage scene-island-foliage-front" d="M28 503c51-57 111-75 169-54 19-59 72-84 125-53 26-65 91-82 142-37 41-68 108-74 151-22 47-61 116-61 158-8 51-50 117-40 148 15 50-40 110-20 130 31 58-25 111-2 139 39 54-4 108 17 150 63v256H28Z"/>
-    <path class="scene-island-beach" d="M0 440c88-34 160-43 235-23 69 18 140 15 213-1 85-19 159-14 240 6 87 21 172 18 251-1 91-21 178-11 261 12 81 22 160 27 240 15v172H0Z"/>
-    <path class="scene-island-beach-highlight scene-island-shoreline" d="M0 441c88-34 160-43 235-23 69 18 140 15 213-1 85-19 159-14 240 6 87 21 172 18 251-1 91-21 178-11 261 12 81 22 160 27 240 15"/>
+    <defs>
+      <linearGradient id="island-reef-shade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#365c60"/><stop offset="1" stop-color="#153744"/></linearGradient>
+      <linearGradient id="island-green-shade" x1="0" y1="0" x2="0.15" y2="1"><stop stop-color="#397c68"/><stop offset="1" stop-color="#164d4b"/></linearGradient>
+      <linearGradient id="island-sand-shade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f0e3c6"/><stop offset=".48" stop-color="#d7d9c8"/><stop offset="1" stop-color="#b8c9be"/></linearGradient>
+      <linearGradient id="island-house-wall" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fbf0d8"/><stop offset="1" stop-color="#c4d3ce"/></linearGradient>
+    </defs>
+    <ellipse class="scene-island-shadow" cx="720" cy="580" rx="555" ry="36"/>
+    <path class="scene-island-reef" d="M151 523
+      C226 488 294 477 373 486
+      C448 452 521 450 601 478
+      C690 445 769 450 851 478
+      C937 445 1031 454 1093 486
+      C1183 470 1252 491 1300 528
+      L1371 620H75Z"/>
+    <path class="scene-island-foliage scene-island-foliage-back" d="M203 526
+      C244 477 306 449 372 467
+      C421 414 515 399 593 438
+      C647 391 737 378 812 422
+      C882 383 984 403 1034 448
+      C1115 426 1205 456 1268 510
+      L1322 620H142Z"/>
+    <path class="scene-island-foliage scene-island-foliage-front" d="M233 527
+      C285 487 343 471 402 485
+      C449 446 522 438 584 466
+      C640 430 711 429 769 461
+      C831 429 906 434 961 467
+      C1024 443 1100 458 1151 488
+      C1207 477 1252 494 1291 523
+      L1320 620H144Z"/>
+    <path class="scene-island-beach" d="M165 507
+      C244 478 331 466 411 479
+      C499 455 577 465 654 485
+      C735 457 826 455 906 478
+      C987 500 1076 465 1161 477
+      C1237 488 1290 506 1340 531
+      C1311 568 1304 589 1320 620H95
+      C116 578 132 541 165 507Z"/>
+    <path class="scene-island-shoreline" d="M165 507
+      C244 478 331 466 411 479
+      C499 455 577 465 654 485
+      C735 457 826 455 906 478
+      C987 500 1076 465 1161 477
+      C1237 488 1290 506 1340 531"/>
+    <path class="scene-island-path" d="M706 514
+      C690 532 723 545 711 560
+      C697 578 728 589 716 620H765
+      C752 590 779 577 759 557
+      C743 541 766 529 743 514Z"/>
 
-    <g class="scene-palm scene-palm-left" transform="translate(535 496)">
+    <g class="scene-palm scene-palm-left" transform="translate(535 488)">
       <path class="scene-palm-trunk" d="M0 16c-27-44-34-109-25-174 5-37 17-74 34-112"/>
+      <path class="scene-palm-trunk-highlight" d="M-4-30c-12-44-12-96-2-142"/>
       <g transform="translate(9 -270)"><g class="scene-palm-crown">
         <path class="scene-palm-leaf leaf-a" d="M0 0c-59-53-133-63-192-27 57-6 105 7 146 28 23 12 40 13 46-1Z"/>
         <path class="scene-palm-leaf leaf-b" d="M0 0c-31-72-91-107-159-94 49 17 87 43 117 74 18 18 33 24 42 20Z"/>
@@ -69,8 +125,9 @@ export function islandSceneSvg(){
         <path class="scene-palm-leaf leaf-f" d="M0 0c8-51 36-91 82-116-18 39-26 77-28 111-1 20-12 34-32 35Z"/>
       </g></g>
     </g>
-    <g class="scene-palm scene-palm-right" transform="translate(900 500)">
+    <g class="scene-palm scene-palm-right" transform="translate(900 490)">
       <path class="scene-palm-trunk" d="M0 14c-25-48-31-116-17-181 8-40 24-77 46-111"/>
+      <path class="scene-palm-trunk-highlight" d="M-3-30c-10-44-6-96 12-144"/>
       <g transform="translate(29 -287)"><g class="scene-palm-crown">
         <path class="scene-palm-leaf leaf-a" d="M0 0c-47-51-109-68-163-40 48-1 90 13 126 35 19 12 33 14 37 5Z"/>
         <path class="scene-palm-leaf leaf-b" d="M0 0c-21-65-70-103-130-100 43 17 75 42 100 69 15 16 27 22 35 19Z"/>
@@ -80,22 +137,36 @@ export function islandSceneSvg(){
       </g></g>
     </g>
 
+    <g class="scene-island-rocks" aria-hidden="true">
+      <path d="M196 539q13-19 28-2 15-14 26 2l-5 9h-45Z"/>
+      <path d="M1183 528q11-15 24-2 12-13 24 1l-3 8h-44Z"/>
+      <path d="M1260 549q8-12 19-2 10-9 18 2l-3 7h-34Z"/>
+      <ellipse cx="1051" cy="527" rx="7" ry="3"/><ellipse cx="458" cy="536" rx="5" ry="2.4"/>
+    </g>
     <g class="scene-island-grass" aria-hidden="true">
-      <path d="M188 479q-24-43-23-75 26 31 31 71 10-43 37-66-14 46-34 77Z"/>
-      <path d="M1052 481q-18-40-12-70 23 30 22 66 15-38 42-55-19 42-43 67Z"/>
-      <path d="M1137 483q-12-31-7-53 17 24 17 50 12-30 33-43-14 34-35 53Z"/>
+      <path d="M320 493q-24-43-23-75 26 31 31 71 10-43 37-66-14 46-34 77Z"/>
+      <path d="M1033 491q-18-40-12-70 23 30 22 66 15-38 42-55-19 42-43 67Z"/>
+      <path d="M1110 500q-12-31-7-53 17 24 17 50 12-30 33-43-14 34-35 53Z"/>
+      <path d="M406 512q-11-22-8-39 14 17 17 35 8-20 22-28-9 24-24 39Z"/>
     </g>
 
-    <g class="scene-house" transform="translate(650 399)">
-      <ellipse class="scene-house-shadow" cx="73" cy="142" rx="100" ry="13"/>
+    <g class="scene-house" transform="translate(650 385)">
+      <ellipse class="scene-house-shadow" cx="73" cy="143" rx="104" ry="15"/>
+      <path class="scene-house-chimney" d="M118 0h17v38h-17z"/>
+      <path class="scene-house-wall" d="M4 48h138v86H4z"/>
       <path class="scene-house-roof-shadow" d="m-17 50 90-75 91 75-11 13-80-65-79 65Z"/>
-      <path class="scene-house-wall" d="M4 48h138v93H4z"/>
       <path class="scene-house-roof" d="m-8 47 81-67 82 67-12 11-70-56-69 56Z"/>
-      <path class="scene-house-door" d="M59 91h31v50H59z"/>
-      <g class="scene-house-window"><path d="M18 65h24v24H18zM109 65h24v24h-24z"/><path d="M30 65v24m-12-12h24m79-12v24m-12-12h24"/></g>
+      <path class="scene-house-roof-seams" d="m8 43 65-54 65 54M21 49l52-43 54 43"/>
+      <path class="scene-house-window-glass" d="M18 63h24v23H18zM109 63h24v23h-24z"/>
+      <path class="scene-house-window-frame" d="M30 63v23m-12-11h24m79-12v23m-12-11h24"/>
+      <path class="scene-house-door" d="M59 88h31v46H59z"/>
+      <circle class="scene-house-door-knob" cx="83" cy="112" r="1.8"/>
+      <path class="scene-house-step" d="M54 134h41v6H54zM49 140h51v5H49z"/>
+      <circle class="scene-house-lamp" cx="101" cy="93" r="3"/>
+      <path class="scene-house-sill" d="M14 89h32m61 0h32"/>
     </g>
-
-    <path class="scene-shore-foam" d="M16 494c102-14 157 22 258 15 97-7 141-30 235-17 92 12 134 35 227 26 97-10 143-32 234-18 89 14 131 34 222 27 82-7 152-23 232-12"/>
+    <path class="scene-shore-foam" d="M168 509c87-13 144 12 230 7 80-6 137-23 207-19 30 2 54 8 79 13"/>
+    <path class="scene-shore-foam" d="M816 518c30 0 53-8 84-13 88-14 139-26 220-8 85 18 146 6 260 20"/>
     <g class="scene-birds" aria-hidden="true">
       <path d="M1045 194q13-14 26 0 13-14 26 0"/><path d="M1110 224q10-11 20 0 10-11 20 0"/>
     </g>
@@ -115,57 +186,84 @@ export function seaPanel(thoughts=[],today=dateKey(),now=new Date()){
   const active=groups.drifting;
   const arrivals=groups.returned;
   const weather=weatherOf(today);
+  const tide=tideInfo(today);
+  const tideLevel=Math.round(tide.strength*100);
+  const waterLevel=Math.round(45+weather.level*10);
+  const wavesRough=Math.min(1,weather.rough);
   const sun=sunPosition(now);
+  const unread=arrivals.filter(b=>b.seen!==true).length;
+  const lost=groups.lost.length;
+  const bottleState=active.length?'sent':unread?'unread':arrivals.length?'received':lost?'lost':'calm';
   const topLabel=active.length
-    ?`${active.length} ${active.length===1?'botella':'botellas'} en el agua`
-    :arrivals.length?`${arrivals.length} ${arrivals.length===1?'botella de vuelta':'botellas de vuelta'}`
-      :'Mar en calma';
-  const shoreLabel=active.length
-    ?`${active.length} ${active.length===1?'botella':'botellas'} en el mar`
-    :arrivals.length?`${arrivals.length} ${arrivals.length===1?'botella en la orilla':'botellas en la orilla'}`
-      :'La orilla está tranquila';
-  const fleet=active.slice(0,7).map((b,index)=>{
-    const seed=hashSeed(`${b.id}|${b.castAt}`);
-    return `<li class="vault-float" style="--x:${17+seed%68}%;--lift:${28+(seed>>>4)%12}%;--float-delay:${(index*.24).toFixed(2)}s;--tint:${tintOf(b).hex}">${bottleGlyph(b)}</li>`;
+    ?`${active.length} ${active.length===1?'botella en camino':'botellas en camino'}`
+    :unread?`${unread} ${unread===1?'botella nueva':'botellas nuevas'}`
+      :arrivals.length?`${arrivals.length} ${arrivals.length===1?'botella recibida':'botellas recibidas'}`
+        :lost?`${lost} ${lost===1?'botella perdida':'botellas perdidas'}`
+          :'Mar en calma';
+  const returned=arrivals.slice(0,5).map((b,index)=>{
+    const isNew=b.seen!==true;
+    return `<button type="button" class="vault-arrival${isNew?' is-new is-washing':''}" style="--arrival-x:${28+index*11}%;--wash-delay:${Math.min(index,4)*120}ms" data-action="open-bottle" data-id="${b.id}" aria-label="${isNew?'Abrir botella nueva recibida':'Abrir botella recibida'}">
+      ${bottleGlyph(b,{class:isNew?'is-landed':''})}<span class="sr-only">${isNew?'Nueva':'Recibida'}</span>
+    </button>`;
   }).join('');
-  const returned=arrivals.slice(0,5).map((b,index)=>`
-    <button type="button" class="vault-arrival ${b.seen?'':'is-new'}" style="--arrival-x:${28+index*11}%" data-action="open-bottle" data-id="${b.id}" aria-label="Abrir pensamiento de vuelta">
-      ${bottleGlyph(b,{class:'is-landed'})}<span class="sr-only">Abrir</span>
-    </button>`).join('');
-  return `<section id="thoughts-top" class="sea-panel thought-vault thoughts-ocean-stage ${arrivals.length?'has-arrivals':''}"
-    data-dayphase="${sun.phase}"
-    style="--sun-x:${sun.x}%;--sun-y:${sun.y}%;--moon-x:${sun.moonX}%;--moon-y:${sun.moonY}%;--water-level:${Math.round(49+weather.level*4)}%"
+  return `<section id="thoughts-top" class="sea-panel thought-vault thoughts-ocean-stage ${arrivals.length?'has-arrivals':''}${unread?' has-unread':''}"
+    data-dayphase="${sun.phase}" data-tide="${tide.key}" data-weather="${weather.weather.id}" data-bottle-state="${bottleState}"
+    style="--sun-x:${sun.x}%;--sun-y:${sun.y}%;--moon-x:${sun.moonX}%;--moon-y:${sun.moonY}%;--water-level:${waterLevel}%;--tide-level:${tideLevel}%"
     aria-label="Mar de Pensamientos">
     <span class="thoughts-sky-glow" aria-hidden="true"></span>
     <span class="thoughts-cloud thoughts-cloud-left" aria-hidden="true"></span>
     <span class="thoughts-cloud thoughts-cloud-right" aria-hidden="true"></span>
     <span class="thoughts-sun" aria-hidden="true"></span>
-    <span class="thoughts-moon" aria-hidden="true"></span>
+    <span class="thoughts-moon" aria-hidden="true">
+      <svg class="thoughts-moon-art" viewBox="0 0 48 48">
+        <path class="thoughts-moon-crescent" d="M34 4C19 6 8 18 8 29c0 11 9 18 20 15 8-2 14-9 14-18-2 8-8 13-15 13-8 0-14-7-13-15C15 15 22 8 34 4Z"/>
+        <circle class="thoughts-moon-crater" cx="22" cy="27" r="1.6"/>
+        <circle class="thoughts-moon-crater" cx="29" cy="34" r="1"/>
+      </svg>
+    </span>
     <header class="sea-sky thoughts-hero-copy">
       <p class="thoughts-kicker">${icon('wave')} Un lugar para soltar</p>
       <h1>Pensamientos</h1>
       <p class="thoughts-lead">Escribe. Suelta. Sigue.</p>
-      <p class="thoughts-state-pill">${esc(topLabel)}</p>
+      <div class="thoughts-hero-meta">
+        <p class="thoughts-state-pill" data-state="${bottleState}" role="status"><span class="thoughts-state-mark" aria-hidden="true"></span>${esc(topLabel)}</p>
+        <div class="thoughts-tide-status" role="status" aria-label="Estado de la marea: ${esc(tide.name)}. Fase: ${esc(tide.phase)}" title="Fase lunar: ${esc(tide.phase)}">
+          <span class="thoughts-tide-icon" aria-hidden="true">${icon('wave')}</span>
+          <span class="thoughts-tide-name">${esc(tide.name)}</span>
+          <span class="thoughts-tide-meter" role="meter" aria-label="Intensidad de la marea" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${tideLevel}"><i></i></span>
+        </div>
+      </div>
     </header>
     <div class="sea-water vault-water" aria-hidden="true">
-      ${wavesSvg(hashSeed(today),weather.rough)}
+      ${wavesSvg(hashSeed(today),wavesRough)}
+      <span class="thoughts-water-reflection"></span>
     </div>
     ${islandSceneSvg()}
-    ${fleet?`<ul class="sea-fleet vault-fleet" aria-label="Botellas en el mar">${fleet}</ul>`:''}
-    ${returned?`<div class="vault-arrivals" aria-label="De vuelta">${returned}</div>`:''}
-    <div class="thoughts-stage-actions">
-      <span class="thoughts-stage-note">${esc(shoreLabel)}</span>
-      <button type="button" class="thoughts-scroll-button" data-action="thoughts-island">Bajar a la isla ${icon('chevronDown')}</button>
-    </div>
+    ${returned?`<div class="vault-arrivals" aria-label="Botellas recibidas">${returned}</div>`:''}
   </section>`;
 }
 /* ---------- escribir y soltar ---------- */
+export function bottleCountOnly(count=0,state='sent'){
+  const numeric=Number(count);
+  const total=Number.isFinite(numeric)?Math.max(0,Math.floor(numeric)):0;
+  const label=state==='lost'
+    ?total===1?'botella perdida':'botellas perdidas'
+    :total===1?'botella enviada':'botellas enviadas';
+  return `<p class="thoughts-bottle-count-only" role="status" aria-label="${total} ${label}">${total}</p>`;
+}
+
 export function bottleComposer(setup={},today=dateKey(),draft={}){
   const draftText=String(draft.text||'');
+  const force=Math.max(1,Math.min(5,Math.round(Number(draft.force)||3)));
   return `<form id="bottle-form" class="card bottle-composer">
     <label class="sr-only" for="bottle-text">Pensamiento</label>
     <textarea id="bottle-text" name="text" class="bottle-text" maxlength="1200" rows="3"
       placeholder="Escribe aquí…">${esc(draftText)}</textarea>
+    <div class="cast-force">
+      <div class="cast-force-head"><label for="bottle-force">Fuerza</label><output id="bottle-force-value" for="bottle-force" aria-live="polite">${force}</output></div>
+      <input id="bottle-force" class="cast-force-slider" type="range" name="force" min="1" max="5" step="1" value="${force}" aria-label="Fuerza del lanzamiento">
+      <div class="cast-force-scale" aria-hidden="true"><span>Vuelve antes</span><span>Tarda más</span></div>
+    </div>
     <div class="composer-bar">
       <div class="composer-moods" role="radiogroup" aria-label="Ánimo">
         ${MOODS.map(m=>`<label class="mini-mood" style="--mood-color:${m.color}" title="${m.label}">
@@ -173,7 +271,7 @@ export function bottleComposer(setup={},today=dateKey(),draft={}){
           <span>${m.emoji}</span>
         </label>`).join('')}
       </div>
-      <button type="submit" class="button solid cast-btn"${draftText.trim()?'':' disabled'}>${icon('send')} Soltar</button>
+      <button type="submit" class="button solid cast-btn"${draftText.trim()?'':' disabled'}>${icon('send')} Lanzar botella</button>
     </div>
   </form>`;
 }
@@ -184,11 +282,13 @@ export function bottleCard(bottle,today=dateKey(),index=0){
   const tint=tintOf(bottle);
   const remove=`<button type="button" class="icon-button ghost delete-button" data-action="delete-bottle" data-id="${bottle.id}" aria-label="Eliminar">${icon('trash')}</button>`;
   if(fate!=='returned'){
-    const state=fate==='lost'?'Perdida':'En camino';
-    return `<article class="card bottle-card is-${fate} is-locked" style="--tint:${tint.hex};--i:${Math.min(9,index)}" data-bottle-id="${bottle.id}" aria-label="${state}">
+    const state=fate==='lost'?'Perdida':'Enviada';
+    const detail=fate==='lost'?'No volvió':'En camino';
+    return `<article class="card bottle-card is-${fate} is-locked" style="--tint:${tint.hex};--card-delay:${Math.min(9,index)*35}ms" data-bottle-id="${bottle.id}" aria-label="${state}. ${detail}">
       <header class="bottle-card-head">
         <span class="bottle-card-mark">${bottleGlyph(bottle,{paper:false})}</span>
-        <div class="bottle-card-who"><h3>${state}</h3></div>
+        <div class="bottle-card-who"><p class="field-caption">${detail}</p><h3>${state}</h3></div>
+        ${fate==='drifting'?`<span class="bottle-lock-mark" aria-hidden="true">${icon('lock')}</span>`:''}
       </header>
       <footer class="bottle-card-foot">
         ${fate==='lost'?`<button type="button" class="text-button" data-action="recast-bottle" data-id="${bottle.id}">Soltar otra vez</button>`:''}
@@ -196,16 +296,18 @@ export function bottleCard(bottle,today=dateKey(),index=0){
       </footer>
     </article>`;
   }
-  return `<article class="card bottle-card is-returned" style="--tint:${tint.hex};--i:${Math.min(9,index)}" data-bottle-id="${bottle.id}">
+  const unread=bottle.seen!==true;
+  const receivedLabel=unread?'Nueva · recibida':bottle.kept?'Recibida · guardada':'Recibida';
+  return `<article class="card bottle-card is-returned${unread?' is-unread':''}${bottle.kept?' is-kept':''}" style="--tint:${tint.hex};--card-delay:${Math.min(9,index)*35}ms" data-bottle-id="${bottle.id}">
     <header class="bottle-card-head">
       <span class="bottle-card-mark">${bottleGlyph(bottle)}</span>
-      <div class="bottle-card-who"><p class="field-caption">De vuelta</p><h3>Pensamiento</h3></div>
+      <div class="bottle-card-who"><p class="field-caption">${receivedLabel}</p><h3>Pensamiento</h3></div>
       ${bottle.kept?`<span class="kept-mark" title="Guardado">${icon('bookmark')}</span>`:''}
     </header>
     <p class="bottle-card-text ${thoughtWordCount(bottle.text)<=26?'is-short':''}">${esc(bottle.text)}</p>
     ${bottle.reply?`<p class="bottle-card-reply"><span>Respuesta</span> ${esc(bottle.reply)}</p>`:''}
     <footer class="bottle-card-foot">
-      <button type="button" class="button outline small-btn" data-action="open-bottle" data-id="${bottle.id}">Abrir</button>
+      <button type="button" class="button outline small-btn" data-action="open-bottle" data-id="${bottle.id}" aria-label="${unread?'Abrir botella nueva':'Abrir botella recibida'}">Abrir</button>
       ${remove}
     </footer>
   </article>`;
@@ -216,10 +318,10 @@ export function bottleModal(bottle,today=dateKey(),setup={}){
   if(!canOpenBottle(bottle,today))return '';
   const tint=tintOf(bottle);
   const mood=bottle.mood?MOODS[bottle.mood-1]:null;
-  return `<div class="modal-card bottle-modal ${bottle.seen===false?'is-fresh':''}" style="--tint:${tint.hex}" data-modal-bottle="${bottle.id}">
+  return `<div class="modal-card bottle-modal ${bottle.seen!==true?'is-fresh':''}" style="--tint:${tint.hex}" data-modal-bottle="${bottle.id}">
     <button type="button" class="icon-button ghost bottle-close" data-modal="close" aria-label="Cerrar">${icon('close')}</button>
     <span class="bottle-wax" aria-hidden="true">${bottleGlyph(bottle,{paper:false})}<i class="wax-crack"></i></span>
-    <p class="tale">De vuelta</p>
+    <p class="tale">Recibida</p>
     <div class="bottle-note" data-fate="returned">
       <blockquote class="bottle-modal-text">${esc(bottle.text)}</blockquote>
       ${mood?`<p class="bottle-modal-mood">${mood.emoji} · ${mood.label.toLowerCase()}</p>`:''}
@@ -256,7 +358,7 @@ export function shoreTeaser(thoughts=[]){
   const groups=groupBottles(thoughts,dateKey());
   const returned=groups.returned.length;
   const drifting=groups.drifting.length;
-  const title=returned?'De vuelta':drifting?'En camino':'Pensamientos';
+  const title=returned?'Recibidas':drifting?'Enviadas':'Pensamientos';
   const count=returned?`${returned} ${returned===1?'nuevo':'nuevos'}`
     :drifting?`${drifting} ${drifting===1?'nota':'notas'}`:'';
   return `<section class="card sea-teaser ${returned?'is-arrival':''}">
@@ -267,7 +369,7 @@ export function shoreTeaser(thoughts=[]){
 }
 
 export function emptySea(tab='shore'){
-  const labels={shore:'Sin novedades',sea:'Todo tranquilo',kept:'Sin guardados',lost:'Sin pérdidas'};
+  const labels={shore:'Sin botellas recibidas',sea:'Sin botellas enviadas',kept:'Sin guardados',lost:'Sin pérdidas'};
   return `<div class="empty-state sea-empty" data-tab="${tab}">
     <span class="sea-empty-art">${bottleGlyph({})}<i class="sea-empty-ripple"></i></span>
     <h3>${esc(labels[tab]||'En calma')}</h3>

@@ -1,10 +1,35 @@
-import {dayNumber,dateKey} from './dates.js';
+import {dayNumber,dateKey,daysBetween} from './dates.js';
 import {COUNTERS,TEXT_FIELDS,THEMES,SETUP_PURPOSES,AGE_GROUPS,INTEREST_OPTIONS,WRITING_RITUALS,TONE_STYLES,counterDefs,partDefs,MAX_PARTS,MAX_COUNTERS} from '../data/constants.js';
-import {SEAS,GLASS_TINTS,WEATHERS,planVoyage,resolveBottle} from './ocean.js';
+import {SEAS,GLASS_TINTS,WEATHERS,planVoyage,resolveBottle,normalizeThrowForce} from './ocean.js';
 const KEY='diario.entries.v1';
 const HABITS_KEY='diario.habits.v1';
 const SETUP_KEY='diario.setup.v1';
 const THOUGHTS_KEY='diario.thoughts.v1';
+
+function commitStorageChanges(changes){
+  const previous=new Map(changes.map(([key])=>[key,localStorage.getItem(key)]));
+  const attempted=[];
+  try{
+    for(const [key,value] of changes){
+      attempted.push(key);
+      if(value===null)localStorage.removeItem(key);
+      else localStorage.setItem(key,value);
+    }
+  }catch(error){
+    let rollbackFailed=false;
+    for(const key of attempted.reverse()){
+      try{
+        const value=previous.get(key);
+        if(value===null)localStorage.removeItem(key);
+        else localStorage.setItem(key,value);
+      }catch{
+        rollbackFailed=true;
+      }
+    }
+    if(rollbackFailed)throw new Error('No se pudieron restaurar todos los datos tras el fallo. No cierres la página; exporta una copia si todavía puedes.',{cause:error});
+    throw error;
+  }
+}
 
 export const DEFAULT_SETUP = {
   completed: false,
@@ -137,7 +162,9 @@ export function loadEntry(date){return loadEntries().find(e=>e.date===date)||nul
 function persist(entries){const normalized=normalize(entries);localStorage.setItem(KEY,JSON.stringify(normalized));return normalized;}
 export function saveEntry(entry){const clean=validateEntry(entry);clean.updatedAt=new Date().toISOString();const entries=loadEntries();return persist([...entries.filter(e=>e.date!==clean.date),clean]);}
 export function deleteEntry(date){return persist(loadEntries().filter(e=>e.date!==date));}
-export function clearEntries(){localStorage.removeItem(KEY);localStorage.removeItem(HABITS_KEY);localStorage.removeItem(SETUP_KEY);localStorage.removeItem(THOUGHTS_KEY);}
+export function clearEntries(){
+  commitStorageChanges([[KEY,null],[HABITS_KEY,null],[SETUP_KEY,null],[THOUGHTS_KEY,null]]);
+}
 
 /* ----- Hábitos (configuración) ----- */
 export function validateHabit(h){
@@ -159,7 +186,9 @@ const GLASS_IDS=new Set(GLASS_TINTS.map(g=>g.id));
 const THOUGHT_STATUS=new Set(['drifting','returned','lost']);
 
 function isDateKey(value){
-  return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value);
+  if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
+  const date=new Date(`${value}T12:00:00`);
+  return Number.isFinite(date.getTime())&&dateKey(date)===value;
 }
 
 export function validateThought(t){
@@ -168,12 +197,18 @@ export function validateThought(t){
   if(!text)throw new Error('Escribe un pensamiento antes de echar la botella al mar.');
   const castAt=isDateKey(t.castAt)&&t.castAt<=dateKey()?t.castAt:dateKey();
   const sea=SEA_IDS.has(t.sea)?t.sea:'breeze';
+  const force=normalizeThrowForce(t.force);
   const mood=Number.isInteger(t.mood)&&t.mood>=1&&t.mood<=5?t.mood:null;
   const id=typeof t.id==='string'&&t.id?t.id:crypto.randomUUID();
   // El viaje se sortea una sola vez, al echar la botella: después no se recalcula.
-  const voyage=Number.isInteger(t.driftDays)&&isDateKey(t.arriveOn)
+  const storedReturns=t.returns===true;
+  const arrivalDays=isDateKey(t.arriveOn)?daysBetween(castAt,t.arriveOn):null;
+  const hasValidVoyage=Number.isInteger(t.driftDays)&&t.driftDays>=1&&arrivalDays===t.driftDays
+    &&(storedReturns||isDateKey(t.lostOn)&&t.lostOn>t.arriveOn);
+  const voyage=hasValidVoyage
     ?{
-      returns:t.returns===true,
+      force,
+      returns:storedReturns,
       speed:Number.isFinite(t.speed)?Math.max(1,Math.round(t.speed)):10,
       driftDays:Math.max(1,t.driftDays),
       arriveOn:t.arriveOn,
@@ -186,7 +221,7 @@ export function validateThought(t){
       windSpeed:Number.isFinite(t.windSpeed)?Math.max(0,Math.round(t.windSpeed)):null,
       push:Number.isInteger(t.push)?Math.max(0,Math.min(4,t.push)):0
     }
-    :planVoyage({text,castAt,sea,id});
+    :planVoyage({text,castAt,sea,id,force});
   return {
     id,
     text,
@@ -207,11 +242,16 @@ export function validateThought(t){
   };
 }
 
+function normalizeThoughts(list,today=dateKey()){
+  return list.map(validateThought)
+    .map(t=>t.castAt>today?{...t,castAt:today}:t)
+    .map(t=>resolveBottle(t,today))
+    .sort((a,b)=>a.castAt.localeCompare(b.castAt)||a.id.localeCompare(b.id));
+}
 function persistThoughts(list){
-  const today=dateKey();
-  const clean=list.map(validateThought).map(t=>t.castAt>today?{...t,castAt:today}:t).sort((a,b)=>a.castAt.localeCompare(b.castAt)||a.id.localeCompare(b.id));
+  const clean=normalizeThoughts(list);
   localStorage.setItem(THOUGHTS_KEY,JSON.stringify(clean));
-  return loadThoughts(); // y de paso asienta lo que el mar ya debía haber decidido
+  return clean;
 }
 
 /* Al abrir el cuaderno el mar reparte lo que tocaba: devuelve las botellas
@@ -238,7 +278,7 @@ export function loadThoughts(){
 export function saveThought(thought){
   const previous=loadThoughts().find(t=>t.id===thought?.id)||null;
   // Una botella ya echada al mar conserva el viaje que salió sorteado el día que la soltaste.
-  const frozen=previous?Object.fromEntries(['sea','returns','speed','driftDays','arriveOn','lostOn','current','glass','mottoSeed','status'].map(k=>[k,previous[k]])):{};
+  const frozen=previous?Object.fromEntries(['sea','force','returns','speed','driftDays','arriveOn','lostOn','current','glass','mottoSeed','status'].map(k=>[k,previous[k]])):{};
   const clean=validateThought({...previous,...thought,...frozen,updatedAt:new Date().toISOString()});
   return persistThoughts([...loadThoughts().filter(t=>t.id!==clean.id),clean]);
 }
@@ -353,24 +393,51 @@ export function exportData(entries,habits=loadHabits(),setup=loadSetup(),thought
 export function parseImport(text){
   let data;
   try{data=JSON.parse(text);}catch{throw new Error('El archivo no es una copia JSON válida.');}
-  if(!data||typeof data!=='object'||data.version!==1||!Array.isArray(data.entries))throw new Error('Selecciona una copia JSON de Diario (versión 1).');
+  if(!data||typeof data!=='object'||Array.isArray(data)||data.version!==1||!Array.isArray(data.entries))throw new Error('Selecciona una copia JSON de Diario (versión 1).');
+  if(data.habits!==undefined&&!Array.isArray(data.habits))throw new Error('La lista de hábitos de la copia no es válida.');
+  if(data.thoughts!==undefined&&!Array.isArray(data.thoughts))throw new Error('La lista de pensamientos de la copia no es válida.');
+  if(data.setup!==undefined&&data.setup!==null&&(typeof data.setup!=='object'||Array.isArray(data.setup)))throw new Error('Los ajustes de la copia no son válidos.');
   const entries=data.entries.map(validateEntry);
   if(new Set(entries.map(e=>e.date)).size!==entries.length)throw new Error('La copia contiene fechas duplicadas.');
-  const habits=Array.isArray(data.habits)?data.habits.map(validateHabit):[];
-  const thoughts=Array.isArray(data.thoughts)?data.thoughts.map(validateThought):[];
+  const habits=(data.habits||[]).map(validateHabit);
+  if(new Set(habits.map(h=>h.id)).size!==habits.length)throw new Error('La copia contiene hábitos duplicados.');
+  const thoughts=(data.thoughts||[]).map(validateThought);
+  if(new Set(thoughts.map(t=>t.id)).size!==thoughts.length)throw new Error('La copia contiene pensamientos duplicados.');
   const setup=data.setup?validateSetup(data.setup):null;
   return {entries,habits,thoughts,setup};
 }
 export function importData(incoming){
-  const current=loadEntries();
-  const map=new Map(current.map(e=>[e.date,e]));
-  for(const e of incoming.entries)map.set(e.date,validateEntry(e));
-  const habitMap=new Map(loadHabits().map(h=>[h.id,h]));
-  for(const h of incoming.habits)habitMap.set(h.id,validateHabit(h));
-  persistHabits([...habitMap.values()]);
-  const thoughtMap=new Map(loadThoughts().map(t=>[t.id,t]));
-  for(const t of incoming.thoughts||[])thoughtMap.set(t.id,validateThought(t));
-  persistThoughts([...thoughtMap.values()]);
-  if(incoming.setup)saveSetup(incoming.setup);
-  return persist([...map.values()]);
+  if(!incoming||!Array.isArray(incoming.entries)||!Array.isArray(incoming.habits))throw new Error('La copia no contiene listas de entradas y hábitos válidas.');
+  if(incoming.thoughts!==undefined&&!Array.isArray(incoming.thoughts))throw new Error('La lista de pensamientos de la copia no es válida.');
+  if(incoming.setup!==undefined&&incoming.setup!==null&&(typeof incoming.setup!=='object'||Array.isArray(incoming.setup)))throw new Error('Los ajustes de la copia no son válidos.');
+
+  const importedEntries=incoming.entries.map(validateEntry);
+  if(new Set(importedEntries.map(e=>e.date)).size!==importedEntries.length)throw new Error('La copia contiene fechas duplicadas.');
+  const importedHabits=incoming.habits.map(validateHabit);
+  if(new Set(importedHabits.map(h=>h.id)).size!==importedHabits.length)throw new Error('La copia contiene hábitos duplicados.');
+  const importedThoughts=(incoming.thoughts||[]).map(validateThought);
+  if(new Set(importedThoughts.map(t=>t.id)).size!==importedThoughts.length)throw new Error('La copia contiene pensamientos duplicados.');
+  const importedSetup=incoming.setup?validateSetup(incoming.setup):null;
+
+  const entries=new Map(loadEntries().map(e=>[e.date,e]));
+  for(const entry of importedEntries)entries.set(entry.date,entry);
+  const habits=new Map(loadHabits().map(h=>[h.id,h]));
+  for(const habit of importedHabits)habits.set(habit.id,habit);
+  const thoughts=new Map(loadThoughts().map(t=>[t.id,t]));
+  for(const thought of importedThoughts)thoughts.set(thought.id,thought);
+
+  const mergedEntries=normalize([...entries.values()]);
+  const mergedHabits=[...habits.values()].map(validateHabit);
+  const mergedThoughts=normalizeThoughts([...thoughts.values()]);
+  const changes=[
+    [HABITS_KEY,JSON.stringify(mergedHabits)],
+    [THOUGHTS_KEY,JSON.stringify(mergedThoughts)]
+  ];
+  if(importedSetup){
+    const mergedSetup=validateSetup({...loadSetup(),...importedSetup,updatedAt:new Date().toISOString()});
+    changes.push([SETUP_KEY,JSON.stringify(mergedSetup)]);
+  }
+  changes.push([KEY,JSON.stringify(mergedEntries)]);
+  commitStorageChanges(changes);
+  return mergedEntries;
 }

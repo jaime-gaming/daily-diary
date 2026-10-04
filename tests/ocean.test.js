@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SEAS,WEATHERS,hashSeed,mulberry32,tideInfo,nextSpringTide,planVoyage,fateOf,canOpenBottle,resolveBottle,
-  voyageProgress,seaPhrase,groupBottles,shoreQueue,thoughtWordCount,
+  voyageProgress,seaPhrase,groupBottles,shoreQueue,thoughtWordCount,normalizeThrowForce,
   weatherOf,driftX,sunPosition
 } from '../src/utils/ocean.js';
 import {addDays,daysBetween} from '../src/utils/dates.js';
@@ -41,6 +41,18 @@ test('el azar es determinista: mismas entradas, mismo viaje', () => {
   const journeys=new Set();
   for(let i=0;i<40;i++)journeys.add(JSON.stringify(planVoyage({text:`pensamiento número ${i}`,castAt:'2026-09-01',sea:'breeze',id:`b${i}`})));
   assert.ok(journeys.size>30,'textos distintos sortean viajes distintos');
+});
+
+test('la fuerza del lanzamiento alarga la travesía y se limita al rango', () => {
+  const args={text:'Fuerza de lanzamiento',castAt:'2026-09-01',sea:'breeze',id:'force-check'};
+  const suave=planVoyage({...args,force:1});
+  const fuerte=planVoyage({...args,force:5});
+  assert.equal(suave.force,1);
+  assert.equal(fuerte.force,5);
+  assert.ok(fuerte.driftDays>suave.driftDays,'lanzar con más fuerza retrasa el regreso');
+  assert.equal(normalizeThrowForce(99),5);
+  assert.equal(normalizeThrowForce(-4),1);
+  assert.equal(normalizeThrowForce('x'),3);
 });
 
 test('planVoyage respeta el mar elegido y sus fechas', () => {

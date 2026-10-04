@@ -200,12 +200,20 @@ export function seaById(id='breeze'){
   return SEAS.find(s=>s.id===id)||SEAS.find(s=>s.id==='breeze');
 }
 
-export function planVoyage({text='',castAt=dateKey(),sea='breeze',id=''}={}){
+export function normalizeThrowForce(value=3){
+  if(value===null||value===undefined||value==='')return 3;
+  const force=Number(value);
+  return Number.isFinite(force)?Math.max(1,Math.min(5,Math.round(force))):3;
+}
+
+export function planVoyage({text='',castAt=dateKey(),sea='breeze',id='',force=3}={}){
   const s=seaById(sea);
+  const throwForce=normalizeThrowForce(force);
   const rnd=mulberry32(hashSeed(`${castAt}|${s.id}|${id}|${String(text).trim().slice(0,220)}`));
   const r1=rnd(),r2=rnd(),r3=rnd(),r4=rnd();
   const part=weatherOf(castAt);            /* el parte del día en que se suelta */
-  const rawDays=Math.max(1,Math.round(s.min+r1*(s.max-s.min)));
+  const forceScale=.7+(throwForce-1)*.225;
+  const rawDays=Math.max(1,Math.round((s.min+r1*(s.max-s.min))*forceScale));
   const returns=r2<s.chance;
   const speed=Math.max(4,Math.round(s.miles*(.7+r3*.6)*part.speed));
   const target=addDays(castAt,rawDays);
@@ -216,6 +224,7 @@ export function planVoyage({text='',castAt=dateKey(),sea='breeze',id=''}={}){
   const grace=Math.max(3,Math.round(rawDays*.22));
   return {
     sea:s.id,
+    force:throwForce,
     returns,
     speed,
     driftDays:Math.max(1,daysBetween(castAt,arriveOn)),

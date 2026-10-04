@@ -26,6 +26,7 @@ test('pensamientos: validar y guardar una botella', () => {
   assert.equal(b.text,'Quiero aprender a navegar.');
   assert.equal(b.mood,3);
   assert.equal(b.sea,'breeze');
+  assert.equal(b.force,3);
   assert.equal(b.status,'drifting');
   assert.ok(b.id);
   assert.ok(Number.isInteger(b.driftDays)&&b.driftDays>=1);
@@ -35,10 +36,27 @@ test('pensamientos: validar y guardar una botella', () => {
   assert.equal(loadThoughts()[0].id,'p1');
 });
 
+test('pensamientos: la fuerza queda guardada y se conserva al volver a lanzar', () => {
+  const today=dateKey();
+  let bottle=saveThought({id:'fuerza',text:'Lejos de la orilla.',force:5,sea:'breeze',castAt:today}).find(t=>t.id==='fuerza');
+  assert.equal(bottle.force,5);
+  bottle=saveThought({id:'fuerza',text:'Texto corregido.',force:1,sea:'deep',castAt:today}).find(t=>t.id==='fuerza');
+  assert.equal(bottle.force,5,'editar la botella no cambia la fuerza ya lanzada');
+  const recast=recastThought('fuerza').find(t=>t.id==='fuerza');
+  assert.equal(recast.force,5);
+  assert.ok(recast.arriveOn>=today);
+  deleteThought('fuerza');
+});
+
 test('pensamientos: rechaza textos vacíos y fechas futuras', () => {
   assert.throws(()=>validateThought({text:'   '}),/Escribe un pensamiento/);
   const far=dateKey(new Date(Date.now()+9*86400000));
   assert.equal(validateThought({text:'Prueba',castAt:far}).castAt,dateKey(),'la fecha futura se trae a hoy');
+  const brokenVoyage=validateThought({text:'Fecha imposible',castAt:'2026-02-30',driftDays:12,arriveOn:'2026-03-14',returns:true});
+  assert.equal(brokenVoyage.castAt,dateKey());
+  assert.ok(brokenVoyage.arriveOn>=dateKey(),'una travesía con fechas incoherentes se recalcula desde hoy');
+  const impossibleArrival=validateThought({text:'Llegada imposible',castAt:dateKey(),driftDays:12,arriveOn:'2026-02-30',returns:true});
+  assert.ok(impossibleArrival.arriveOn>=dateKey(),'una fecha de llegada imposible no se conserva');
   assert.equal(validateThought({text:'Prueba',mood:9}).mood,null);
   assert.equal(validateThought({text:'Prueba',sea:'marte'}).sea,'breeze');
   assert.equal(validateThought({text:'x'.repeat(2000)}).text.length,1200);

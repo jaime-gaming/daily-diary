@@ -71,25 +71,18 @@
 .tabbar-item.active .tabbar-icon .icon{animation:tabSettle .38s var(--ease-pop)}
 @keyframes tabSettle{0%{transform:translateY(2px) scale(.94)}70%{transform:translateY(-2px) scale(1.05)}100%{transform:none}}
 
-/* La ola SVG cubre la vista y se retira para descubrir la isla viva. */
-.thoughts-entry-wave{position:fixed;inset:0;z-index:1100;overflow:hidden;pointer-events:none}
+/* La ola sube sobre la página actual, cambia de vista cubierta y se retira. */
+.thoughts-entry-wave{position:fixed;inset:0;z-index:1100;overflow:hidden;pointer-events:auto}
 .thoughts-entry-water{
-  position:absolute;top:-100%;left:-8%;width:116%;height:200%;overflow:visible;transform:translateY(100%);
-  animation:thoughtsWavePass 1.95s var(--ease-tide) both
+  position:absolute;top:-20vh;left:-10%;width:120%;height:140vh;overflow:visible;
+  transform:translateY(100%);transition:transform .76s cubic-bezier(.22,.72,.28,1);will-change:transform
 }
-.entry-stop-surface{stop-color:var(--sea-foam);stop-opacity:.9}
+.entry-stop-surface{stop-color:var(--sea-foam);stop-opacity:.92}
 .entry-stop-mid{stop-color:var(--sea-1)}
 .entry-stop-deep{stop-color:var(--sea-deep)}
 .thoughts-entry-sea{fill:url(#thoughts-entry-gradient)}
-.thoughts-entry-swell{fill:color-mix(in srgb,var(--sea-2) 75%,transparent);opacity:.62}
 .thoughts-entry-crest{fill:none;stroke:color-mix(in srgb,var(--paper-2) 88%,transparent);stroke-width:5;stroke-linecap:round;vector-effect:non-scaling-stroke}
-.thoughts-entry-foam{fill:none;stroke:color-mix(in srgb,var(--paper-2) 53%,transparent);stroke-width:2.5;stroke-linecap:round;vector-effect:non-scaling-stroke}
-@keyframes thoughtsWavePass{
-  0%{transform:translateY(100%)}
-  38%{transform:translateY(0)}
-  60%{transform:translateY(-5%)}
-  100%{transform:translateY(-116%)}
-}
+.thoughts-entry-foam{fill:none;stroke:color-mix(in srgb,var(--paper-2) 45%,transparent);stroke-width:2.5;stroke-linecap:round;vector-effect:non-scaling-stroke}
 
 /* Cambio de vista: aparece en su sitio, con un leve velo de enfoque. */
 #main.page-enter{animation:pageArrive .42s var(--ease-ink) both;transform-origin:50% 0;will-change:opacity,transform,filter}

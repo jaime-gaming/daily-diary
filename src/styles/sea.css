@@ -276,10 +276,9 @@
   background:radial-gradient(circle at 34% 30%,#fff9d8 0%,color-mix(in srgb,var(--ochre) 88%,#fff) 35%,var(--ochre) 78%);
   box-shadow:0 0 0 10px color-mix(in srgb,var(--ochre) 10%,transparent),0 0 46px 10px color-mix(in srgb,var(--ochre) 40%,transparent)
 }
-.thoughts-moon{display:none;left:var(--moon-x,50%);top:var(--moon-y,40%);width:42px;height:42px;background:var(--paper-2);box-shadow:0 0 0 8px color-mix(in srgb,var(--paper-2) 9%,transparent),0 0 40px color-mix(in srgb,var(--paper-2) 30%,transparent)}
-.thoughts-moon::after{content:"";position:absolute;width:36px;height:36px;left:12px;top:-5px;border-radius:50%;background:color-mix(in srgb,var(--sea-deep) 82%,var(--sea-sky))}
+.thoughts-moon{display:none;left:var(--moon-x,50%);top:var(--moon-y,40%);width:42px;height:42px;background:transparent;box-shadow:none}
 .thoughts-ocean-stage[data-dayphase="night"] .thoughts-sun{opacity:0}
-.thoughts-ocean-stage[data-dayphase="night"] .thoughts-moon{display:block;background:color-mix(in srgb,var(--sea-foam) 74%,white);box-shadow:0 0 0 8px color-mix(in srgb,var(--sea-foam) 12%,transparent),0 0 40px color-mix(in srgb,var(--sea-foam) 40%,transparent)}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-moon{display:block;background:transparent;box-shadow:none}
 .thoughts-hero-copy{
   position:relative;z-index:6;width:min(100%,620px);max-width:620px;margin:0;padding:0;border:0;border-radius:0;
   background:transparent;color:var(--ink);box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none
@@ -311,10 +310,6 @@
 .thoughts-ocean-stage .vault-water::before{top:14%}
 .thoughts-ocean-stage .vault-water::after{top:29%;left:10%;right:-20%;opacity:.27;transform:rotate(4deg)}
 .thoughts-ocean-stage .sea-wave-svg{z-index:1}
-.thoughts-ocean-stage .vault-fleet{position:absolute;inset:0;z-index:3;margin:0;padding:0;list-style:none}
-.thoughts-ocean-stage .vault-float{position:absolute;left:var(--x,50%);bottom:var(--lift,24%);transform:translateX(-50%);animation:bottleDrift 5.8s var(--ease-tide) var(--float-delay,0s) infinite}
-.thoughts-ocean-stage .vault-float .bottle-glyph{width:30px;height:30px;filter:drop-shadow(0 5px 7px color-mix(in srgb,var(--ink) 25%,transparent))}
-@keyframes bottleDrift{0%,100%{transform:translate3d(-50%,0,0) rotate(-7deg)}50%{transform:translate3d(-50%,-7px,0) rotate(5deg)}}
 .thoughts-island-scenery{
   position:absolute;left:-5%;bottom:-1%;z-index:4;width:110%;height:clamp(380px,60vh,650px);overflow:visible;pointer-events:none
 }
@@ -430,9 +425,7 @@
   .thoughts-state-pill{margin-top:17px;min-height:32px}
   .thoughts-sun{width:52px;height:52px}
   .thoughts-moon{width:36px;height:36px}
-  .thoughts-moon::after{width:30px;height:30px;left:10px;top:-4px}
-  .thoughts-ocean-stage .vault-water{height:52%}
-  .thoughts-ocean-stage .vault-float .bottle-glyph{width:24px;height:24px}
+  .thoughts-ocean-stage .vault-water{height:var(--water-level,52%)}
   .thoughts-island-scenery{left:-25%;width:150%;height:clamp(390px,62svh,540px)}
   .thoughts-stage-actions{left:20px;right:20px;bottom:18px;align-items:flex-start;flex-direction:column;gap:8px}
   .thoughts-stage-note{font-size:.58rem}
@@ -622,7 +615,7 @@
   .sea-wave-svg .wave,.sea-float-btn,.sea-beacon,.sea-wash,.sea-empty-art .bottle-glyph,.sea-empty-ripple,
   .sea-shore::before,.shore-bottle.is-washing,.is-rising .sea-shore,.bottle-glyph.is-landed,
   .thoughts-entry-water,.thoughts-island-scenery,.scene-island-shoreline,.scene-palm-crown,.scene-palm-leaf,.scene-birds,.shore-palm-crown,
-  .shore-palm-crown .leaf-b,.shore-palm-crown .leaf-e,.scene-shore-foam,.thoughts-ocean-stage .vault-float,.thoughts-ocean-stage .vault-arrival.is-washing,
+  .shore-palm-crown .leaf-b,.shore-palm-crown .leaf-e,.scene-shore-foam,.thoughts-ocean-stage .vault-arrival.is-washing,
   .splash-arc,.splash-ring,.splash-drop,.is-uncorking .bottle-wax,.is-uncorking .bottle-note,.is-uncorking .bottle-modal-text,
   .tide-rule-path{animation:none!important}
   .sea-float,.shore-bottle,.bottle-card,.thoughts-island{transition:none}
@@ -700,10 +693,6 @@
   -webkit-backdrop-filter:none;backdrop-filter:none
 }
 .thoughts-ocean-stage[data-dayphase="night"] .thoughts-state-pill{color:rgba(238,241,236,.75);border:0;background:none}
-.thoughts-moon{width:44px;height:44px;background:#fff4cf;box-shadow:0 0 0 9px rgba(255,243,203,.09),0 0 44px rgba(255,242,204,.32)}
-.thoughts-moon::after{background:#101f30}
-.thoughts-ocean-stage[data-dayphase="night"] .thoughts-moon{background:#fff4cf;box-shadow:0 0 0 9px rgba(255,243,203,.09),0 0 44px rgba(255,242,204,.32)}
-.thoughts-ocean-stage[data-dayphase="night"] .thoughts-moon::after{background:#101f30}
 .thoughts-ocean-stage .vault-water{
   height:var(--water-level,51%);border-radius:48% 52% 0 0 / 7% 9% 0 0;
   border-top:1px solid rgba(226,239,241,.36);background:linear-gradient(180deg,#498093 0%,#2f687a 48%,#1b4a61 100%);
@@ -711,9 +700,6 @@
 }
 .thoughts-ocean-stage[data-dayphase="night"] .vault-water{background:linear-gradient(180deg,#24485b 0%,#1c3d51 55%,#132f44 100%)}
 .thoughts-ocean-stage .vault-water::before,.thoughts-ocean-stage .vault-water::after{border-color:rgba(226,239,241,.48)}
-.thoughts-ocean-stage .vault-fleet{z-index:5;pointer-events:none}
-.thoughts-ocean-stage .vault-float{pointer-events:none}
-.thoughts-ocean-stage .vault-float .bottle-glyph{width:27px;height:27px;filter:drop-shadow(0 5px 5px rgba(8,24,37,.42))}
 .thoughts-island-scenery{left:-5%;bottom:-1%;z-index:4;width:110%;height:clamp(520px,82vh,840px)}
 .scene-island-shadow{fill:rgba(7,23,35,.24);filter:blur(12px)}
 .scene-island-foliage-back{fill:#194f4c}
@@ -738,7 +724,7 @@
   position:absolute;inset:0;z-index:7;display:block;max-width:none;overflow:visible;pointer-events:none
 }
 .thoughts-ocean-stage .vault-arrival{
-  position:absolute;left:var(--arrival-x,50%);right:auto;bottom:29%;transform:translateX(-50%);pointer-events:auto;
+  position:absolute;left:var(--arrival-x,50%);right:auto;bottom:17%;transform:translateX(-50%);pointer-events:auto;
   width:40px;height:40px;flex-basis:40px;padding:5px;border:0;border-radius:0;background:transparent;box-shadow:none;
   -webkit-backdrop-filter:none;backdrop-filter:none
 }
@@ -762,10 +748,9 @@
   .thoughts-state-pill{margin-top:22px;font-size:.6rem}
   .thoughts-cloud-left{top:30%;left:2%;transform:scale(.76);transform-origin:left center}
   .thoughts-cloud-right{top:18%;right:8%;transform:scale(.72);transform-origin:right center}
-  .thoughts-ocean-stage .vault-water{height:54%}
+  .thoughts-ocean-stage .vault-water{height:var(--water-level,54%)}
   .thoughts-island-scenery{left:-25%;width:150%;height:clamp(520px,78svh,700px)}
-  .thoughts-ocean-stage .vault-float .bottle-glyph{width:24px;height:24px}
-  .thoughts-ocean-stage .vault-arrival{bottom:28%;width:34px;height:34px;flex-basis:34px;padding:4px}
+  .thoughts-ocean-stage .vault-arrival{bottom:19%;width:34px;height:34px;flex-basis:34px;padding:4px}
   .thoughts-ocean-stage .vault-arrival .bottle-glyph{width:26px;height:26px}
   .thoughts-stage-actions{left:16px;right:16px;bottom:14px;align-items:center;flex-direction:row;gap:8px}
   .thoughts-stage-note{font-size:.53rem;letter-spacing:.08em;white-space:nowrap}
@@ -783,4 +768,558 @@
 @media(prefers-reduced-motion:reduce){
   .thoughts-cloud{animation:none!important}
   .thoughts-sun,.thoughts-moon,.thoughts-ocean-stage .vault-water{transition:none!important}
+}
+
+/* Agua más presente y viva en la escena inmersiva. */
+.thoughts-ocean-stage .vault-water{overflow:visible}
+.thoughts-ocean-stage .vault-water .sea-wave-svg{overflow:visible;z-index:1}
+.thoughts-ocean-stage .vault-water .wave-crest{
+  fill:none;stroke:rgba(234,246,244,.56);stroke-width:1.5;stroke-linecap:round;
+  vector-effect:non-scaling-stroke;transform-origin:0 50%;
+  animation:waveShift var(--wave-dur,18s) linear var(--wave-delay,0s) infinite,crestPulse 5.4s ease-in-out var(--wave-delay,0s) infinite
+}
+.thoughts-ocean-stage .vault-water .wave-crest-back{opacity:.36;stroke-width:1.2}
+.thoughts-ocean-stage .vault-water .wave-crest-front{opacity:.55;stroke-width:1.65}
+.thoughts-ocean-stage[data-tide="spring"] .vault-water .wave-crest{opacity:.68}
+.thoughts-ocean-stage[data-tide="neap"] .vault-water .wave-crest{opacity:.28}
+.thoughts-ocean-stage .vault-water .wave{
+  animation-name:waveShift,waveLift;animation-duration:var(--wave-dur,18s),var(--wave-bob,5s);
+  animation-timing-function:linear,ease-in-out;animation-delay:var(--wave-delay,0s),var(--wave-bob-delay,0s);
+  animation-iteration-count:infinite,infinite
+}
+.thoughts-ocean-stage .vault-water .wave-1{--wave-bob:4.4s;--wave-bob-delay:-1.2s;--wave-y:-3px}
+.thoughts-ocean-stage .vault-water .wave-2{--wave-bob:6.2s;--wave-bob-delay:-3s;--wave-y:-2px}
+.thoughts-ocean-stage .vault-water .wave-3{--wave-bob:7.8s;--wave-bob-delay:-4.7s;--wave-y:-1px}
+.thoughts-ocean-stage .vault-water .wave-4{--wave-bob:9.4s;--wave-bob-delay:-2.3s;--wave-y:-1px}
+.thoughts-ocean-stage .vault-water .wave-2,.thoughts-ocean-stage .vault-water .wave-3{animation-name:waveShiftBack,waveLift}
+.thoughts-ocean-stage .vault-water::before,.thoughts-ocean-stage .vault-water::after{
+  animation:waterlineRoll 8s ease-in-out infinite alternate;will-change:translate,opacity
+}
+.thoughts-ocean-stage .vault-water::after{animation-duration:11.5s;animation-delay:-4s;animation-direction:alternate-reverse}
+.thoughts-ocean-stage[data-tide="spring"] .vault-water::before{animation-duration:5.2s}
+.thoughts-ocean-stage[data-tide="neap"] .vault-water::before{animation-duration:12s;opacity:.32}
+.thoughts-water-reflection{
+  position:absolute;top:0;bottom:0;left:var(--sun-x,50%);z-index:2;width:clamp(42px,7vw,100px);
+  transform:translateX(-50%);pointer-events:none;opacity:.42;filter:blur(2px);
+  background:
+    repeating-linear-gradient(180deg,transparent 0 10px,rgba(255,238,184,.13) 11px 13px,transparent 14px 21px),
+    linear-gradient(90deg,transparent,rgba(255,238,184,.05) 22%,rgba(255,238,184,.23) 50%,rgba(255,238,184,.06) 78%,transparent);
+  -webkit-mask-image:linear-gradient(180deg,transparent 0%,#000 7%,#000 89%,transparent 100%);
+  mask-image:linear-gradient(180deg,transparent 0%,#000 7%,#000 89%,transparent 100%);
+  animation:reflectionShimmer 4.8s ease-in-out infinite alternate
+}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-water-reflection{
+  left:var(--moon-x,50%);opacity:.34;
+  background:
+    repeating-linear-gradient(180deg,transparent 0 12px,rgba(241,242,224,.12) 13px 15px,transparent 16px 24px),
+    linear-gradient(90deg,transparent,rgba(241,242,224,.05) 20%,rgba(241,242,224,.2) 50%,rgba(241,242,224,.05) 80%,transparent)
+}
+.thoughts-stage-meta{display:flex;align-items:center;gap:15px;min-width:0}
+.thoughts-tide-status{
+  display:inline-flex;align-items:center;gap:7px;min-height:28px;padding:4px 9px;
+  border:1px solid rgba(231,241,241,.2);border-radius:999px;background:rgba(10,28,41,.25);
+  color:rgba(239,245,240,.9);box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
+  -webkit-backdrop-filter:blur(9px) saturate(120%);backdrop-filter:blur(9px) saturate(120%)
+}
+.thoughts-tide-icon{display:grid;place-items:center;color:#a9d1d1}
+.thoughts-tide-icon .icon{width:13px;height:13px}
+.thoughts-tide-name{font-family:var(--font-mono);font-size:.56rem;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.thoughts-tide-meter{width:31px;height:2px;overflow:hidden;border-radius:99px;background:rgba(233,243,239,.25)}
+.thoughts-tide-meter i{display:block;width:var(--tide-level,50%);height:100%;border-radius:inherit;background:#e9c875;transform-origin:left;transition:width .5s var(--ease-ink)}
+.thoughts-ocean-stage[data-tide="spring"] .thoughts-tide-status{border-color:rgba(233,200,117,.42)}
+.thoughts-ocean-stage[data-tide="neap"] .thoughts-tide-meter i{opacity:.58}
+.thoughts-tide-meter[role="meter"]{position:relative}
+@keyframes waveLift{0%,100%{translate:0 0}50%{translate:0 var(--wave-y,-2px)}}
+@keyframes crestPulse{0%,100%{opacity:.26}50%{opacity:.64}}
+@keyframes waterlineRoll{0%{translate:-1.5% 0;opacity:.38}100%{translate:1.5% 5px;opacity:.7}}
+@keyframes reflectionShimmer{0%{opacity:.24;transform:translateX(-50%) scaleX(.78)}100%{opacity:.54;transform:translateX(-50%) scaleX(1.12)}}
+.cast-btn.is-launching:disabled{opacity:.82;cursor:wait}
+.cast-btn.is-launching .icon{animation:launchMark .7s cubic-bezier(.2,.8,.2,1) both}
+@keyframes launchMark{0%{transform:translate(0,0) rotate(0)}45%{transform:translate(7px,-8px) rotate(-28deg) scale(1.16);opacity:1}100%{transform:translate(20px,-25px) rotate(-42deg) scale(.45);opacity:0}}
+.splash-arc{
+  left:var(--from-x,24vw);top:var(--from-y,62vh);translate:-50% -50%;
+  animation:bottleFlight 1.12s cubic-bezier(.24,.68,.28,1) both
+}
+@keyframes bottleFlight{
+  0%{transform:translate(0,0) rotate(-18deg) scale(.7);opacity:0}
+  9%{opacity:1}
+  48%{transform:translate(var(--mid-x,0px),var(--mid-y,-130px)) rotate(205deg) scale(1.06);opacity:1}
+  100%{transform:translate(var(--flight-x,180px),var(--flight-y,-100px)) rotate(425deg) scale(.68);opacity:.06}
+}
+.splash-ring{animation-duration:.88s;animation-delay:.63s}
+.splash-ring.is-2{animation-delay:.77s}
+.thoughts-ocean-stage.is-casting .vault-water::before,.is-casting .thoughts-ocean-stage .vault-water::before{animation-duration:1.2s;opacity:.85}
+@media(max-width:760px){
+  .thoughts-stage-actions{align-items:flex-end}
+  .thoughts-stage-meta{align-items:flex-start;flex-direction:column;gap:5px}
+  .thoughts-tide-status{min-height:25px;padding:3px 7px;gap:6px}
+  .thoughts-tide-name{font-size:.51rem}
+  .thoughts-tide-meter{width:25px}
+  .thoughts-water-reflection{width:56px}
+}
+@media(max-width:420px){
+  .thoughts-stage-meta{gap:4px}
+  .thoughts-tide-status{min-height:23px;padding:2px 6px;gap:5px}
+  .thoughts-tide-icon .icon{width:12px;height:12px}
+  .thoughts-tide-name{font-size:.47rem;letter-spacing:.055em}
+}
+@media(prefers-reduced-motion:reduce){
+  .thoughts-ocean-stage .vault-water .wave-crest,.thoughts-ocean-stage .vault-water .wave,
+  .thoughts-water-reflection,.thoughts-ocean-stage .vault-water::before,.thoughts-ocean-stage .vault-water::after,
+  .cast-btn.is-launching .icon{animation:none!important}
+  .thoughts-tide-meter i{transition:none!important}
+}
+
+/* Fases claras entre cielo, agua y orilla. */
+.thoughts-moon,.thoughts-ocean-stage[data-dayphase="night"] .thoughts-moon{
+  overflow:visible;border-radius:0;background:transparent;box-shadow:none
+}
+.thoughts-moon-art{display:block;width:100%;height:100%;overflow:visible;filter:drop-shadow(0 0 12px rgba(255,242,204,.34))}
+.thoughts-moon-disc{fill:#fff4cf}
+.thoughts-island-header{padding-bottom:19px;border-bottom:1px solid color-mix(in srgb,var(--sea-deep) 14%,transparent)}
+.thoughts-island-workspace{align-items:start;grid-template-columns:minmax(0,.88fr) minmax(0,1.12fr);gap:clamp(18px,2.7vw,34px)}
+.thoughts-island-bottles{
+  min-height:100%;padding:clamp(15px,2vw,24px);border:1px solid color-mix(in srgb,var(--sea-2) 19%,var(--sand));
+  border-radius:21px;background:color-mix(in srgb,var(--paper-2) 36%,transparent);
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--paper-2) 72%,transparent),0 18px 38px -34px color-mix(in srgb,var(--sea-deep) 65%,transparent);
+  -webkit-backdrop-filter:blur(8px) saturate(108%);backdrop-filter:blur(8px) saturate(108%)
+}
+.thoughts-island-bottles .island-section-heading{margin-bottom:14px}
+.thoughts-island-bottles .ocean-tabs{margin-bottom:16px}
+@media(max-width:760px){
+  .thoughts-island-header{padding-bottom:15px}
+  .thoughts-island-workspace{grid-template-columns:minmax(0,1fr);gap:27px}
+  .thoughts-island-bottles{padding:14px;border-radius:17px}
+}
+@media(prefers-reduced-motion:reduce){
+  .thoughts-moon-art{filter:none}
+}
+
+/* Pensamientos cabe en una pantalla: escena, escritura y archivo flotante. */
+.thoughts-world{
+  height:100vh;min-height:100vh;height:100svh;min-height:100svh;height:100dvh;min-height:100dvh;
+  overflow:hidden;overscroll-behavior:none
+}
+.thoughts-ocean-stage{
+  height:100vh;min-height:100vh;height:100svh;min-height:100svh;height:100dvh;min-height:100dvh;
+  overflow:hidden
+}
+.thoughts-hero-meta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:21px}
+.thoughts-hero-meta .thoughts-state-pill{margin:0}
+.thoughts-compose-dock{
+  position:absolute;top:clamp(126px,17vh,170px);right:clamp(22px,5.5vw,82px);z-index:20;
+  width:min(390px,34vw);max-height:calc(100dvh - 150px);overflow:auto;scrollbar-width:thin
+}
+.thoughts-compose-dock h2{
+  margin:0 0 8px 2px;color:#f4f2e9;font-family:var(--font-mono);font-size:.68rem;
+  font-weight:500;letter-spacing:.13em;text-transform:uppercase;text-shadow:0 2px 12px rgba(5,19,30,.44)
+}
+.thoughts-compose-dock .bottle-composer{
+  margin:0;padding:14px 15px 12px;border:1px solid rgba(238,246,241,.42);border-left:3px solid #e8bd65;
+  border-radius:19px;background:color-mix(in srgb,var(--paper-2) 89%,transparent);
+  box-shadow:0 22px 52px -36px rgba(4,17,27,.72),inset 0 1px 0 rgba(255,255,255,.7);
+  -webkit-backdrop-filter:blur(17px) saturate(126%);backdrop-filter:blur(17px) saturate(126%)
+}
+.thoughts-compose-dock .bottle-text{min-height:70px;max-height:100px;resize:none;font-size:.98rem;line-height:1.52}
+.thoughts-compose-dock .composer-bar{justify-content:space-between;gap:7px;margin-top:8px;padding-top:9px;flex-wrap:wrap}
+.thoughts-compose-dock .composer-moods{gap:2px}
+.thoughts-compose-dock .mini-mood{width:31px;height:34px}
+.thoughts-compose-dock .cast-btn{min-height:42px;padding:9px 13px;border-radius:999px;white-space:nowrap}
+.thoughts-bottles-drawer{
+  position:absolute;top:calc(env(safe-area-inset-top,0px) + 15px);right:clamp(22px,5.5vw,82px);z-index:30
+}
+.thoughts-drawer-toggle{
+  display:flex;align-items:center;gap:8px;min-height:42px;padding:7px 12px;list-style:none;cursor:pointer;
+  border:1px solid rgba(230,239,243,.38);border-radius:999px;background:rgba(13,27,43,.33);color:#edf1ec;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12);font-family:var(--font-mono);font-size:.63rem;
+  letter-spacing:.09em;text-transform:uppercase;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  transition:background .2s,border-color .2s,transform .2s
+}
+.thoughts-drawer-toggle::-webkit-details-marker{display:none}
+.thoughts-drawer-toggle::marker{content:""}
+.thoughts-drawer-toggle:focus-visible{outline:2px solid color-mix(in srgb,var(--sea-2) 70%,white);outline-offset:3px}
+.thoughts-drawer-toggle:hover{transform:translateY(-1px);border-color:rgba(246,206,129,.75);background:rgba(13,27,43,.52)}
+.thoughts-drawer-toggle>.icon:first-child{width:15px;height:15px}
+.thoughts-drawer-count{display:grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:rgba(243,242,233,.16);font-size:.57rem}
+.thoughts-drawer-chevron{display:grid;place-items:center;transition:transform .2s}
+.thoughts-drawer-chevron .icon{width:13px;height:13px}
+.thoughts-bottles-drawer[open] .thoughts-drawer-chevron{transform:rotate(180deg)}
+.thoughts-drawer-panel{
+  position:absolute;top:calc(100% + 10px);right:0;width:min(390px,calc(100vw - 32px));max-height:min(52dvh,460px);
+  overflow:auto;padding:17px;border:1px solid color-mix(in srgb,var(--sea-2) 24%,var(--rule-strong));border-radius:22px;
+  background:color-mix(in srgb,var(--paper-2) 92%,transparent);color:var(--ink);
+  box-shadow:0 24px 64px -34px rgba(3,14,23,.74),inset 0 1px 0 color-mix(in srgb,var(--paper-2) 88%,transparent);
+  -webkit-backdrop-filter:blur(22px) saturate(124%);backdrop-filter:blur(22px) saturate(124%);
+  animation:thoughtsDrawerIn .24s var(--ease-ink) both
+}
+.thoughts-drawer-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 13px;padding:0 0 12px;border-bottom:1px solid color-mix(in srgb,var(--sea-deep) 16%,transparent)}
+.thoughts-drawer-header .island-kicker{margin:0;font-size:.58rem}
+.thoughts-drawer-header h2{margin:3px 0 0;font-family:var(--font-display);font-size:1.55rem;font-weight:550;line-height:1.05}
+.thoughts-drawer-returned{flex:none;font-family:var(--font-mono);font-size:.57rem;letter-spacing:.07em;color:var(--ink-soft)}
+.thoughts-bottles-drawer .thoughts-island-bottles{min-height:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+.thoughts-bottles-drawer .ocean-tabs{display:grid;width:100%;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;margin:0 0 12px;overflow:visible}
+.thoughts-bottles-drawer .ocean-tabs button{
+  display:flex;align-items:center;justify-content:flex-start;min-width:0;min-height:40px;padding:7px 9px;gap:6px;
+  border:1px solid color-mix(in srgb,var(--sea-2) 14%,var(--rule-strong));border-radius:11px;background:color-mix(in srgb,var(--paper-2) 78%,transparent);
+  font-size:.56rem;letter-spacing:.035em;white-space:nowrap
+}
+.thoughts-bottles-drawer .ocean-tabs button.active{border-color:color-mix(in srgb,var(--sea-2) 44%,var(--red));background:color-mix(in srgb,var(--sea-1) 19%,var(--paper-2));box-shadow:inset 0 -2px 0 color-mix(in srgb,var(--red) 60%,transparent)}
+.thoughts-bottles-drawer .ocean-tabs button .icon{flex:none;width:13px;height:13px}
+.thoughts-bottles-drawer .ocean-tabs .seg-count{margin-left:auto}
+.thoughts-bottles-drawer #ocean-body{min-width:0}
+.thoughts-bottles-drawer .bottle-grid,.thoughts-bottles-drawer .sealed-stack{gap:9px}
+.thoughts-bottles-drawer .bottle-card{padding:13px 14px;border-radius:13px;box-shadow:0 7px 20px -16px rgba(13,34,47,.4)}
+.thoughts-bottles-drawer .bottle-card-head{gap:10px}
+.thoughts-bottles-drawer .empty-state{padding:19px 12px;border-radius:14px}
+.thoughts-bottles-drawer .empty-state .icon{width:26px;height:26px}
+@keyframes thoughtsDrawerIn{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+@keyframes thoughtsWaveLoop{to{transform:translateX(-50%)}}
+@keyframes thoughtsWaveLoopBack{to{transform:translateX(50%)}}
+.thoughts-ocean-stage .vault-water .wave,.thoughts-ocean-stage .vault-water .wave-crest{
+  transform-box:fill-box;transform-origin:0 50%
+}
+.thoughts-ocean-stage .vault-water .wave{
+  animation-name:thoughtsWaveLoop,waveLift;animation-duration:var(--wave-dur,18s),var(--wave-bob,5s);
+  animation-timing-function:linear,ease-in-out;animation-delay:var(--wave-delay,0s),var(--wave-bob-delay,0s);
+  animation-iteration-count:infinite,infinite
+}
+.thoughts-ocean-stage .vault-water .wave-2,.thoughts-ocean-stage .vault-water .wave-3{animation-name:thoughtsWaveLoopBack,waveLift}
+.thoughts-ocean-stage .vault-water .wave-crest{
+  animation:thoughtsWaveLoop var(--wave-dur,18s) linear var(--wave-delay,0s) infinite,crestPulse 5.4s ease-in-out var(--wave-delay,0s) infinite
+}
+.thoughts-ocean-stage .vault-water .wave-crest-back{--wave-dur:34s}
+.thoughts-ocean-stage .vault-water .wave-crest-front{--wave-dur:21s}
+@media(max-width:1000px) and (min-width:761px){
+  .thoughts-compose-dock{right:25px;width:min(350px,34vw)}
+  .thoughts-bottles-drawer{right:25px}
+  .thoughts-hero-copy{max-width:55%;}
+  .thoughts-hero-copy h1{font-size:clamp(3rem,6.6vw,4rem)}
+}
+@media(max-width:760px){
+  .thoughts-world{height:100vh;min-height:100vh;height:100svh;min-height:100svh;height:100dvh;min-height:100dvh}
+  .thoughts-ocean-stage{height:100vh;min-height:100vh;height:100svh;min-height:100svh;height:100dvh;min-height:100dvh;padding:calc(env(safe-area-inset-top,0px) + 88px) 18px 18px}
+  .thoughts-hero-copy{width:min(100%,500px);max-width:100%}
+  .thoughts-hero-copy h1{font-size:clamp(2.75rem,12.5vw,4.45rem)}
+  .thoughts-hero-meta{gap:7px 10px;margin-top:17px}
+  .thoughts-hero-meta .thoughts-state-pill{font-size:.57rem;letter-spacing:.09em}
+  .thoughts-compose-dock{
+    top:auto;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);left:12px;width:auto;
+    max-height:min(44dvh,300px);padding:0;overflow:auto
+  }
+  .thoughts-compose-dock h2{margin:0 0 6px 4px;font-size:.59rem}
+  .thoughts-compose-dock .bottle-composer{padding:11px 12px 10px;border-radius:16px}
+  .thoughts-compose-dock .bottle-text{min-height:58px;max-height:72px;font-size:.92rem;line-height:1.42}
+  .thoughts-compose-dock .composer-bar{margin-top:6px;padding-top:7px;gap:5px}
+  .thoughts-compose-dock .mini-mood{width:30px;height:32px}
+  .thoughts-compose-dock .cast-btn{min-height:40px;padding:8px 11px;font-size:.62rem}
+  .thoughts-bottles-drawer{top:calc(env(safe-area-inset-top,0px) + 8px);right:12px}
+  .thoughts-drawer-toggle{min-height:38px;padding:6px 10px;font-size:.59rem}
+  .thoughts-drawer-panel{top:calc(100% + 8px);width:min(390px,calc(100vw - 24px));max-height:min(43dvh,300px);padding:13px;border-radius:18px}
+  .thoughts-drawer-header{margin-bottom:10px;padding-bottom:9px}
+  .thoughts-drawer-header h2{font-size:1.38rem}
+  .thoughts-bottles-drawer .ocean-tabs button{min-height:38px;padding:6px 7px;font-size:.53rem}
+  .thoughts-ocean-stage .vault-arrivals{inset:0}
+  .thoughts-ocean-stage .vault-arrival{bottom:21%;width:32px;height:32px;flex-basis:32px}
+  .thoughts-ocean-stage .vault-arrival .bottle-glyph{width:24px;height:24px}
+}
+@media(max-width:420px){
+  .thoughts-ocean-stage{padding-inline:15px}
+  .thoughts-hero-copy h1{font-size:clamp(2.55rem,12.2vw,3.35rem)}
+  .thoughts-hero-meta{align-items:flex-start;flex-direction:column;gap:7px}
+  .thoughts-compose-dock{right:10px;left:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 9px);max-height:min(43dvh,270px)}
+  .thoughts-compose-dock .bottle-composer{padding:9px 10px 8px}
+  .thoughts-compose-dock .bottle-text{min-height:50px;max-height:62px}
+  .thoughts-compose-dock .composer-moods{gap:0}
+  .thoughts-compose-dock .mini-mood{width:28px;height:30px}
+  .thoughts-compose-dock .cast-btn{min-height:38px;padding:7px 9px;font-size:.58rem}
+}
+@media(min-width:761px) and (max-height:680px){
+  .thoughts-compose-dock{top:115px}
+  .thoughts-compose-dock .bottle-text{min-height:54px;max-height:70px}
+  .thoughts-drawer-panel{max-height:45dvh}
+}
+@media(max-width:760px) and (max-height:520px){
+  .thoughts-ocean-stage{padding-top:calc(env(safe-area-inset-top,0px) + 62px)}
+  .thoughts-hero-copy{width:44%;max-width:44%}
+  .thoughts-hero-copy h1{font-size:clamp(2rem,6.3vw,3rem)}
+  .thoughts-hero-copy .thoughts-lead{display:none}
+  .thoughts-hero-meta{gap:6px;margin-top:9px}
+  .thoughts-compose-dock{top:auto;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);left:auto;width:46%;max-height:min(54dvh,280px)}
+  .thoughts-compose-dock .bottle-text{min-height:44px;max-height:58px}
+}
+@media(max-width:420px) and (max-height:520px){
+  .thoughts-ocean-stage{padding-top:calc(env(safe-area-inset-top,0px) + 60px)}
+  .thoughts-hero-copy{width:100%;max-width:100%}
+  .thoughts-hero-copy .thoughts-kicker,.thoughts-hero-copy .thoughts-lead{display:none}
+  .thoughts-hero-copy h1{font-size:clamp(2rem,12vw,2.7rem)}
+  .thoughts-hero-meta{gap:6px;margin-top:8px}
+  .thoughts-compose-dock{right:10px;left:10px;width:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);max-height:min(43dvh,230px)}
+}
+@media(prefers-reduced-motion:reduce){
+  .thoughts-drawer-panel{animation:none}
+}
+
+/* Mar más legible, isla con profundidad y estados que se entienden de un vistazo. */
+.thoughts-ocean-stage .vault-water{
+  isolation:isolate;
+  background:
+    radial-gradient(ellipse at 50% 0,rgba(209,237,230,.2),transparent 54%),
+    linear-gradient(180deg,#39788b 0%,#28677d 45%,#153f59 100%);
+}
+.thoughts-ocean-stage[data-dayphase="night"] .vault-water{
+  background:
+    radial-gradient(ellipse at 50% 0,rgba(149,198,203,.16),transparent 58%),
+    linear-gradient(180deg,#234d62 0%,#193e55 48%,#102d45 100%);
+}
+.thoughts-ocean-stage .vault-water .wave-1{fill:#17475f;opacity:.94}
+.thoughts-ocean-stage .vault-water .wave-2{fill:#27677a;opacity:.82}
+.thoughts-ocean-stage .vault-water .wave-3{fill:#579194;opacity:.68}
+.thoughts-ocean-stage .vault-water .wave-4{fill:#a6c3b8;opacity:.48}
+.thoughts-ocean-stage .vault-water .wave-crest{
+  stroke:rgba(231,247,237,.64);stroke-dasharray:24 24;stroke-dashoffset:0;
+  animation:thoughtsWaveLoop var(--wave-dur,18s) linear var(--wave-delay,0s) infinite,
+    crestPulse 6s ease-in-out var(--wave-delay,0s) infinite,
+    foamTrace var(--wave-dur,18s) linear var(--wave-delay,0s) infinite
+}
+.thoughts-ocean-stage .vault-water .wave-crest-back{stroke:rgba(218,239,231,.42);stroke-dasharray:18 30;animation-name:thoughtsWaveLoopBack,crestPulse,foamTraceBack}
+.thoughts-ocean-stage .vault-water .wave-crest-front{stroke:rgba(244,250,235,.74);stroke-dasharray:26 22}
+@keyframes foamTrace{to{stroke-dashoffset:-1200}}
+@keyframes foamTraceBack{to{stroke-dashoffset:1200}}
+.thoughts-ocean-stage[data-weather="calm"] .vault-water::before{opacity:.3;animation-duration:13s}
+.thoughts-ocean-stage[data-weather="gale"] .vault-water::before{opacity:.72;animation-duration:3.8s}
+.thoughts-ocean-stage[data-weather="wind"] .vault-water::before{animation-duration:6.4s}
+.thoughts-ocean-stage[data-weather="rain"] .vault-water::after{opacity:.42;animation-duration:7.8s}
+.thoughts-ocean-stage[data-weather="haze"] .vault-water .wave-crest{stroke-opacity:.52}
+.thoughts-ocean-stage[data-weather="gale"] .vault-water .wave-crest{stroke-width:1.9}
+.thoughts-ocean-stage[data-weather="gale"] .vault-water::after{opacity:.48;animation-duration:5.6s}
+.thoughts-ocean-stage[data-tide="spring"] .vault-water .wave-crest{stroke-opacity:.92}
+.thoughts-ocean-stage[data-tide="neap"] .vault-water .wave-crest{stroke-opacity:.38}
+.thoughts-ocean-stage[data-tide="spring"] .thoughts-tide-meter i{box-shadow:0 0 9px rgba(250,215,133,.8)}
+.thoughts-ocean-stage[data-tide="neap"] .thoughts-tide-meter i{background:#a9c5c2}
+
+.thoughts-sun{isolation:isolate;z-index:2}
+.thoughts-sun::before,.thoughts-sun::after{
+  content:"";position:absolute;inset:-13px;border:1px solid rgba(255,241,198,.24);border-radius:50%;
+  animation:sunBreath 7s ease-in-out infinite
+}
+.thoughts-sun::after{inset:-25px;border-color:rgba(255,229,162,.12);animation-delay:-3.5s}
+@keyframes sunBreath{0%,100%{opacity:.25;transform:scale(.96)}50%{opacity:.72;transform:scale(1.06)}}
+.thoughts-moon{width:50px;height:50px;filter:drop-shadow(0 0 16px rgba(247,237,204,.48))}
+.thoughts-moon-art{overflow:visible}
+.thoughts-moon-crescent{fill:#fff3d1}
+.thoughts-moon-crater{fill:#d8d6b9;opacity:.5}
+.thoughts-cloud{height:18px;border-radius:30px;background:linear-gradient(180deg,rgba(240,247,240,.55),rgba(156,190,201,.18));filter:blur(.5px)}
+.thoughts-cloud::before{bottom:4px;height:30px;border-radius:60% 60% 42% 42%}
+.thoughts-cloud::after{bottom:4px;height:23px;border-radius:60% 58% 40% 44%}
+.thoughts-cloud-left{width:166px;animation-duration:36s}
+.thoughts-cloud-right{width:116px;animation-duration:43s;animation-delay:-17s}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-cloud{background:linear-gradient(180deg,rgba(196,218,220,.25),rgba(94,128,151,.11))}
+
+.thoughts-hero-meta .thoughts-state-pill{
+  display:inline-flex;align-items:center;gap:8px;min-height:30px;padding:5px 10px;
+  border:1px solid rgba(230,241,237,.2);border-radius:999px;
+  background:rgba(9,28,42,.2);color:rgba(242,246,239,.86);
+  font-size:.61rem;letter-spacing:.085em;line-height:1.1;
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  transition:border-color .35s,background .35s,color .35s
+}
+.thoughts-state-mark{position:relative;flex:none;width:7px;height:7px;border-radius:50%;background:#b7c9c2;box-shadow:0 0 0 3px rgba(183,201,194,.12)}
+.thoughts-state-pill[data-state="sent"] .thoughts-state-mark{background:#f1c777;box-shadow:0 0 0 3px rgba(241,199,119,.14);animation:statePulse 2.8s ease-in-out infinite}
+.thoughts-state-pill[data-state="unread"] .thoughts-state-mark{background:#a8e1d1;box-shadow:0 0 0 3px rgba(168,225,209,.16);animation:statePulse 1.8s ease-in-out infinite}
+.thoughts-state-pill[data-state="received"] .thoughts-state-mark{background:#a8e1d1;box-shadow:0 0 0 3px rgba(168,225,209,.12)}
+.thoughts-state-pill[data-state="lost"] .thoughts-state-mark{background:#d3a38f;box-shadow:0 0 0 3px rgba(211,163,143,.14)}
+@keyframes statePulse{0%,100%{transform:scale(.86);opacity:.7}50%{transform:scale(1.12);opacity:1}}
+.thoughts-tide-status{border-color:rgba(232,243,238,.25);background:rgba(9,28,42,.26)}
+.thoughts-tide-icon .icon{animation:tideIconDrift 5s ease-in-out infinite}
+@keyframes tideIconDrift{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
+.thoughts-tide-meter{width:39px;height:3px;background:rgba(233,243,239,.22)}
+.thoughts-tide-meter i{position:relative;border-radius:99px;background:linear-gradient(90deg,#9bc6c8,#f2cf7d)}
+.thoughts-tide-meter i::after{content:"";position:absolute;inset:0;border-radius:inherit;background:rgba(255,255,255,.55);transform:scaleX(.3);transform-origin:left;animation:tideShine 3.8s ease-in-out infinite}
+@keyframes tideShine{0%,100%{transform:translateX(-120%) scaleX(.25);opacity:0}35%,65%{opacity:.7}75%{transform:translateX(300%) scaleX(.75);opacity:0}}
+
+.scene-island-shadow{fill:rgba(7,26,36,.34);filter:blur(14px)}
+.scene-island-reef{fill:url(#island-reef-shade);filter:drop-shadow(0 10px 10px rgba(11,34,43,.22))}
+.scene-island-foliage-back{fill:url(#island-green-shade)}
+.scene-island-foliage-front{fill:#276759}
+.scene-island-beach{fill:url(#island-sand-shade)}
+.scene-island-shoreline{stroke:rgba(244,249,233,.88);stroke-width:3.5;opacity:.86;filter:drop-shadow(0 1px 3px rgba(215,246,235,.32))}
+.scene-island-path{fill:rgba(249,228,185,.78);stroke:rgba(247,240,215,.44);stroke-width:1.2}
+.scene-island-rocks{fill:#597875;opacity:.88}
+.scene-island-rocks ellipse{fill:#708a81;opacity:.68}
+.scene-island-grass{fill:#3c806b}
+.scene-palm-trunk{stroke:#5b6f61;stroke-width:16;filter:drop-shadow(2px 2px 1px rgba(13,47,45,.22))}
+.scene-palm-trunk-highlight{fill:none;stroke:rgba(218,196,139,.38);stroke-width:2.2;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.scene-palm-leaf{fill:#28755e;stroke:#28755e;stroke-width:1.1;filter:drop-shadow(0 2px 1px rgba(12,50,44,.15))}
+.scene-palm-left .scene-palm-leaf.leaf-a,.scene-palm-left .scene-palm-leaf.leaf-d,
+.scene-palm-right .scene-palm-leaf.leaf-b,.scene-palm-right .scene-palm-leaf.leaf-e{fill:#39856b;stroke:#39856b}
+.scene-palm-left .scene-palm-crown{animation-duration:7.4s}
+.scene-palm-right .scene-palm-crown{animation-duration:6.2s;animation-delay:-2.1s}
+.scene-palm-right .scene-palm-leaf.leaf-b{animation-delay:-2.2s}
+.scene-palm-right .scene-palm-leaf.leaf-e{animation-delay:-3.7s}
+.scene-house-shadow{fill:rgba(13,36,43,.24);filter:blur(6px)}
+.scene-house-wall{fill:url(#island-house-wall);stroke:#71878a;stroke-width:2.8}
+.scene-house-chimney{fill:#607984;stroke:#496673;stroke-width:2.2}
+.scene-house-roof{fill:#3e6173;stroke:#2e5265;stroke-width:3.2;stroke-linejoin:round}
+.scene-house-roof-shadow{fill:rgba(15,41,53,.36)}
+.scene-house-roof-seams{fill:none;stroke:rgba(219,233,224,.28);stroke-width:1.5;stroke-linecap:round}
+.scene-house-window-glass{fill:#9fc4ca;stroke:#4d6d78;stroke-width:2.8}
+.scene-house-window-frame{fill:none;stroke:#4d6d78;stroke-width:2.1;stroke-linecap:round}
+.scene-house-sill{fill:none;stroke:#798d88;stroke-width:2.4;stroke-linecap:round}
+.scene-house-door{fill:#496779;stroke:#36576a;stroke-width:1.7}
+.scene-house-door-knob{fill:#f1d28c;filter:drop-shadow(0 0 2px rgba(244,211,137,.42))}
+.scene-house-step{fill:#a5b7ac}
+.scene-house-lamp{fill:#f5d586;opacity:.72}
+.thoughts-ocean-stage[data-dayphase="night"] .scene-island-foliage-back{fill:#194f4d}
+.thoughts-ocean-stage[data-dayphase="night"] .scene-island-foliage-front{fill:#205650}
+.thoughts-ocean-stage[data-dayphase="night"] .scene-island-beach{filter:brightness(.76) saturate(.78)}
+.thoughts-ocean-stage[data-dayphase="night"] .scene-palm-leaf{fill:#246354;stroke:#246354}
+.thoughts-ocean-stage[data-dayphase="night"] .scene-house-window-glass{fill:#f2d78e;filter:drop-shadow(0 0 8px rgba(249,211,128,.7))}
+.thoughts-ocean-stage[data-dayphase="night"] .scene-house-window-frame{stroke:#8b7650}
+.thoughts-ocean-stage[data-dayphase="night"] .scene-house-wall{fill:#b7c3b8}
+.thoughts-ocean-stage[data-dayphase="night"] .scene-house-lamp{opacity:1;filter:drop-shadow(0 0 7px rgba(255,218,133,.9))}
+.thoughts-ocean-stage[data-dayphase="evening"] .scene-house-window-glass{fill:#edc981;filter:drop-shadow(0 0 5px rgba(241,197,119,.55))}
+.thoughts-ocean-stage[data-dayphase="night"] .scene-house-window-glass{animation:homeWindowGlow 7s ease-in-out infinite}
+.thoughts-ocean-stage[data-dayphase="night"] .scene-house-lamp{animation:homeLampGlow 3.2s ease-in-out infinite}
+@keyframes homeWindowGlow{0%,100%{opacity:.84}50%{opacity:1;filter:drop-shadow(0 0 11px rgba(249,211,128,.82))}}
+@keyframes homeLampGlow{0%,100%{opacity:.72}50%{opacity:1;filter:drop-shadow(0 0 9px rgba(255,218,133,1))}}
+.scene-shore-foam{stroke:rgba(249,252,241,.76);stroke-width:2.4;filter:drop-shadow(0 1px 2px rgba(242,250,242,.28))}
+
+.thoughts-ocean-stage .vault-arrival{isolation:isolate}
+.thoughts-ocean-stage .vault-arrival.is-new{filter:drop-shadow(0 0 7px rgba(255,229,153,.5))}
+.thoughts-ocean-stage .vault-arrival.is-new::before{
+  content:"";position:absolute;left:50%;bottom:1px;width:34px;height:10px;border:1px solid rgba(241,250,232,.62);
+  border-radius:50%;transform:translateX(-50%);animation:shoreRing 2.8s ease-out infinite;pointer-events:none
+}
+.thoughts-ocean-stage .vault-arrival.is-new::after{
+  content:"";position:absolute;inset:7px;border:1px solid rgba(247,218,147,.32);border-radius:50%;opacity:0;
+  animation:arrivalGlow 2.6s ease-in-out infinite;pointer-events:none
+}
+@keyframes shoreRing{0%,100%{transform:translateX(-50%) scale(.72);opacity:.1}45%{opacity:.62}72%{transform:translateX(-50%) scale(1.22);opacity:0}}
+@keyframes arrivalGlow{0%,100%{transform:scale(.82);opacity:0}45%{transform:scale(1.1);opacity:.66}80%{transform:scale(1.22);opacity:0}}
+@keyframes bottleArrive{0%{opacity:0;translate:0 9px;scale:.88}75%{opacity:1;translate:0 -2px;scale:1.04}100%{opacity:1;translate:0 0;scale:1}}
+.thoughts-ocean-stage .vault-arrival.is-washing{animation:bottleArrive .72s cubic-bezier(.2,.75,.25,1) both;animation-delay:var(--wash-delay,0ms)}
+.thoughts-ocean-stage .vault-arrival.is-new .bottle-glyph{filter:drop-shadow(0 0 5px rgba(255,231,169,.8))}
+
+.thoughts-bottles-drawer[open] .thoughts-drawer-toggle{border-color:rgba(246,206,129,.7);background:rgba(13,27,43,.48)}
+.thoughts-drawer-new{padding:4px 7px;border-radius:99px;background:rgba(169,225,209,.17);color:#c5f0e0;font-family:var(--font-mono);font-size:.52rem;letter-spacing:.02em;white-space:nowrap}
+.thoughts-drawer-count{color:#fff8e7}
+.thoughts-bottles-drawer .ocean-tabs button{position:relative;overflow:hidden;transition:background .22s,border-color .22s,transform .22s,color .22s}
+.thoughts-bottles-drawer .ocean-tabs button:hover{transform:translateY(-1px);border-color:color-mix(in srgb,var(--sea-2) 34%,var(--rule-strong))}
+.thoughts-bottles-drawer .ocean-tabs button.active{color:var(--sea-deep);background:linear-gradient(135deg,color-mix(in srgb,var(--sea-foam) 22%,var(--paper-2)),var(--paper-2));border-color:color-mix(in srgb,var(--sea-2) 38%,var(--red));box-shadow:inset 0 -2px 0 color-mix(in srgb,var(--red) 60%,transparent),0 4px 14px -12px var(--sea-deep)}
+.thoughts-drawer-panel .bottle-card{animation:bottleCardArrive .38s var(--ease-ink) both;animation-delay:var(--card-delay,0ms)}
+@keyframes bottleCardArrive{from{opacity:0;translate:0 8px;scale:.985}to{opacity:1;translate:0 0;scale:1}}
+.bottle-card.is-locked{border-color:color-mix(in srgb,var(--tint) 28%,var(--rule-strong));background:linear-gradient(135deg,color-mix(in srgb,var(--paper-2) 91%,var(--sea-1)),color-mix(in srgb,var(--paper-3) 88%,var(--tint)))}
+.bottle-card.is-locked::after{opacity:.9}
+.bottle-card.is-drifting .bottle-card-mark{border-color:color-mix(in srgb,var(--tint) 52%,var(--sea-2));box-shadow:inset 0 0 16px color-mix(in srgb,var(--tint) 14%,transparent)}
+.bottle-card.is-drifting .bottle-glyph{animation:sealedBottleSway 5.6s ease-in-out infinite;filter:drop-shadow(0 4px 5px color-mix(in srgb,var(--tint) 34%,transparent))}
+@keyframes sealedBottleSway{0%,100%{transform:translateY(0) rotate(-6deg)}50%{transform:translateY(-2px) rotate(4deg)}}
+.bottle-card.is-lost .bottle-card-mark{filter:grayscale(.48);opacity:.7}
+.bottle-card.is-unread{border-color:color-mix(in srgb,var(--tint) 50%,var(--red));box-shadow:0 12px 30px -24px var(--sea-deep),0 0 0 1px color-mix(in srgb,var(--red) 12%,transparent)}
+.bottle-card.is-unread .field-caption{color:var(--red)}
+.bottle-lock-mark{display:grid;place-items:center;flex:none;width:29px;height:29px;border:1px solid color-mix(in srgb,var(--tint) 32%,var(--rule-strong));border-radius:50%;color:var(--sea-2);background:color-mix(in srgb,var(--paper-2) 84%,transparent)}
+.bottle-lock-mark .icon{width:14px;height:14px}
+.thoughts-ocean-stage.is-casting .thoughts-state-mark{animation:statePulse .7s ease-in-out 2}
+
+@media(max-width:760px){
+  .thoughts-moon{width:43px;height:43px}
+  .thoughts-drawer-new{padding:4px 6px;font-size:.49rem}
+  .thoughts-ocean-stage .vault-arrival.is-new::before{width:29px}
+}
+@media(max-width:420px){
+  .thoughts-drawer-new{width:8px;height:8px;padding:0;overflow:hidden;font-size:0;border:1px solid rgba(197,240,224,.56);border-radius:50%}
+  .thoughts-hero-meta .thoughts-state-pill{font-size:.55rem}
+  .thoughts-tide-status{min-height:24px}
+}
+@media(max-width:760px) and (max-height:520px){
+  .thoughts-sun{width:48px;height:48px}
+  .thoughts-moon{width:37px;height:37px}
+}
+@media(prefers-reduced-motion:reduce){
+  .thoughts-sun::before,.thoughts-sun::after,.thoughts-state-mark,.thoughts-tide-icon .icon,.thoughts-tide-meter i::after,
+  .thoughts-ocean-stage .vault-water .wave,.thoughts-ocean-stage .vault-water .wave-crest,
+  .thoughts-ocean-stage .vault-water::before,.thoughts-ocean-stage .vault-water::after,
+  .thoughts-ocean-stage .vault-arrival.is-new::before,.thoughts-ocean-stage .vault-arrival.is-new::after,
+  .thoughts-ocean-stage .vault-arrival.is-washing,.thoughts-drawer-panel .bottle-card,.bottle-card.is-drifting .bottle-glyph,
+  .scene-palm-crown,.scene-palm-leaf,.scene-shore-foam,.scene-house-window-glass,.scene-house-lamp,.thoughts-cloud{animation:none!important}
+  .thoughts-moon,.thoughts-sun,.thoughts-tide-status,.thoughts-tide-meter i{transition:none!important}
+}
+
+/* Olas suaves y legibles: una sola agua y tres líneas de corriente. */
+.thoughts-ocean-stage .vault-water{overflow:hidden}
+.thoughts-ocean-stage .vault-water .sea-wave-svg{overflow:hidden}
+.thoughts-ocean-stage .vault-water::before,
+.thoughts-ocean-stage .vault-water::after{content:none!important}
+.thoughts-ocean-stage .vault-water .thoughts-wave-line{
+  fill:none;stroke-linecap:round;stroke-width:1.35;vector-effect:non-scaling-stroke;
+  transform-box:fill-box;transform-origin:center;animation:thoughtsWaveBob var(--wave-dur,8s) ease-in-out var(--wave-delay,0s) infinite alternate
+}
+.thoughts-ocean-stage .vault-water .wave-line-surface{stroke:rgba(231,247,239,.52);stroke-width:1.65}
+.thoughts-ocean-stage .vault-water .wave-line-middle{stroke:rgba(195,229,225,.29)}
+.thoughts-ocean-stage .vault-water .wave-line-distance{stroke:rgba(185,218,220,.2);stroke-width:1.1}
+.thoughts-ocean-stage[data-dayphase="night"] .vault-water .wave-line-surface{stroke:rgba(221,238,234,.42)}
+.thoughts-ocean-stage[data-dayphase="night"] .vault-water .wave-line-middle{stroke:rgba(180,211,216,.25)}
+.thoughts-ocean-stage[data-weather="calm"] .vault-water .thoughts-wave-line{opacity:.58}
+.thoughts-ocean-stage[data-weather="gale"] .vault-water .wave-line-surface{stroke-width:2}
+.thoughts-ocean-stage[data-weather="gale"] .vault-water .wave-line-middle{opacity:.72}
+.thoughts-ocean-stage[data-tide="spring"] .vault-water .wave-line-surface{stroke-opacity:.78}
+.thoughts-ocean-stage[data-tide="neap"] .vault-water .thoughts-wave-line{opacity:.48}
+@keyframes thoughtsWaveBob{0%{transform:translate(-9px,1px)}50%{transform:translateY(-3px)}100%{transform:translate(9px,1px)}}
+.thoughts-water-reflection{opacity:.22}
+.thoughts-ocean-stage[data-dayphase="night"] .thoughts-water-reflection{opacity:.18}
+
+/* Controles mínimos para dejar solo el paisaje a la vista. */
+.thoughts-exit{display:grid;width:42px;height:42px;padding:0;border-radius:50%}
+.thoughts-landscape-toggle{
+  position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);right:calc(env(safe-area-inset-right,0px) + 16px);z-index:45;
+  display:grid;place-items:center;width:42px;height:42px;padding:0;border:1px solid rgba(230,239,243,.4);border-radius:50%;
+  background:rgba(13,27,43,.34);color:#edf1ec;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 8px 22px -16px #071622;
+  -webkit-backdrop-filter:blur(12px) saturate(120%);backdrop-filter:blur(12px) saturate(120%);
+  transition:background .2s,border-color .2s,transform .2s
+}
+.thoughts-landscape-toggle:hover{transform:translateY(-1px);border-color:rgba(246,206,129,.8);background:rgba(13,27,43,.56)}
+.thoughts-landscape-toggle:focus-visible{outline:2px solid #f0d28d;outline-offset:3px}
+.thoughts-landscape-toggle .icon{width:17px;height:17px}
+.thoughts-bottles-drawer{top:calc(env(safe-area-inset-top,0px) + 62px)}
+.thoughts-world .thoughts-hero-copy,
+.thoughts-world .thoughts-compose-dock,
+.thoughts-world .thoughts-bottles-drawer,
+.thoughts-world .thoughts-exit,
+.thoughts-world .thoughts-ocean-stage .vault-arrivals{
+  transition:opacity .28s ease,visibility .28s linear,transform .28s ease
+}
+.thoughts-world.is-landscape-only .thoughts-hero-copy,
+.thoughts-world.is-landscape-only .thoughts-compose-dock,
+.thoughts-world.is-landscape-only .thoughts-bottles-drawer,
+.thoughts-world.is-landscape-only .thoughts-exit,
+.thoughts-world.is-landscape-only .thoughts-ocean-stage .vault-arrivals{
+  opacity:0;visibility:hidden;pointer-events:none;transform:translateY(7px)
+}
+.thoughts-world.is-landscape-only .thoughts-landscape-toggle{background:rgba(13,27,43,.2);box-shadow:none}
+
+/* Enviadas y perdidas: el panel muestra el total, sin fichas ni adelantos. */
+.thoughts-bottle-count-only{
+  display:grid;place-items:center;min-height:114px;margin:0;color:var(--sea-deep);
+  font-family:var(--font-display);font-size:clamp(3.4rem,10vw,5.2rem);font-weight:500;line-height:1
+}
+
+/* Control de fuerza, compacto y accesible con teclado y tacto. */
+.thoughts-compose-dock .cast-force{display:grid;gap:3px;margin-top:8px;padding-top:7px;border-top:1px solid var(--rule)}
+.cast-force-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.cast-force-head label{font-family:var(--font-mono);font-size:.58rem;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-soft)}
+.cast-force-head output{min-width:22px;color:var(--sea-deep);font-family:var(--font-mono);font-size:.64rem;font-variant-numeric:tabular-nums;text-align:right}
+.cast-force-slider{display:block;width:100%;height:16px;margin:0;accent-color:var(--sea-2);cursor:pointer;touch-action:pan-x}
+.cast-force-slider:focus-visible{outline:2px solid var(--sea-2);outline-offset:2px;border-radius:999px}
+.cast-force-scale{display:flex;justify-content:space-between;color:var(--ink-faint);font-family:var(--font-mono);font-size:.52rem;letter-spacing:.06em}
+
+@media(max-width:760px){
+  .thoughts-exit{width:40px;height:40px;padding:0}
+  .thoughts-landscape-toggle{top:calc(env(safe-area-inset-top,0px) + 8px);right:calc(env(safe-area-inset-right,0px) + 12px);width:40px;height:40px}
+  .thoughts-bottles-drawer{top:calc(env(safe-area-inset-top,0px) + 56px);right:12px}
+  .thoughts-compose-dock .cast-force{margin-top:6px;padding-top:6px;gap:2px}
+  .cast-force-slider{height:14px}
+}
+@media(prefers-reduced-motion:reduce){
+  .thoughts-ocean-stage .vault-water .thoughts-wave-line{animation:none!important;transform:none!important}
+  .thoughts-world .thoughts-hero-copy,.thoughts-world .thoughts-compose-dock,.thoughts-world .thoughts-bottles-drawer,
+  .thoughts-world .thoughts-exit,.thoughts-world .thoughts-ocean-stage .vault-arrivals{transition:none!important}
 }

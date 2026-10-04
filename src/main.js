@@ -17,6 +17,7 @@ import {
 } from './data/constants.js';
 import {dateKey,addDays,dayNumber,longDate,weekStart,monthRange,monthMove} from './utils/dates.js';
 import {inferBasePath,pathForState,routeStateFromPath,urlForState} from './utils/routes.js';
+import {createTransitionGuard} from './utils/transitions.js';
 import {
   calculateStats,currentStreak,maxStreak,inRange,periodCoverage,formatNumber as f,sleepInterpretation,studyInterpretation,
   generateSummary,periodSummary,generateTrends,wordCount,tagFrequency,counterInterpretation,
@@ -28,7 +29,7 @@ import {
   loadThoughts,saveThought,updateThought,deleteThought,recastThought
 } from './utils/storage.js';
 import {groupBottles,shoreQueue,canOpenBottle,sunPosition} from './utils/ocean.js';
-import {seaPanel,bottleComposer,bottleCard,bottleModal,castSplash,wavesSvg,islandSceneSvg} from './components/ocean.js';
+import {seaPanel,bottleComposer,bottleCard,bottleModal,bottleCountOnly,castSplash,wavesSvg,islandSceneSvg,castSplashPoint} from './components/ocean.js';
 import {DRAFT_SCOPES,setDraft,draftData,clearDraft,draftIsNewer,clearAllDrafts} from './utils/drafts.js';
 import {habitBoard,momentumGrid,habitStatsList,habitComposer,countersBoard,tomorrowBoard,routineTeaser,progressRing} from './components/habits.js';
 import {
@@ -45,13 +46,14 @@ import {
 const app=document.querySelector('#app');
 const APP_BASE_PATH=inferBasePath([...document.querySelectorAll('script[src]')].map(script=>script.src),window.location.origin);
 let entries=[],habits=[],thoughts=[],setup=loadSetup(),storageError='',view='diary',selected=dateKey(),month=dateKey(),miniMonth=dateKey(),
-    thoughtsTab='shore',routineTab='hoy',bottleDraft={text:'',mood:null,sea:'breeze'},oceanAnimating=false,
+    thoughtsTab='shore',routineTab='hoy',bottleDraft={text:'',mood:null,sea:'breeze',force:3},oceanAnimating=false,thoughtsLandscapeOnly=false,
     period=7,menu=false,sidebarCollapsed=false,historyQuery='',historyMood='',historyTag='',historyLayout='grid',
     archiveTab='list',statsTab='pulse',profileTab='personal',moreDetailsOpen=null,
     pendingImport=null,wordOffset=0,tipOffset=0,promptOffset=0,quoteOffset=0,showWritingPrompt=false,focusWriting=false,
     crisisBannerDismissed=false,breathingTimer=null,extrasCloseToken=0,
     oceanFilter='',lastView='',saveState='idle',shellMounted=false,motionOn=true,panelEnter=true,
-    thoughtClockTimer=null,thoughtsIslandObserver=null,thoughtsVisibilityObserver=null,thoughtsIslandSeen=false,mandatorySetupOpen=false;
+    thoughtClockTimer=null,thoughtsDrawerOpen=false,mandatorySetupOpen=false,castSplashClassTimer=null;
+const thoughtsEntryWaveGuard=createTransitionGuard();
 /* Movimiento: respetamos tanto el sistema como la preferencia del cuaderno. */
 let motionQuery=null;
 function syncMotionPreference(){
@@ -119,6 +121,8 @@ function applyRouteFromLocation(){
   const route=routeStateFromPath(window.location.pathname,APP_BASE_PATH);
   view=route.view;
   thoughtsTab=route.thoughtsTab||'shore';
+  thoughtsDrawerOpen=route.view==='thoughts'&&thoughtsTab!=='shore';
+  thoughtsLandscapeOnly=false;
   routineTab=route.routineTab||'hoy';
   archiveTab=route.archiveTab||'list';
   statsTab=route.statsTab||'pulse';
@@ -128,19 +132,28 @@ function applyRouteFromLocation(){
     window.history.replaceState({view,thoughtsTab,routineTab,archiveTab,statsTab,profileTab},'',canonical);
   }
 }
-function navigateToView(nextView,{transition=true,replace=false}={}){
-  savePendingText();
+function applyView(nextView,{transition=true,replace=false,instant=false}={}){
   view=nextView;
   menu=false;
   panelEnter=true;
   if(view==='diary')selected=dateKey();
-  if(view==='thoughts')thoughtsTab='shore';
+  if(view==='thoughts'){thoughtsTab='shore';thoughtsDrawerOpen=false;thoughtsLandscapeOnly=false;}
+  if(view!=='thoughts')thoughtsLandscapeOnly=false;
   if(view==='routine')routineTab='hoy';
   if(view==='archive')archiveTab='list';
   if(view==='stats')statsTab='pulse';
   if(view==='setup')profileTab='personal';
   updateRouteUrl(replace);
-  render({transition});
+  render({transition,instant});
+}
+function navigateToView(nextView,{transition=true,replace=false}={}){
+  savePendingText();
+  if(document.querySelector('.thoughts-entry-wave'))cancelThoughtsEntryWave();
+  if(nextView==='thoughts'&&view!=='thoughts'&&transition&&motionOn){
+    playThoughtsEntryWave(()=>applyView(nextView,{replace,transition:false,instant:true}));
+    return;
+  }
+  applyView(nextView,{transition,replace});
 }
 
 function navBadge(id){
@@ -340,59 +353,61 @@ function render(opts={}){
   }
 }
 
-function playThoughtsEntryWave(){
-  if(!motionOn)return;
+function cancelThoughtsEntryWave(){
+  thoughtsEntryWaveGuard.cancel();
   document.querySelector('.thoughts-entry-wave')?.remove();
+}
+function playThoughtsEntryWave(onCovered=()=>{}){
+  cancelThoughtsEntryWave();
+  if(!motionOn){onCovered();return;}
+  const token=thoughtsEntryWaveGuard.begin();
   const overlay=document.createElement('div');
   overlay.className='thoughts-entry-wave';
   overlay.setAttribute('aria-hidden','true');
-  overlay.innerHTML=`<svg class="thoughts-entry-water" viewBox="0 0 1440 1800" preserveAspectRatio="none" aria-hidden="true">
+  overlay.innerHTML=`<svg class="thoughts-entry-water" viewBox="0 0 1440 1400" preserveAspectRatio="none" aria-hidden="true">
     <defs><linearGradient id="thoughts-entry-gradient" x1="0" y1="0" x2="0" y2="1">
-      <stop class="entry-stop entry-stop-surface" offset="0%"/><stop class="entry-stop entry-stop-mid" offset="32%"/><stop class="entry-stop entry-stop-deep" offset="100%"/>
+      <stop class="entry-stop entry-stop-surface" offset="0%"/><stop class="entry-stop entry-stop-mid" offset="36%"/><stop class="entry-stop entry-stop-deep" offset="100%"/>
     </linearGradient></defs>
-    <path class="thoughts-entry-sea" d="M0 820C160 760 280 860 430 810S730 840 880 800 1190 850 1440 790v1010H0Z"/>
-    <path class="thoughts-entry-swell" d="M0 879c176-64 274-11 418-41s276-25 405 11 268 12 385-17 164-5 232 13v955H0Z"/>
-    <path class="thoughts-entry-crest" d="M-30 823c140-56 268 36 418-9s273-23 413 17 275 3 407-28 204-13 268 8"/>
-    <path class="thoughts-entry-foam" d="M-20 851c124-35 206 13 304-4s203-34 304-3 191 22 288 1 197-20 292 6 190 10 322-13"/>
+    <path class="thoughts-entry-sea" d="M-40 112C75 80 166 83 276 105S478 137 602 103 816 72 943 102 1160 137 1284 103 1410 83 1480 108V1400H-40Z"/>
+    <path class="thoughts-entry-crest" d="M-40 112C75 80 166 83 276 105S478 137 602 103 816 72 943 102 1160 137 1284 103 1410 83 1480 108"/>
+    <path class="thoughts-entry-foam" d="M-40 132C100 110 201 114 330 128S559 146 682 125 902 109 1030 127 1260 145 1380 121 1450 116 1480 126"/>
   </svg>`;
   document.body.appendChild(overlay);
   const water=overlay.querySelector('.thoughts-entry-water');
-  const fallback=setTimeout(()=>overlay.remove(),2100);
-  water?.addEventListener('animationend',()=>{
+  if(!water){onCovered();overlay.remove();return;}
+  let phase='cover';
+  let fallback=setTimeout(finishCover,900);
+  const finish=()=>{
+    if(!thoughtsEntryWaveGuard.isCurrent(token))return;
     clearTimeout(fallback);
     overlay.remove();
-  },{once:true});
+  };
+  function handleTransition(event){
+    if(event.target!==water||event.propertyName!=='transform')return;
+    if(phase==='cover')finishCover();
+    else if(phase==='reveal')finish();
+  }
+  function finishCover(){
+    if(phase!=='cover'||!thoughtsEntryWaveGuard.isCurrent(token))return;
+    clearTimeout(fallback);
+    phase='covered';
+    water.style.transition='none';
+    water.style.transform='translateY(0)';
+    onCovered();
+    requestAnimationFrame(()=>{
+      water.getBoundingClientRect();
+      water.style.transition='transform .78s cubic-bezier(.55,.05,.35,1)';
+      phase='reveal';
+      water.addEventListener('transitionend',handleTransition);
+      water.style.transform='translateY(-115%)';
+      fallback=setTimeout(finish,900);
+    });
+  }
+  water.addEventListener('transitionend',handleTransition);
+  water.getBoundingClientRect();
+  requestAnimationFrame(()=>{water.style.transform='translateY(0)';});
 }
 
-function observeThoughtsIsland(){
-  thoughtsIslandObserver?.disconnect();
-  thoughtsVisibilityObserver?.disconnect();
-  thoughtsIslandObserver=null;
-  thoughtsVisibilityObserver=null;
-  const island=document.querySelector('#thoughts-island');
-  if(!island)return;
-  const reveal=()=>{
-    thoughtsIslandSeen=true;
-    island.classList.add('is-visible');
-  };
-  if(thoughtsIslandSeen||!('IntersectionObserver' in window))reveal();
-  else{
-    thoughtsIslandObserver=new IntersectionObserver(([entry])=>{
-      if(!entry?.isIntersecting)return;
-      reveal();
-      thoughtsIslandObserver?.disconnect();
-      thoughtsIslandObserver=null;
-    },{threshold:.15});
-    thoughtsIslandObserver.observe(island);
-  }
-  if('IntersectionObserver' in window){
-    const world=island.closest('.thoughts-world');
-    thoughtsVisibilityObserver=new IntersectionObserver(([entry])=>{
-      world?.classList.toggle('island-in-view',(entry?.intersectionRatio||0)>=.15);
-    },{threshold:[0,.15]});
-    thoughtsVisibilityObserver.observe(island);
-  }
-}
 
 function updateThoughtSun(){
   const stage=document.querySelector('.thoughts-ocean-stage');
@@ -411,6 +426,19 @@ function syncThoughtSunClock(){
   updateThoughtSun();
   thoughtClockTimer=setInterval(updateThoughtSun,60_000);
 }
+function toggleThoughtsLandscape(){
+  thoughtsLandscapeOnly=!thoughtsLandscapeOnly;
+  const world=document.querySelector('.thoughts-world');
+  const button=document.querySelector('.thoughts-landscape-toggle');
+  world?.classList.toggle('is-landscape-only',thoughtsLandscapeOnly);
+  if(!button)return;
+  const label=thoughtsLandscapeOnly?'Mostrar interfaz':'Ocultar interfaz';
+  button.setAttribute('aria-label',label);
+  button.setAttribute('aria-pressed',String(thoughtsLandscapeOnly));
+  button.title=thoughtsLandscapeOnly?'Mostrar interfaz':'Ver paisaje sin interfaz';
+  const buttonIcon=button.querySelector('.icon');
+  if(buttonIcon)buttonIcon.outerHTML=icon(thoughtsLandscapeOnly?'eye':'expand');
+}
 
 function renderPage(opts={}){
   const main=document.querySelector('#main');
@@ -418,13 +446,7 @@ function renderPage(opts={}){
   if(view==='thoughts')primeBottleDraft();
   const viewChanged=lastView!==view;
   const enteringThoughts=viewChanged&&view==='thoughts';
-  if(viewChanged){
-    thoughtsIslandSeen=false;
-    thoughtsIslandObserver?.disconnect();
-    thoughtsVisibilityObserver?.disconnect();
-    thoughtsIslandObserver=null;
-    thoughtsVisibilityObserver=null;
-  }
+
   const animate=motionOn&&!opts.instant&&!enteringThoughts&&(Boolean(opts.transition)||viewChanged||panelEnter);
   panelEnter=false;
   const keepScroll=window.scrollY;
@@ -446,17 +468,7 @@ function renderPage(opts={}){
   }else if(keepScroll){
     window.scrollTo(0,keepScroll);
   }
-  if(view==='thoughts'){
-    observeThoughtsIsland();
-    syncThoughtSunClock();
-    if(enteringThoughts&&!opts.instant)playThoughtsEntryWave();
-  }else{
-    thoughtsIslandObserver?.disconnect();
-    thoughtsVisibilityObserver?.disconnect();
-    thoughtsIslandObserver=null;
-    thoughtsVisibilityObserver=null;
-    syncThoughtSunClock();
-  }
+  syncThoughtSunClock();
 }
 
 function pageHeader(eyebrow,title,subtitle,action=''){
@@ -506,16 +518,16 @@ function setupOnboardingBanner(){
 function hero(e,profile){
   const done=e?Object.values(e.habits||{}).filter(Boolean).length:0;
   const greeting=getGreeting(setup.name);
-  const returned=groupBottles(thoughts,selected).returned.length;
+  const unread=groupBottles(thoughts,selected).returned.filter(b=>b.seen!==true).length;
   return `<div class="day-hero">
     <div class="hero-left">
       <div class="hero-day-number"><small>Día</small><span>${dayNumber(selected,entries)}</span></div>
       <div class="hero-meta">
         <p class="hero-greeting">${esc(greeting)}</p>
         <span class="date-line">${longDate(selected)}</span>
-        ${(habits.length||returned)?`<p class="hero-line">
+        ${(habits.length||unread)?`<p class="hero-line">
           ${habits.length?`<button type="button" class="hero-link" data-view="routine">${done}/${habits.length} hábitos</button>`:''}
-          ${returned?`<button type="button" class="hero-link is-new" data-view="thoughts">${returned===1?'De vuelta':'De vuelta · '+returned}</button>`:''}
+          ${unread?`<button type="button" class="hero-link is-new" data-view="thoughts">${unread===1?'1 botella nueva':unread+' botellas nuevas'}</button>`:''}
         </p>`:''}
       </div>
     </div>
@@ -760,8 +772,8 @@ function diaryPage(){
 function thoughtsTeaser(){
   const groups=groupBottles(thoughts,selected);
   const unread=groups.returned.filter(thought=>thought.seen!==true).length;
-  const title=unread?'De vuelta':'Pensamientos';
-  const copy=unread?`${unread} ${unread===1?'nuevo':'nuevos'}`:'';
+  const title=unread?'Recibidas':'Pensamientos';
+  const copy=unread?`${unread} ${unread===1?'nueva':'nuevas'}`:'';
   const count=thoughts.length?`${thoughts.length} ${thoughts.length===1?'nota':'notas'}`:'Vacío';
   return `<section class="card thoughts-teaser ${unread?'has-new':''}">
     <div class="thoughts-teaser-heading">
@@ -804,68 +816,51 @@ function thoughtsPage(){
   const today=dateKey();
   const groups=groupBottles(thoughts,today);
   const tabs=[
-    ['shore','spark','De vuelta',groups.returned.length],
-    ['sea','hourglass','En camino',groups.drifting.length],
-    ['kept','bookmark','Guardados',groups.kept.length],
+    ['shore','spark','Recibidas',groups.returned.length],
+    ['sea','send','Enviadas',groups.drifting.length],
+    ['kept','bookmark','Guardadas',groups.kept.length],
     ['lost','history','Perdidas',groups.lost.length]
   ];
-  return `<div class="thoughts-world">
-    <div class="thoughts-world-tide" aria-hidden="true">${wavesSvg(7,.16)}</div>
+  const bottleCount=thoughts.length;
+  const unreadCount=groups.returned.filter(b=>b.seen!==true).length;
+  const unreadLabel=unreadCount===1?'1 nueva':`${unreadCount} nuevas`;
+  return `<div class="thoughts-world${thoughtsLandscapeOnly?' is-landscape-only':''}">
     <a class="thoughts-exit" data-view="diary" href="${routeHrefForView('diary')}" aria-label="Volver al diario" title="Volver al diario">
-      ${icon('left')}<span>Volver al diario</span>
+      ${icon('left')}
     </a>
+    <button type="button" class="thoughts-landscape-toggle" data-action="toggle-thoughts-landscape" aria-label="Ocultar interfaz" title="Ver paisaje sin interfaz" aria-pressed="${thoughtsLandscapeOnly}">${icon(thoughtsLandscapeOnly?'eye':'expand')}</button>
     ${seaPanel(thoughts,today)}
-    <section id="thoughts-island" class="thoughts-island" aria-label="Isla de Pensamientos">
-      <svg class="thoughts-island-art" viewBox="0 0 1200 220" preserveAspectRatio="none" aria-hidden="true">
-        <path class="island-art-water" d="M0 98c90-30 138 15 222-4s128-31 207-8 120 17 194-4 130 14 208-3 159-17 231 8 93 16 138 3v130H0Z"/>
-        <path class="island-art-sand" d="M0 130c94-30 183-36 276-15 93 20 164-14 255-18 84-4 142 21 233 19 96-2 164-29 261-22 78 6 116 23 175 34v92H0Z"/>
-        <path class="island-art-beach" d="M0 153c84-19 166-24 260-8 105 18 182-15 277-17 85-2 156 19 247 16 108-4 185-26 287-14 57 7 96 18 129 28v62H0Z"/>
-        <g class="shore-palm" transform="translate(912 168)">
-          <path class="island-art-trunk" d="M0 4c-5-21-3-44 6-66 4-10 9-18 16-26"/>
-          <g transform="translate(22 -89)"><g class="shore-palm-crown">
-            <path class="island-art-leaf leaf-a" d="M0 0c-25-28-59-37-89-24 28 2 48 12 64 24 10 7 18 10 25 8Z"/>
-            <path class="island-art-leaf leaf-b" d="M0 0c-11-34-38-53-70-51 22 11 38 25 50 42 7 9 14 14 20 13Z"/>
-            <path class="island-art-leaf leaf-c" d="M0 0c4-35 22-60 53-67-15 20-24 40-30 59-4 11-10 18-17 20Z"/>
-            <path class="island-art-leaf leaf-d" d="M0 0c21-29 51-41 81-33-25 8-43 21-57 36-9 8-17 11-24 8Z"/>
-            <path class="island-art-leaf leaf-e" d="M0 0c28-16 60-14 82 5-25-3-46 1-66 8-11 4-19 3-25-1Z"/>
-          </g>
-          </g>
-        </g>
-      </svg>
-      <div class="thoughts-island-header">
-        <div><p class="island-kicker">La orilla</p><h2>Tu isla</h2></div>
-        <button type="button" class="island-back-top" data-action="thoughts-top">${icon('arrow')} Volver arriba</button>
-      </div>
-      <div class="thoughts-island-workspace">
-        <section class="thoughts-island-compose" aria-label="Hacer una botella">
-          <div class="island-section-heading"><h3>Escribe una botella</h3></div>
-          <div id="composer-slot">${bottleComposer(setup,today,bottleDraft)}</div>
-        </section>
-        <section class="thoughts-island-bottles" aria-label="Botellas">
-          <div class="island-section-heading"><h3>Botellas</h3></div>
-          <div class="segmented ocean-tabs" role="tablist" aria-label="Pensamientos">
-            ${tabs.map(([id,ico,label,count])=>`<button type="button" role="tab" aria-selected="${thoughtsTab===id}" data-action="thoughts-tab" data-tab="${id}" class="${thoughtsTab===id?'active':''}">
-              ${icon(ico)} ${esc(label)}${count?`<span class="seg-count">${count}</span>`:''}
+    <section class="thoughts-compose-dock" aria-labelledby="thoughts-compose-title">
+      <h2 id="thoughts-compose-title">Escribe una botella</h2>
+      <div id="composer-slot">${bottleComposer(setup,today,bottleDraft)}</div>
+    </section>
+    <details id="thoughts-bottles-drawer" class="thoughts-bottles-drawer"${thoughtsDrawerOpen?' open':''}>
+      <summary class="thoughts-drawer-toggle" aria-label="Ver tus botellas${unreadCount?`, ${unreadLabel}`:''}">
+        ${icon('book')}<span>Botellas</span>
+        ${unreadCount?`<span class="thoughts-drawer-new">${unreadLabel}</span>`:''}
+        <span class="thoughts-drawer-count">${bottleCount}</span>
+        <span class="thoughts-drawer-chevron">${icon('chevronDown')}</span>
+      </summary>
+      <section class="thoughts-drawer-panel" aria-label="Tu isla y tus botellas">
+        <header class="thoughts-drawer-header">
+          <div><p class="island-kicker">La orilla</p><h2>Tu isla</h2></div>
+          <span class="thoughts-drawer-returned">${groups.returned.length} recibidas</span>
+        </header>
+        <div class="thoughts-island-bottles">
+          <div class="segmented ocean-tabs" role="tablist" aria-label="Estado de las botellas">
+            ${tabs.map(([id,ico,label,count])=>`<button type="button" id="thoughts-tab-${id}" role="tab" aria-controls="ocean-body" aria-selected="${thoughtsTab===id}" data-action="thoughts-tab" data-tab="${id}" class="${thoughtsTab===id?'active':''}">
+              ${icon(ico)} <span>${esc(label)}</span>${count||id==='sea'||id==='lost'?`<span class="seg-count">${count}</span>`:''}
             </button>`).join('')}
           </div>
-          <div id="ocean-body">${oceanTabBody(groups,today)}</div>
-        </section>
-      </div>
-    </section>
+          <div id="ocean-body" role="tabpanel" aria-labelledby="thoughts-tab-${thoughtsTab}">${oceanTabBody(groups,today)}</div>
+        </div>
+      </section>
+    </details>
   </div>`;
 }
-
 function oceanTabBody(groups,today){
-  if(thoughtsTab==='sea'&&groups.drifting.length){
-    return `<div class="sealed-stack" aria-label="En camino">
-      ${groups.drifting.map(b=>bottleCard(b,today)).join('')}
-    </div>`;
-  }
-  if(thoughtsTab==='lost'&&groups.lost.length){
-    return `<div class="sealed-stack" aria-label="Perdidas">
-      ${groups.lost.map(b=>bottleCard(b,today)).join('')}
-    </div>`;
-  }
+  if(thoughtsTab==='sea')return bottleCountOnly(groups.drifting.length,'sent');
+  if(thoughtsTab==='lost')return bottleCountOnly(groups.lost.length,'lost');
   const map={shore:groups.returned,sea:[],kept:groups.kept,lost:[]};
   const list=map[thoughtsTab]??groups.returned;
   if(!list.length)return oceanEmptyFor(thoughtsTab);
@@ -874,13 +869,13 @@ function oceanTabBody(groups,today){
 
 function oceanEmptyFor(tab){
   const copy={
-    shore:['Sin novedades',''],
-    sea:['Todo tranquilo',''],
-    kept:['Sin guardados',''],
-    lost:['Sin pérdidas','']
+    shore:['La orilla está vacía','Aquí aparecerán las botellas recibidas.'],
+    sea:['Mar en calma','Las botellas que envíes aparecerán aquí.'],
+    kept:['Sin botellas guardadas','Guarda las recibidas que quieras conservar.'],
+    lost:['Sin botellas perdidas','']
   };
   const [title,text]=copy[tab]||copy.shore;
-  const action=tab==='shore'?`<button type="button" class="button outline" data-action="focus-composer">${icon('pen')} Escribir</button>`:'';
+  const action=tab==='shore'||tab==='sea'?`<button type="button" class="button outline" data-action="focus-composer">${icon('pen')} Escribir</button>`:'';
   return `${emptyState(title,text,action)}`;
 }
 
@@ -1788,29 +1783,45 @@ function bottleToEntry(bottle){
 }
 
 /* El momento del chapuzón: arco, golpe de agua, ondas y la superficie agitándose. */
-function playCastSplash(bottle){
+function playCastSplash(bottle,form){
+  const stage=document.querySelector('.thought-vault');
+  const stageRect=stage?.getBoundingClientRect();
+  const waterRect=stage?.querySelector('.vault-water')?.getBoundingClientRect();
+  const buttonRect=form?.querySelector('button[type="submit"]')?.getBoundingClientRect();
+  const point=castSplashPoint(bottle);
+  const stageWidth=stageRect?.width||window.innerWidth;
+  const stageLeft=stageRect?.left||0;
+  const fromX=buttonRect?buttonRect.left+buttonRect.width/2:window.innerWidth*.18;
+  const fromY=buttonRect?buttonRect.top+buttonRect.height/2:window.innerHeight*.72;
+  const toX=stageLeft+stageWidth*point.x/100;
+  const toY=waterRect?waterRect.top+waterRect.height*point.depth/100:window.innerHeight*.52;
+  const flightX=toX-fromX;
+  const flightY=toY-fromY;
+  const midX=flightX*.52;
+  const midY=flightY*.52-Math.min(150,window.innerHeight*.2);
+  if(!motionOn)return;
   const layerHost=document.querySelector('#ocean-fx')||document.body;
   if(layerHost===document.body){
     const created=document.createElement('div');
     created.id='ocean-fx';
-    created.className='ocean-fx';
+    created.setAttribute('aria-hidden','true');
     document.body.appendChild(created);
   }
   const layer=document.querySelector('#ocean-fx');
-  const target=document.querySelector('.thought-vault')||document.querySelector('#bottle-form');
-  const rect=target?.getBoundingClientRect();
   const el=document.createElement('div');
   el.className='splash-wrap';
   el.innerHTML=castSplash(bottle);
-  if(rect){
-    el.style.setProperty('--to-x',`${Math.round(rect.left+rect.width*.5)}px`);
-    el.style.setProperty('--to-y',`${Math.round(rect.top+rect.height*.42)}px`);
-  }
+  for(const [name,value] of Object.entries({
+    '--from-x':fromX,'--from-y':fromY,'--to-x':toX,'--to-y':toY,
+    '--flight-x':flightX,'--flight-y':flightY,'--mid-x':midX,'--mid-y':midY
+  }))el.style.setProperty(name,`${Math.round(value)}px`);
   layer.appendChild(el);
   document.documentElement.classList.add('is-casting');
-  setTimeout(()=>document.documentElement.classList.remove('is-casting'),1400);
-  setTimeout(()=>el.remove(),motionOn?1500:60);
+  clearTimeout(castSplashClassTimer);
+  castSplashClassTimer=setTimeout(()=>document.documentElement.classList.remove('is-casting'),1400);
+  setTimeout(()=>el.remove(),1800);
 }
+
 function playModalUncork(modal){
   const card=modal.querySelector('.bottle-modal');
   if(!card||!motionOn)return;
@@ -1821,37 +1832,53 @@ function playModalUncork(modal){
 function castBottle(form){
   const data=new FormData(form);
   const value=(data.get('text')||'').toString().trim();
-  if(value.length<2){toast('Escribe algo antes de soltar la botella.',true);return;}
+  if(value.length<2){toast('Escribe algo antes de lanzar la botella.',true);return;}
   const moodRaw=data.get('mood');
   const sea='breeze';
   try{
     const id=crypto.randomUUID();
-    thoughts=saveThought({id,text:value,mood:moodRaw?+moodRaw:null,sea,castAt:dateKey()});
+    const force=Math.max(1,Math.min(5,Math.round(Number(data.get('force'))||3)));
+    thoughts=saveThought({id,text:value,mood:moodRaw?+moodRaw:null,sea,force,castAt:dateKey()});
     const bottle=thoughts.find(t=>t.id===id);
     draftCancel('botella');
     clearDraft(DRAFT_SCOPES.bottle());
-    bottleDraft={text:'',mood:null,sea};
+    bottleDraft={text:'',mood:null,sea,force:3};
     thoughtsTab='sea';
-    playCastSplash(bottle||{});
+    thoughtsDrawerOpen=true;
+    updateRouteUrl();
+    playCastSplash(bottle||{},form);
+    const submit=form.querySelector('button[type="submit"]');
+    if(submit){
+      submit.disabled=true;
+      submit.classList.add('is-launching');
+      submit.innerHTML=`${icon('send')} Lanzando…`;
+    }
     setSaveState('saved');
-    setTimeout(()=>render(),motionOn?1150:0);
-    toast('Ya está fuera.');
-  }catch(err){toast(err.message||'No se pudo echar la botella al mar.',true);}
+    setTimeout(()=>render(),motionOn?1120:0);
+    toast('Botella lanzada al mar.');
+  }catch(err){toast(err.message||'No se pudo lanzar la botella.',true);}
 }
-
 function bindOceanForm(){
+  const drawer=document.querySelector('#thoughts-bottles-drawer');
+  drawer?.addEventListener('toggle',()=>{thoughtsDrawerOpen=drawer.open;});
   const form=document.querySelector('#bottle-form');
   if(!form)return;
   const text=form.querySelector('#bottle-text');
+  const forceInput=form.querySelector('#bottle-force');
+  const forceOutput=form.querySelector('#bottle-force-value');
   const sync=()=>{
     const moodEl=form.querySelector('[name="mood"]:checked');
-    bottleDraft={text:text?.value||'',mood:moodEl?+moodEl.value:null,sea:'breeze'};
+    bottleDraft={text:text?.value||'',mood:moodEl?+moodEl.value:null,sea:'breeze',force:Number(forceInput?.value)||3};
   };
   const submit=form.querySelector('button[type="submit"]');
   const arm=()=>{if(submit)submit.disabled=!(text?.value||'').trim();};
   sync();
   arm();
   text?.addEventListener('input',()=>{sync();arm();});
+  forceInput?.addEventListener('input',()=>{
+    sync();
+    if(forceOutput)forceOutput.value=forceInput.value;
+  });
   form.addEventListener('change',()=>{sync();arm();});
   if(document.activeElement===text&&text.value)text.setSelectionRange(text.value.length,text.value.length);
   form.addEventListener('submit',event=>{
@@ -1986,7 +2013,8 @@ function captureBottleDraft(){
   const meta=setDraft(DRAFT_SCOPES.bottle(),{
     text:form.querySelector('#bottle-text')?.value||'',
     mood:+(form.querySelector('[name="mood"]:checked')?.value||0)||null,
-    sea:form.querySelector('[name="sea"]:checked')?.value||'breeze'
+    sea:form.querySelector('[name="sea"]:checked')?.value||'breeze',
+    force:Number(form.querySelector('#bottle-force')?.value)||3
   });
   if(meta&&!meta.ok)setSaveState('error');
 }
@@ -2008,7 +2036,8 @@ function onBottleEdit(){
   bottleDraft={
     text:text?.value||'',
     mood:+(form.querySelector('[name="mood"]:checked')?.value||0)||null,
-    sea:form.querySelector('[name="sea"]:checked')?.value||'breeze'
+    sea:form.querySelector('[name="sea"]:checked')?.value||'breeze',
+    force:Number(form.querySelector('#bottle-force')?.value)||3
   };
   setSaveState('typing');
   draftDebounce('botella',captureBottleDraft,380);
@@ -2114,8 +2143,8 @@ function restoreEntryDraft(){
 function primeBottleDraft(){
   if(bottleDraft.text)return;
   const data=draftData(DRAFT_SCOPES.bottle());
-  if(!data?.text)return;
-  bottleDraft={text:data.text,mood:data.mood||null,sea:data.sea||'breeze'};
+  if(!data)return;
+  bottleDraft={text:String(data.text||''),mood:data.mood||null,sea:data.sea||'breeze',force:Number(data.force)||3};
 }
 
 /* ---------- el autoguardado ---------- */
@@ -2840,7 +2869,8 @@ app.addEventListener('click',async event=>{
       break;
     }
     case 'reset-counters':saveCustomization({counters:COUNTERS.map(c=>({...c}))},'Vuelta a los cuatro de siempre.');break;
-    case 'thoughts-tab':thoughtsTab=tab||'shore';updateRouteUrl();panelEnter=true;render();break;
+    case 'thoughts-tab':thoughtsTab=tab||'shore';thoughtsDrawerOpen=true;updateRouteUrl();panelEnter=true;render();break;
+    case 'toggle-thoughts-landscape':toggleThoughtsLandscape();break;
     case 'routine-tab':routineTab=tab||'hoy';updateRouteUrl();panelEnter=true;render();break;
     case 'shift-day':{
       const next=addDays(selected,parseInt(delta||'1',10));
@@ -2848,11 +2878,17 @@ app.addEventListener('click',async event=>{
       selected=next;render();window.scrollTo({top:0,behavior:'smooth'});break;
     }
     case 'today-routine':selected=dateKey();render();break;
-    case 'thoughts-island':document.querySelector('#thoughts-island')?.scrollIntoView({behavior:motionOn?'smooth':'auto',block:'start'});break;
-    case 'thoughts-top':document.querySelector('#thoughts-top')?.scrollIntoView({behavior:motionOn?'smooth':'auto',block:'start'});break;
+    case 'thoughts-island':{
+      const drawer=document.querySelector('#thoughts-bottles-drawer');
+      if(drawer){drawer.open=true;thoughtsDrawerOpen=true;}
+      break;
+    }
+    case 'thoughts-top':window.scrollTo({top:0,behavior:motionOn?'smooth':'auto'});break;
     case 'focus-composer':{
+      const drawer=document.querySelector('#thoughts-bottles-drawer');
+      if(drawer?.open){drawer.open=false;thoughtsDrawerOpen=false;}
       const el=document.querySelector('#bottle-text');
-      if(el){el.scrollIntoView({behavior:motionOn?'smooth':'auto',block:'center'});setTimeout(()=>el.focus(),motionOn?250:0);}
+      if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}
       break;
     }
     case 'toggle-habit':{
@@ -2938,7 +2974,7 @@ app.addEventListener('click',async event=>{
     case 'recast-bottle':{
       thoughts=recastThought(id);
       render();
-      toast('Vuelve a estar en el agua');
+      toast('Botella enviada de nuevo.');
       break;
     }
     case 'delete-bottle':requestDeleteBottle(id);break;
@@ -3163,10 +3199,12 @@ app.addEventListener('click',async event=>{
         text:'Se eliminarán todas las entradas, hábitos y preferencias de este navegador.',
         confirmLabel:'Borrar todo',danger:true
       })){
-        clearEntries();
-        clearAllDrafts();
-        refresh();selected=dateKey();view='diary';updateRouteUrl();render();
-        toast('Datos eliminados');
+        try{
+          clearEntries();
+          clearAllDrafts();
+          refresh();selected=dateKey();view='diary';updateRouteUrl();render();
+          toast('Datos eliminados');
+        }catch(err){toast(err.message||'No se han podido eliminar los datos.',true);}
       }
       break;
   }
@@ -3206,7 +3244,10 @@ app.addEventListener('change',event=>{
         </div>`);
         modal.onclick=e=>{
           const a=e.target.closest('[data-modal]')?.dataset.modal;
-          if(a==='confirm'){importData(pendingImport);refresh();toast('Copia importada');}
+          if(a==='confirm'){
+            try{importData(pendingImport);refresh();toast('Copia importada');}
+            catch(err){toast(err.message||'No se ha podido importar la copia.',true);return;}
+          }
           if(a||e.target===modal){modal.close();render();}
         };
       }catch(err){toast(err.message||'No se ha podido importar el archivo.',true);}
@@ -3260,6 +3301,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 applyRouteFromLocation();
 window.addEventListener('popstate',()=>{
   savePendingText();
+  cancelThoughtsEntryWave();
   menu=false;
   applyRouteFromLocation();
   panelEnter=true;
@@ -3274,7 +3316,7 @@ setSaveState('idle');
 const arrivalsAtBoot=shoreQueue(thoughts).filter(t=>t.seen!==true);
 if(arrivalsAtBoot.length){
   setTimeout(()=>{
-    toast(arrivalsAtBoot.length===1?'Ha vuelto una de tus botellas.':'Han vuelto un par de tus botellas.');
+    toast(arrivalsAtBoot.length===1?'Has recibido una botella.':`${arrivalsAtBoot.length} botellas recibidas.`);
     document.querySelectorAll('.vault-arrival').forEach((el,i)=>{
       el.style.setProperty('--wash-delay',`${i*140}ms`);
       el.classList.add('is-washing');
