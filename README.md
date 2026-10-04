@@ -19,7 +19,7 @@ npm run build
 npm run preview
 ```
 
-También puedes servir la carpeta `dist/` con cualquier servidor estático.
+También puedes servir la carpeta `docs/` (build de producción) con cualquier servidor estático.
 
 ## Qué incluye
 
@@ -77,6 +77,35 @@ Cada entrada se guarda como JSON en `localStorage` (`diario.entries.v1`):
 
 El número de día se calcula automáticamente desde la fecha de la primera entrada.
 
+## Desplegar en GitHub Pages (por branch, sin Actions)
+
+Este repositorio está configurado para **GitHub Pages por branch**, sin usar GitHub Actions.
+
+- El build de producción se genera en `docs/` (`vite.config.js` → `outDir: 'docs'`).
+- `docs/` incluye `.nojekyll` para que GitHub Pages sirva los assets tal cual.
+- `base: './'` en Vite permite que funcione tanto en `usuario.github.io/daily-diary/` como en dominio propio.
+
+**Pasos para activar Pages:**
+
+1. Genera el build:
+   ```bash
+   npm run build   # crea/actualiza docs/
+   ```
+2. Haz commit de `docs/` y push a `main`:
+   ```bash
+   git add docs
+   git commit -m "build: actualizar docs para Pages"
+   git push origin main
+   ```
+3. En GitHub → **Settings → Pages**:
+   - **Source**: `Deploy from a branch`
+   - **Branch**: `main` / Folder: `/docs`
+   - Guarda.
+
+Cada `git push` a `main` con `docs/` actualizado publica automáticamente. No hay workflow de Actions.
+
+URL resultante: `https://<usuario>.github.io/daily-diary/`
+
 ## Desplegar en Render
 
 El repositorio incluye un `render.yaml` listo para usar. Dos formas de desplegar:
@@ -92,7 +121,7 @@ El repositorio incluye un `render.yaml` listo para usar. Dos formas de desplegar
 1. En Render → **New** → **Static Site**.
 2. Conecta el repositorio.
 3. *Build Command*: `npm ci && npm run build`
-4. *Publish Directory*: `dist`
+4. *Publish Directory*: `docs`
 5. En **Redirects/Rewrites** añade: `/* → /index.html` (rewrite). El `render.yaml` ya lo incluye si usas Blueprint.
 
 Notas del despliegue:
