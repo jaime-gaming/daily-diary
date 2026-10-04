@@ -4,7 +4,7 @@ services:
   - type: static_site
     name: diario
     buildCommand: npm ci && npm run build
-    staticPublishPath: ./dist
+    staticPublishPath: ./docs
     routes:
       - type: rewrite
         source: /*

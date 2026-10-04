@@ -1,3 +1,4 @@
 node_modules/
 dist/
 *.local
+# docs/ se publica en GitHub Pages por branch (no ignorar, se versiona)
