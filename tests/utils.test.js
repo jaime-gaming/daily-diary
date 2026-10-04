@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {dateKey, parseDate, addDays, daysBetween, dayNumber, weekStart, monthRange, monthMove, generateCalendar, longDate} from '../src/utils/dates.js';
-import {average, calculateStats, currentStreak, maxStreak, sleepInterpretation, studyInterpretation, generateSummary, periodSummary, generateTrends, inRange, formatNumber, wordCount, totalWords, habitStreak, habitCount, tagFrequency, counterInterpretation} from '../src/utils/stats.js';
+import {average, meanOrNull, median, standardDeviation, periodCoverage, calculateStats, currentStreak, maxStreak, sleepInterpretation, studyInterpretation, generateSummary, periodSummary, generateTrends, inRange, formatNumber, wordCount, totalWords, habitStreak, habitCount, tagFrequency, counterInterpretation} from '../src/utils/stats.js';
 import {detectCrisisRisk, getDailyWord, getDailyTip, getContextualAdvice, calculateEntryCompletion, getGreeting, getAgeProfile, generateThemeFaviconSvg, generateThemeFaviconDataUri, getPersonalQuote, calculateGoalStats} from '../src/utils/wellbeing.js';
 
 const entry = (date, mood, sleepHours, studyHours, extra = {}) => ({
@@ -38,9 +38,15 @@ test('semana y mes', () => {
   assert.ok(longDate('2026-09-30').includes('2026'));
 });
 
-test('medias y rachas', () => {
+test('medias robustas, muestra disponible y rachas', () => {
   assert.equal(average([1, 2, 3]), 2);
   assert.equal(average([]), 0);
+  assert.equal(meanOrNull([null, 2, 4]), 3);
+  assert.equal(meanOrNull([null, undefined]), null);
+  assert.equal(median([1, 9, 2]), 2);
+  assert.equal(median([1, 2, 3, 4]), 2.5);
+  assert.equal(median([]), null);
+  assert.equal(standardDeviation([2, 2, 2]), 0);
   assert.equal(maxStreak([entry('2026-09-01', 3, 7, 1), entry('2026-09-02', 3, 7, 1), entry('2026-09-04', 3, 7, 1)]), 2);
   assert.equal(currentStreak([entry('2026-09-29', 3, 7, 1), entry('2026-09-30', 3, 7, 1)], '2026-09-30'), 2);
   assert.equal(currentStreak([entry('2026-09-29', 3, 7, 1)], '2026-09-30'), 1); // si ayer hay entrada, la racha sigue viva
@@ -80,9 +86,23 @@ test('estadísticas de un período', () => {
   assert.equal(s.mostStudy.studyHours, 5);
   assert.equal(s.mostSleep.sleepHours, 9);
   assert.deepEqual(s.moods, [0, 1, 0, 1, 1]);
-  assert.match(periodSummary(s), /Esta semana has registrado 3 días/);
-  assert.match(periodSummary(s, true), /Durante este mes has registrado 3 días/);
+  assert.match(periodSummary(s), /En la semana has registrado 3 días/);
+  assert.match(periodSummary(s, true), /En el período has registrado 3 días/);
   assert.match(periodSummary(calculateStats([])), /Aún no hay entradas/);
+});
+
+test('las métricas opcionales sin datos se representan como ausentes y los días se cuentan una vez', () => {
+  const first = entry('2026-09-01', 3, 7, 1, {energy: null, stress: null, counters: {water: 4}});
+  const replacement = entry('2026-09-01', 5, 8, 2, {energy: 4, stress: null, counters: {water: 8}});
+  const stats = calculateStats([first, replacement]);
+  assert.equal(stats.count, 1);
+  assert.equal(stats.mood, 5);
+  assert.equal(stats.energy, 4);
+  assert.equal(stats.stress, null);
+  assert.equal(stats.metricCounts.stress, 0);
+  assert.equal(stats.counters.water.total, 8);
+  assert.equal(stats.counters.water.count, 1);
+  assert.equal(calculateStats([first]).energy, null);
 });
 
 test('tendencias por reglas, sin IA', () => {
@@ -90,19 +110,24 @@ test('tendencias por reglas, sin IA', () => {
   const recent = Array.from({length: 7}, (_, i) => entry(`2026-09-${24 + i}`, 4, 6, 1));
   const prior = Array.from({length: 7}, (_, i) => entry(`2026-09-${17 + i}`, 4, 8, 1));
   const trends = generateTrends([...prior, ...recent], today);
-  assert.ok(trends.some(t => /sueño ha disminuido/.test(t)));
+  assert.ok(trends.some(t => /sueño ha bajado/.test(t)));
 
-  const moreSleep = [entry('2026-09-01', 4, 8, 1), entry('2026-09-02', 4, 8, 1), entry('2026-09-03', 4, 8, 1),
-    entry('2026-09-10', 2, 5, 1), entry('2026-09-11', 2, 5, 1), entry('2026-09-12', 2, 5, 1)];
+  const moreSleep = [
+    ...Array.from({length: 5}, (_, i) => entry(`2026-09-0${i + 1}`, 4, 8, 1)),
+    ...Array.from({length: 5}, (_, i) => entry(`2026-09-${10 + i}`, 2, 5, 1))
+  ];
   const rel = generateTrends(moreSleep, today);
-  assert.ok(rel.some(t => /parece coincidir/.test(t) && !/causa/.test(t.toLowerCase().replace('no una causa demostrada', ''))));
-  assert.ok(generateTrends([], today).length === 0 || true);
+  assert.ok(rel.some(t => /coincide/.test(t) && /asociación/.test(t) && /no una causa demostrada/.test(t)));
+  assert.deepEqual(generateTrends([], today), []);
 });
 
-test('filtrado por rango de fechas', () => {
+test('filtrado por rango y cobertura real del período', () => {
   const entries = [entry('2026-09-01', 3, 7, 1), entry('2026-09-15', 3, 7, 1)];
   assert.equal(inRange(entries, '2026-09-01', '2026-09-10').length, 1);
   assert.equal(inRange(entries, '2026-10-01', '2026-10-31').length, 0);
+  assert.deepEqual(periodCoverage(entries, '2026-09-01', '2026-09-07', '2026-09-04'), {recorded: 1, days: 4, pct: 25});
+  assert.deepEqual(periodCoverage(entries, '2026-09-05', '2026-09-09', '2026-09-04'), {recorded: 0, days: 0, pct: 0});
+  assert.deepEqual(periodCoverage([...entries, entries[0]], '2026-09-01', '2026-09-30', '2026-09-30'), {recorded: 2, days: 30, pct: 7});
   assert.equal(formatNumber(7.25), '7,3');
 });
 
@@ -240,6 +265,11 @@ test('frases personalizadas y metas personales en estadísticas', () => {
   assert.equal(goals.studyMet, 2);
   assert.equal(goals.waterMet, 2);
   assert.equal(goals.sleepPct, 67);
+  assert.equal(goals.sleepTracked, 3);
+  const untracked = calculateGoalStats([{date:'2026-10-04', mood:4}], {});
+  assert.equal(untracked.sleepPct, null);
+  assert.equal(untracked.studyPct, null);
+  assert.ok(Number.isFinite(untracked.studyGoal), 'la meta de estudio usa un valor recomendado, no NaN');
 });
 
 

@@ -27,7 +27,7 @@ export const PART_TYPES=[{id:'text',label:'párrafo'},{id:'line',label:'una lín
 /* Partes con las que se puede empezar, por si no quieres partir de cero */
 export const PART_PRESETS=[
   {label:'Cómo responde el cuerpo',hint:'Tensión, digestión, sueño, energía.',type:'text'},
-  {label:'Una idea que no quiero olvidar',hint:'',type:'line'},
+  {label:'Un pensamiento que no quiero olvidar',hint:'',type:'line'},
   {label:'Con quién he hablado hoy',hint:'',type:'line'},
   {label:'Qué me ha costado',hint:'Sin juzgarlo: solo nombrarlo.',type:'text'}
 ];
@@ -94,13 +94,13 @@ export const AGE_GROUPS = [
     id:'teen',
     min:10,
     max:18,
-    label:'12 – 18 años',
-    title:'Instituto y descubrimiento',
-    desc:'Pensado para tu ritmo de clases, exámenes, amigos, aficiones y empezar a guardar tu propia historia.',
+    label:'10 – 18 años',
+    title:'Instituto',
+    desc:'Clases, amistades y aficiones.',
     sleepRecommended:8.5,
     studyRecommended:2,
     focusLabel:'Horas de estudio',
-    focusQuestion:'¿Cuánto tiempo has dedicado hoy a estudiar, repasar o hacer tareas?',
+    focusQuestion:'¿Cuánto has estudiado hoy?',
     tags:['Clases','Exámenes','Amigos','Deporte','Música','Videojuegos','Tarde libre','Tranquilo','Cansado','Motivado','Creativo','Social'],
     habits:[
       'Hacer tareas sin mirar el móvil',
@@ -111,10 +111,10 @@ export const AGE_GROUPS = [
       'Salir a tomar el aire'
     ],
     placeholders:{
-      bestOfDay:'Una risa en clase, una partida con amigos, una canción en el bus, quitarme un examen de encima...',
-      differentToday:'Algo curioso que pasó en el insti, una charla que no esperaba o un plan improvisado...',
-      generalDay:'Cuenta cómo te has sentido hoy de verdad, qué te ha dado rabia, qué te ha hecho gracia...',
-      tomorrow:'Repasar ese tema a tiempo, quedar un rato, acostarme sin quedarme pegado a la pantalla...'
+      bestOfDay:'Una risa, una partida, una canción…',
+      differentToday:'Algo curioso, una charla, un plan…',
+      generalDay:'¿Cómo te has sentido hoy?',
+      tomorrow:'Una tarea, un plan, un rato de descanso…'
     }
   },
   {
@@ -122,12 +122,12 @@ export const AGE_GROUPS = [
     min:19,
     max:26,
     label:'19 – 26 años',
-    title:'Universidad, proyectos y primeros pasos',
-    desc:'Adaptado a años de carrera, primeros trabajos, independencia, amigos y construir tu propio camino.',
+    title:'Universidad y primeros pasos',
+    desc:'Estudios, trabajo e independencia.',
     sleepRecommended:8,
     studyRecommended:3,
     focusLabel:'Horas de estudio y foco',
-    focusQuestion:'¿Cuántas horas has dedicado a estudiar, formarte o sacar adelante tus proyectos?',
+    focusQuestion:'¿Cuánto has estudiado o avanzado en tus proyectos?',
     tags:['Productivo','Uni / Trabajo','Amigos','Entreno','Creativo','Tranquilo','Cansado','Motivado','Social','Solitario','Nostálgico','Ajetreado'],
     habits:[
       'Bloque de estudio sin distracciones',
@@ -138,10 +138,10 @@ export const AGE_GROUPS = [
       'Ordenar mi mesa al acabar'
     ],
     placeholders:{
-      bestOfDay:'Un café a media mañana, avanzar de verdad con mis cosas, entrenar, una charla hasta tarde...',
-      differentToday:'Una idea que me vino de repente, alguien con quien coincidí, un cambio de planes...',
-      generalDay:'Escribe para ti cómo ha ido el día, qué tienes en la cabeza y cómo llevas la semana...',
-      tomorrow:'Aprovechar la mañana, quitarme esa tarea pendiente, guardar tiempo para descansar...'
+      bestOfDay:'Un avance, un café, una charla…',
+      differentToday:'Un detalle, un encuentro, un cambio…',
+      generalDay:'¿Qué te ronda la cabeza?',
+      tomorrow:'Una tarea, una pausa, un plan…'
     }
   },
   {
@@ -149,12 +149,12 @@ export const AGE_GROUPS = [
     min:27,
     max:49,
     label:'27 – 49 años',
-    title:'Equilibrio, oficio y vida propia',
-    desc:'Diseñado para compaginar trabajo o proyectos, descanso mental, salud, casa y tiempo de calidad.',
+    title:'Equilibrio y vida propia',
+    desc:'Trabajo, descanso, salud y tiempo personal.',
     sleepRecommended:7.5,
     studyRecommended:1.5,
     focusLabel:'Horas de enfoque o aprendizaje',
-    focusQuestion:'¿Cuánto tiempo has dedicado hoy a aprender, leer o avanzar en proyectos propios?',
+    focusQuestion:'¿Cuánto has aprendido o avanzado en tus proyectos?',
     tags:['Enfocado','Tranquilo','Trabajo','Familia','Deporte','Lectura','Cansado','Motivado','Social','Creativo','Desconexión','Ajetreado'],
     habits:[
       'Cerrar el trabajo a mi hora',
@@ -165,10 +165,10 @@ export const AGE_GROUPS = [
       'Media hora sin notificaciones'
     ],
     placeholders:{
-      bestOfDay:'Una sobremesa tranquila, resolver un asunto pendiente, cerrar el ordenador y desconectar...',
-      differentToday:'Algo que rompió la inercia de la semana o un detalle cotidiano que hoy noté distinto...',
-      generalDay:'Cómo ha ido la jornada, qué energía te queda esta noche y qué necesitas soltar...',
-      tomorrow:'Centrarme en lo prioritario, no llenarme la agenda de más, salir a estirar las piernas...'
+      bestOfDay:'Una sobremesa, un logro, un rato tranquilo…',
+      differentToday:'Un giro, un detalle, algo nuevo…',
+      generalDay:'¿Cómo ha ido el día?',
+      tomorrow:'Prioridades y descanso…'
     }
   },
   {
@@ -176,12 +176,12 @@ export const AGE_GROUPS = [
     min:50,
     max:120,
     label:'50+ años',
-    title:'Serenidad, bienestar y perspectiva',
-    desc:'Orientado a saborear el ritmo diario, cuidar la salud, los paseos, la lectura y la memoria de lo vivido.',
+    title:'Bienestar y perspectiva',
+    desc:'Salud, paseos, lectura y recuerdos.',
     sleepRecommended:7.5,
     studyRecommended:1,
     focusLabel:'Tiempo de lectura o dedicación',
-    focusQuestion:'¿Cuánto tiempo has dedicado hoy a la lectura, aprender o cultivar tus aficiones?',
+    focusQuestion:'¿Cuánto has leído o dedicado a tus aficiones?',
     tags:['Sereno','Paseo','Lectura','Familia','Naturaleza','Salud','Agradecido','Activo','Creativo','Social','Tranquilo','Nostálgico'],
     habits:[
       'Paseo matutino al aire libre',
@@ -192,81 +192,81 @@ export const AGE_GROUPS = [
       'Un momento de silencio y calma'
     ],
     placeholders:{
-      bestOfDay:'La luz de la mañana en el paseo, una buena conversación, avanzar con el libro que estoy leyendo...',
-      differentToday:'Una visita grata, un recuerdo que volvió con nitidez, un paseo por un sitio distinto...',
-      generalDay:'Anota con sosiego cómo ha transcurrido el día y con qué sensación te quedas hoy...',
-      tomorrow:'Salir a caminar temprano, dedicar un rato a la lectura, disfrutar del día sin prisa...'
+      bestOfDay:'Un paseo, una charla, una lectura…',
+      differentToday:'Una visita, un recuerdo, otro camino…',
+      generalDay:'¿Con qué sensación te quedas?',
+      tomorrow:'Un paseo, una lectura, sin prisa…'
     }
   }
 ];
 
 export const INTEREST_OPTIONS = [
-  {id:'reading',label:'Lectura y escritura',icon:'book',habit:'Leer 20 minutos con calma',tag:'Lectura'},
-  {id:'sport',label:'Deporte y movimiento',icon:'run',habit:'Entrenar o moverme 30 min',tag:'Deporte'},
-  {id:'study',label:'Estudio y aprendizaje',icon:'study',habit:'Sesión de estudio sin móvil',tag:'Productivo'},
-  {id:'music',label:'Música, cine y arte',icon:'spark',habit:'Escuchar un álbum o crear algo',tag:'Creativo'},
-  {id:'nature',label:'Naturaleza y aire libre',icon:'leaf',habit:'Salir a caminar al aire libre',tag:'Naturaleza'},
-  {id:'social',label:'Amigos y gente querida',icon:'heart',habit:'Hablar con alguien que quiero',tag:'Social'},
-  {id:'calm',label:'Calma y descanso',icon:'moon',habit:'Apagar pantallas 30 min antes de dormir',tag:'Tranquilo'},
-  {id:'projects',label:'Proyectos personales',icon:'bolt',habit:'Dedicar 30 min a mi propio proyecto',tag:'Enfocado'},
-  {id:'gaming',label:'Tecnología y videojuegos',icon:'target',habit:'Parar a tiempo para descansar la vista',tag:'Desconexión'},
-  {id:'cooking',label:'Cocina y comer bien',icon:'flame',habit:'Preparar una comida casera y tranquila',tag:'Bienestar'}
+  {id:'reading',label:'Lectura',icon:'book',habit:'Leer 20 minutos con calma',tag:'Lectura'},
+  {id:'sport',label:'Deporte',icon:'run',habit:'Entrenar o moverme 30 min',tag:'Deporte'},
+  {id:'study',label:'Estudio',icon:'study',habit:'Sesión de estudio sin móvil',tag:'Productivo'},
+  {id:'music',label:'Música y arte',icon:'spark',habit:'Escuchar un álbum o crear algo',tag:'Creativo'},
+  {id:'nature',label:'Naturaleza',icon:'leaf',habit:'Salir a caminar al aire libre',tag:'Naturaleza'},
+  {id:'social',label:'Amigos',icon:'heart',habit:'Hablar con alguien que quiero',tag:'Social'},
+  {id:'calm',label:'Descanso',icon:'moon',habit:'Apagar pantallas 30 min antes de dormir',tag:'Tranquilo'},
+  {id:'projects',label:'Proyectos',icon:'bolt',habit:'Dedicar 30 min a mi propio proyecto',tag:'Enfocado'},
+  {id:'gaming',label:'Videojuegos',icon:'target',habit:'Parar a tiempo para descansar la vista',tag:'Desconexión'},
+  {id:'cooking',label:'Cocina',icon:'flame',habit:'Preparar una comida casera y tranquila',tag:'Bienestar'}
 ];
 
 export const WRITING_RITUALS = [
-  {id:'night',label:'Por la noche, al cerrar el día',icon:'moon'},
-  {id:'morning',label:'Por la mañana, con café o té',icon:'sun'},
-  {id:'afternoon',label:'A media tarde, haciendo una pausa',icon:'leaf'},
-  {id:'anytime',label:'Cuando me pide el cuerpo escribir',icon:'pen'}
+  {id:'night',label:'Por la noche',icon:'moon'},
+  {id:'morning',label:'Por la mañana',icon:'sun'},
+  {id:'afternoon',label:'A media tarde',icon:'leaf'},
+  {id:'anytime',label:'Cuando quiera',icon:'pen'}
 ];
 
 export const TONE_STYLES = [
-  {id:'warm',label:'Cálido y cercano',desc:'Como hablar con un buen amigo en calma'},
-  {id:'literary',label:'Pausado y literario',desc:'Con gusto por las palabras y los detalles'},
-  {id:'direct',label:'Directo y práctico',desc:'Al grano, claro y enfocado en tu día a día'},
-  {id:'gentle',label:'Suave y compasivo',desc:'Especialmente amable para días de cansancio'}
+  {id:'warm',label:'Cálido y cercano',desc:'Como hablar con un buen amigo'},
+  {id:'literary',label:'Pausado y literario',desc:'Con gusto por los detalles'},
+  {id:'direct',label:'Directo y práctico',desc:'Claro y al grano'},
+  {id:'gentle',label:'Suave y compasivo',desc:'Amable en días difíciles'}
 ];
 
 export const THEMES = [
   {
     id:'paper',
     name:'Papel Clásico',
-    desc:'Cuaderno color crema y tinta estilográfica carbón',
+    desc:'Crema y tinta carbón',
     colors:['#F3EFE6','#211E17','#B34A2E'],
     favicon:{bg:'#211E17',page:'#F3EFE6',accent:'#B34A2E',ink:'#211E17'}
   },
   {
     id:'night',
     name:'Tinta Nocturna',
-    desc:'Cuero oscuro y trazos cálidos para escribir de noche',
+    desc:'Tonos cálidos para la noche',
     colors:['#151412','#EDE6D8','#D96B4E'],
     favicon:{bg:'#151412',page:'#272420',accent:'#D96B4E',ink:'#EDE6D8'}
   },
   {
     id:'forest',
     name:'Bosque Sereno',
-    desc:'Encuadernación salvia y papel natural de algodón',
+    desc:'Salvia y papel natural',
     colors:['#EBF0EA','#19241D','#356343'],
     favicon:{bg:'#19241D',page:'#EBF0EA',accent:'#4C8B5E',ink:'#19241D'}
   },
   {
     id:'terracotta',
     name:'Atardecer Cálido',
-    desc:'Arcilla cocida, papel hueso y acentos ocre',
+    desc:'Arcilla y acentos ocre',
     colors:['#F6ECE4','#261B15','#C45534'],
     favicon:{bg:'#261B15',page:'#F6ECE4',accent:'#C45534',ink:'#261B15'}
   },
   {
     id:'ocean',
     name:'Azul Atlántico',
-    desc:'Papel marfil frío y tinta azul de cuaderno de viaje',
+    desc:'Marfil frío y tinta azul',
     colors:['#EDF2F6','#16222F','#2B5F8C'],
     favicon:{bg:'#16222F',page:'#EDF2F6',accent:'#2B5F8C',ink:'#16222F'}
   },
   {
     id:'lavender',
     name:'Bruma Lavanda',
-    desc:'Lino malva suave y tinta ciruela',
+    desc:'Lino malva y tinta ciruela',
     colors:['#F2EEF6','#221B2B','#6E4B8E'],
     favicon:{bg:'#221B2B',page:'#F2EEF6',accent:'#6E4B8E',ink:'#221B2B'}
   }
@@ -407,7 +407,7 @@ export const DAILY_WORDS = [
   {
     word:'Ubuntu',
     origin:'Zulú · Xhosa',
-    meaning:'La idea de que somos quienes somos gracias también a quienes nos rodean.',
+    meaning:'El concepto de que somos quienes somos gracias también a quienes nos rodean.',
     prompt:'¿Quién te ha hecho el día un poco más fácil o agradable hoy?'
   },
   {
@@ -589,7 +589,7 @@ export const DAILY_TIPS = [
   },
   {
     category:'Movimiento',
-    title:'Caminar también ordena las ideas',
+    title:'Caminar también ordena los pensamientos',
     tip:'Quince minutos andando sin mirar el teléfono despejan más la mente que media hora intentando concentrarse a la fuerza.',
     action:'Sal a dar una vuelta corta mañana cuando te satures.',
     icon:'run',
@@ -643,21 +643,21 @@ export const CRISIS_HELPLINES = [
     number:'024',
     tel:'tel:024',
     name:'Línea 024 · Atención a la conducta suicida',
-    detail:'Ministerio de Sanidad (España) · Gratuita, confidencial, anónima y abierta las 24 horas.',
+    detail:'Ministerio de Sanidad · España · gratuita, confidencial y anónima · 24 h.',
     primary:true
   },
   {
     number:'717 003 717',
     tel:'tel:717003717',
     name:'Teléfono de la Esperanza',
-    detail:'Escucha y apoyo emocional en momentos de crisis · 24 horas todos los días.',
+    detail:'Escucha y apoyo emocional · 24 h.',
     primary:true
   },
   {
     number:'900 20 20 10',
     tel:'tel:900202010',
-    name:'Fundación ANAR (Menores y jóvenes)',
-    detail:'Atención gratuita, confidencial y 24h para jóvenes y adolescentes. No deja rastro en la factura.',
+    name:'Fundación ANAR · menores y jóvenes',
+    detail:'Gratuita y confidencial · 24 h para jóvenes. Sin rastro en la factura.',
     primary:false,
     youth:true
   },
@@ -665,7 +665,7 @@ export const CRISIS_HELPLINES = [
     number:'112',
     tel:'tel:112',
     name:'Emergencias 112',
-    detail:'Atención inmediata de urgencia sanitaria o seguridad · 24 horas.',
+    detail:'Urgencias sanitarias o de seguridad · 24 h.',
     primary:false
   }
 ];
@@ -675,6 +675,6 @@ export const INTERNATIONAL_HELPLINES = [
   {country:'Argentina',name:'Centro de Asistencia al Suicida',number:'135 / (011) 5275-1135'},
   {country:'Colombia',name:'Línea 106 / Salud Mental',number:'106 / 192'},
   {country:'Chile',name:'Prevención del Suicidio',number:'*4141'},
-  {country:'Perú',name:'Línea 113 Salud Mental',number:'113 (opción 5)'},
+  {country:'Perú',name:'Línea 113 Salud Mental',number:'113 · opción 5'},
   {country:'EE. UU. y Canadá',name:'Suicide & Crisis Lifeline',number:'988'}
 ];

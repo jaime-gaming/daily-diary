@@ -1,6 +1,6 @@
-const CACHE = 'diario-v7';
-
-const APP_SHELL = ['./', './index.html', './favicon.svg', './manifest.webmanifest'];
+const CACHE = 'diario-v8';
+const ROUTE_PAGES = [];
+const APP_SHELL = ['./', './index.html', ...ROUTE_PAGES, './favicon.svg', './manifest.webmanifest'];
 
 self.addEventListener('install', event => {
   event.waitUntil(
@@ -32,7 +32,16 @@ self.addEventListener('fetch', event => {
           caches.open(CACHE).then(cache => cache.put(event.request, copy));
           return response;
         })
-        .catch(() => caches.match(event.request).then(cached => cached || caches.match('./index.html')))
+        .catch(() => {
+          const scope = new URL(self.registration.scope);
+          const route = url.pathname.startsWith(scope.pathname)
+            ? url.pathname.slice(scope.pathname.length).replace(/^\/+|\/+$/g, '')
+            : '';
+          const routeIndex = new URL(`${route ? `${route}/` : ''}index.html`, scope).href;
+          return caches.match(event.request)
+            .then(cached => cached || caches.match(routeIndex))
+            .then(cached => cached || caches.match(new URL('./index.html', scope).href));
+        })
     );
     return;
   }

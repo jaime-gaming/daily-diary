@@ -105,12 +105,64 @@ test('exportar e importar (entradas y hábitos)', () => {
   clearEntries();
 });
 
+test('importar una copia conserva el estado previo si una escritura falla', () => {
+  clearEntries();
+  saveEntry(valid('2026-09-30'));
+  saveHabit({name: 'Leer'});
+  saveSetup({completed: true, name: 'Jaime'});
+  const before=new Map(store);
+  const originalSetItem=localStorage.setItem;
+  let writes=0;
+  localStorage.setItem=(key,value)=>{
+    writes++;
+    if(writes===2)throw new Error('quota exceeded');
+    originalSetItem(key,value);
+  };
+  try{
+    assert.throws(()=>importData({entries:[valid('2026-10-01')],habits:[{id:'new',name:'Caminar'}],thoughts:[]}),/quota exceeded/);
+  }finally{
+    localStorage.setItem=originalSetItem;
+  }
+  assert.deepEqual(store,before,'se restauran exactamente las claves anteriores');
+  assert.equal(loadEntries().length,1);
+  assert.equal(loadHabits().length,1);
+  clearEntries();
+});
+
+test('borrar datos revierte la operación si el navegador rechaza un borrado', () => {
+  clearEntries();
+  saveEntry(valid('2026-09-30'));
+  saveHabit({name: 'Leer'});
+  saveSetup({completed: true});
+  const before=new Map(store);
+  const originalRemoveItem=localStorage.removeItem;
+  let failed=false;
+  localStorage.removeItem=key=>{
+    if(key==='diario.setup.v1'&&!failed){failed=true;throw new Error('storage blocked');}
+    originalRemoveItem(key);
+  };
+  try{
+    assert.throws(()=>clearEntries(),/storage blocked/);
+  }finally{
+    localStorage.removeItem=originalRemoveItem;
+  }
+  assert.deepEqual(store,before,'se conservan todas las claves');
+  clearEntries();
+});
+
+test('las copias con listas o ajustes de tipo incorrecto se rechazan', () => {
+  assert.throws(()=>parseImport(JSON.stringify({version:1,entries:[],habits:{}})),/lista de hábitos/);
+  assert.throws(()=>parseImport(JSON.stringify({version:1,entries:[],thoughts:'texto'})),/lista de pensamientos/);
+  assert.throws(()=>parseImport(JSON.stringify({version:1,entries:[],setup:[]})),/ajustes de la copia/);
+});
+
 test('set up: guardar, validar y recuperar preferencias y sidebar', () => {
   clearEntries();
   const initial = loadSetup();
   assert.equal(initial.completed, false);
   assert.equal(initial.theme, 'paper');
   assert.equal(initial.sidebarCollapsed, false);
+  assert.equal(initial.reduceMotion, false);
 
   const saved = saveSetup({
     completed: true,
@@ -122,6 +174,7 @@ test('set up: guardar, validar y recuperar preferencias y sidebar', () => {
     studyGoal: 3.5,
     waterGoal: 10,
     sidebarCollapsed: true,
+    reduceMotion: true,
     trustedContactName: 'Laura',
     trustedContactPhone: '600123456'
   });
@@ -135,6 +188,7 @@ test('set up: guardar, validar y recuperar preferencias y sidebar', () => {
   assert.equal(saved.studyGoal, 3.5);
   assert.equal(saved.waterGoal, 10);
   assert.equal(saved.sidebarCollapsed, true);
+  assert.equal(saved.reduceMotion, true);
   assert.equal(loadSetup().trustedContactName, 'Laura');
 
   const adultSetup = saveSetup({age: 34});

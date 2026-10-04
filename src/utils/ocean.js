@@ -87,6 +87,33 @@ const pick=(arr,rnd)=>arr[Math.floor(rnd()*arr.length)%arr.length];
 const MOON_PHASES=['luna nueva','luna creciente','cuarto creciente','gibosa creciente','luna llena','gibosa menguante','cuarto menguante','luna menguante'];
 const clamp01=n=>Math.min(1,Math.max(0,n));
 
+/* La posición cambia con la hora local, sin pedir ubicación ni conexión. */
+export function sunPosition(now=new Date()){
+  const hour=now.getHours()+now.getMinutes()/60+now.getSeconds()/3600;
+  const sunrise=6,sunset=18;
+  const round=value=>Math.round(value*10)/10;
+  if(hour>=sunrise&&hour<sunset){
+    const progress=(hour-sunrise)/(sunset-sunrise);
+    return {
+      x:round(8+84*progress),
+      y:round(46-6*Math.sin(Math.PI*progress)),
+      moonX:50,
+      moonY:42,
+      phase:progress<.22?'morning':progress>.78?'evening':'day',
+      progress:round(progress)
+    };
+  }
+  const nightProgress=hour>=sunset?(hour-sunset)/12:(hour+6)/12;
+  return {
+    x:hour<sunrise?8:92,
+    y:94,
+    moonX:round(8+84*nightProgress),
+    moonY:round(58-20*Math.sin(Math.PI*nightProgress)),
+    phase:'night',
+    progress:round(nightProgress)
+  };
+}
+
 /* ---------- mareas ---------- */
 export function moonAge(dateStr=dateKey()){
   return mod(daysBetween(TIDE_EPOCH,dateStr)+.765,SYNODIC);
@@ -173,12 +200,20 @@ export function seaById(id='breeze'){
   return SEAS.find(s=>s.id===id)||SEAS.find(s=>s.id==='breeze');
 }
 
-export function planVoyage({text='',castAt=dateKey(),sea='breeze',id=''}={}){
+export function normalizeThrowForce(value=3){
+  if(value===null||value===undefined||value==='')return 3;
+  const force=Number(value);
+  return Number.isFinite(force)?Math.max(1,Math.min(5,Math.round(force))):3;
+}
+
+export function planVoyage({text='',castAt=dateKey(),sea='breeze',id='',force=3}={}){
   const s=seaById(sea);
+  const throwForce=normalizeThrowForce(force);
   const rnd=mulberry32(hashSeed(`${castAt}|${s.id}|${id}|${String(text).trim().slice(0,220)}`));
   const r1=rnd(),r2=rnd(),r3=rnd(),r4=rnd();
   const part=weatherOf(castAt);            /* el parte del día en que se suelta */
-  const rawDays=Math.max(1,Math.round(s.min+r1*(s.max-s.min)));
+  const forceScale=.7+(throwForce-1)*.225;
+  const rawDays=Math.max(1,Math.round((s.min+r1*(s.max-s.min))*forceScale));
   const returns=r2<s.chance;
   const speed=Math.max(4,Math.round(s.miles*(.7+r3*.6)*part.speed));
   const target=addDays(castAt,rawDays);
@@ -189,6 +224,7 @@ export function planVoyage({text='',castAt=dateKey(),sea='breeze',id=''}={}){
   const grace=Math.max(3,Math.round(rawDays*.22));
   return {
     sea:s.id,
+    force:throwForce,
     returns,
     speed,
     driftDays:Math.max(1,daysBetween(castAt,arriveOn)),
@@ -216,6 +252,10 @@ export function fateOf(bottle,today=dateKey()){
   }
   if(bottle.lostOn&&today>=bottle.lostOn)return 'lost';
   return 'drifting';
+}
+
+export function canOpenBottle(bottle,today=dateKey()){
+  return Boolean(bottle)&&fateOf(bottle,today)==='returned';
 }
 
 export function resolveBottle(bottle,today=dateKey()){
@@ -271,7 +311,7 @@ export function seaPhrase(bottle,today=dateKey()){
 export function groupBottles(bottles=[],today=dateKey()){
   const g={drifting:[],returned:[],lost:[],kept:[]};
   for(const b of bottles)g[fateOf(b,today)]?.push(b);
-  g.kept=bottles.filter(b=>b.kept);
+  g.kept=bottles.filter(b=>b.kept&&fateOf(b,today)==='returned');
   g.drifting.sort((a,b)=>a.castAt.localeCompare(b.castAt));
   for(const k of ['returned','lost'])g[k].sort((a,b)=>String(b.returnedAt||b.lostAt||b.castAt).localeCompare(String(a.returnedAt||a.lostAt||a.castAt)));
   g.returned.sort((a,b)=>(a.seen===true)-(b.seen===true)||String(b.returnedAt||'').localeCompare(String(a.returnedAt||'')));

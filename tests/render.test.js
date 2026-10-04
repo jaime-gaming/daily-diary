@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  seaPanel,bottleComposer,bottleCard,bottleModal,shoreTeaser,emptySea,bottleGlyph,wavesSvg,
-  castSplash,tideRule
+  seaPanel,bottleComposer,bottleCard,bottleModal,bottleCountOnly,shoreTeaser,emptySea,bottleGlyph,wavesSvg,
+  castSplash,tideRule,islandSceneSvg,castSplashPoint
 } from '../src/components/ocean.js';
 import {habitBoard,momentumGrid,habitStatsList,habitComposer,countersBoard,tomorrowBoard,routineTeaser,progressRing} from '../src/components/habits.js';
-import {counterSteppers} from '../src/components/ui.js';
+import {counterSteppers,setupWizardModal} from '../src/components/ui.js';
 import {COUNTERS} from '../src/data/constants.js';
 
 const TODAY='2026-09-30';
@@ -28,39 +28,124 @@ function sane(html,label){
   for(const bad of ['undefined','NaN','[object Object]','null<']){
     assert.equal(html.includes(bad),false,`${label}: no debería contener "${bad}"`);
   }
-  for(const tag of ['div','section','button','label','svg','form','li','article','header']){
+  for(const tag of ['div','section','button','label','svg','g','form','li','article','header']){
     const open=(html.match(new RegExp(`<${tag}[\\s>]`,'g'))||[]).length;
     const close=(html.match(new RegExp(`</${tag}>`,'g'))||[]).length;
     assert.equal(open,close,`${label}: etiquetas <${tag}> equilibradas (${open} vs ${close})`);
   }
 }
 
+test('el asistente obligatorio no ofrece cierre ni aplazamiento', () => {
+  const mandatory=setupWizardModal(setup,habits,1,true);
+  const optional=setupWizardModal(setup,habits,1,false);
+  assert.match(mandatory,/setup-wizard-modal is-mandatory/);
+  assert.doesNotMatch(mandatory,/data-modal="close"/);
+  assert.match(mandatory,/data-wizard="next"/);
+  assert.match(optional,/data-modal="close"/);
+});
+
+test('el sol aparece en el punto que corresponde a la hora local', () => {
+  const atNoon=new Date(2026,5,21,12,0);
+  const html=seaPanel([],TODAY,atNoon);
+  assert.match(html,/data-dayphase="day"/);
+  assert.match(html,/--sun-x:50%/);
+  assert.match(html,/--sun-y:40%/);
+});
+
+test('Pensamientos: la isla recupera sus formas de escena y olas', () => {
+  const scene=islandSceneSvg();
+  sane(scene,'islandSceneSvg');
+  assert.match(scene,/thoughts-island-scenery/);
+  assert.match(scene,/scene-palm-crown/);
+  assert.match(scene,/scene-island-shoreline/);
+  assert.match(scene,/scene-island-reef/);
+  assert.match(scene,/scene-island-path/);
+  assert.match(scene,/scene-house-wall/);
+  assert.match(scene,/scene-house-window-glass/);
+  assert.match(scene,/scene-island-beach/);
+  assert.equal((scene.match(/class="scene-palm scene-palm-/g)||[]).length,2,'la isla tiene dos palmeras');
+  assert.doesNotMatch(scene,/data-id=|<text/i);
+});
+
+test('Pensamientos: el cielo nocturno y la marea se leen en el encabezado', () => {
+  const html=seaPanel([bottle({arriveOn:'2026-10-15'})],TODAY,new Date(2026,5,21,21,30));
+  assert.match(html,/data-dayphase="night"/);
+  assert.match(html,/Un lugar para soltar/);
+  assert.match(html,/1 botella en camino/);
+  assert.match(html,/data-bottle-state="sent"/);
+  assert.match(html,/thoughts-cloud-left/);
+  assert.match(html,/thoughts-cloud-right/);
+  assert.match(html,/thoughts-moon/);
+  assert.match(html,/thoughts-moon-crescent/);
+  assert.doesNotMatch(html,/thoughts-moon-cutout/);
+  assert.match(html,/thoughts-water-reflection/);
+  assert.match(html,/data-tide="(spring|neap|rising|falling|swell)"/);
+  assert.match(html,/thoughts-tide-status/);
+  assert.match(html,/role="meter" aria-label="Intensidad de la marea"/);
+  assert.match(html,/thoughts-hero-meta/);
+  assert.doesNotMatch(html,/Bajar a la isla|thoughts-stage-actions/);
+});
+
 test('mar: panel, compositor y fichas se dibujan con datos reales', () => {
-  const thoughts=[bottle(),bottle({id:'b2',status:'returned',returnedAt:'2026-09-15',seen:false}),bottle({id:'b3',status:'lost',returns:false,arriveOn:'2026-09-10',lostOn:'2026-09-20'})];
+  const thoughts=[bottle({arriveOn:'2026-10-15'}),bottle({id:'b2',status:'returned',returnedAt:'2026-09-15',seen:false}),bottle({id:'b3',status:'lost',returns:false,arriveOn:'2026-09-10',lostOn:'2026-09-20'})];
   sane(seaPanel(thoughts,TODAY),'seaPanel');
   sane(seaPanel([],TODAY),'seaPanel vacío');
+  const activePanel=seaPanel([bottle({arriveOn:'2026-10-15'})],TODAY);
+  assert.match(activePanel,/1 botella en camino/);
+  assert.match(activePanel,/data-bottle-state="sent"/);
+  assert.doesNotMatch(activePanel,/vault-fleet|vault-float|bottle-glyph/,'las botellas en deriva no aparecen en la escena');
+  const arrivalPanel=seaPanel([bottle({status:'returned',returnedAt:TODAY,seen:false})],TODAY);
+  assert.match(arrivalPanel,/data-bottle-state="unread"/);
+  assert.match(arrivalPanel,/vault-arrival is-new is-washing/);
+  assert.match(arrivalPanel,/aria-label="Abrir botella nueva recibida"/);
+  const lostPanel=seaPanel([bottle({status:'lost',returns:false,lostOn:TODAY})],TODAY);
+  assert.match(lostPanel,/data-bottle-state="lost"/);
+  assert.match(lostPanel,/1 botella perdida/);
   sane(bottleComposer(setup,TODAY,{text:'borrador',mood:3,sea:'deep'}),'bottleComposer');
   for(const b of thoughts)sane(bottleCard(b,TODAY,1),'bottleCard');
-  sane(bottleModal(thoughts[1],TODAY,setup),'bottleModal (orilla)');
-  sane(bottleModal(thoughts[0],TODAY,setup),'bottleModal (a la deriva)');
-  sane(bottleModal(thoughts[2],TODAY,setup),'bottleModal (perdida)');
+  sane(bottleModal(thoughts[1],TODAY,setup),'bottleModal (de vuelta)');
+  assert.equal(bottleModal(thoughts[0],TODAY,setup),'','no se puede abrir mientras va en camino');
+  assert.equal(bottleModal(thoughts[2],TODAY,setup),'','no se puede abrir una botella perdida');
   sane(shoreTeaser(thoughts,TODAY),'shoreTeaser con llegada');
   sane(shoreTeaser([],TODAY),'shoreTeaser vacío');
   sane(emptySea(),'emptySea');
   sane(bottleGlyph(bottle()),'bottleGlyph');
-  sane(wavesSvg(3),'wavesSvg');
+  const waves=wavesSvg(3);
+  sane(waves,'wavesSvg');
+  assert.match(waves,/viewBox="0 0 1440 180"/);
+  assert.match(waves,/wave-line-surface/);
+  assert.equal((waves.match(/class="thoughts-wave-line/g)||[]).length,3,'tres líneas suaves definen el oleaje');
+  const roughWaves=wavesSvg(3,1);
+  assert.match(roughWaves,/--wave-dur:6\.4s/);
+  assert.notEqual(roughWaves,waves,'el oleaje responde al estado del mar');
+  const landing=castSplashPoint(bottle());
+  assert.deepEqual(landing,castSplashPoint(bottle()),'el punto de chapuzón es estable');
+  assert.ok((landing.x>=8&&landing.x<=21)||(landing.x>=79&&landing.x<=92));
+  assert.ok(landing.depth>=13&&landing.depth<=20);
 });
 
-test('mar: el compositor respeta el borrador y las mareas disponibles', () => {
+test('Enviadas y pérdidas muestran solo el total visible', () => {
+  const sent=bottleCountOnly(3,'sent');
+  const lost=bottleCountOnly(1,'lost');
+  assert.match(sent,/aria-label="3 botellas enviadas">3<\/p>/);
+  assert.match(lost,/aria-label="1 botella perdida">1<\/p>/);
+  assert.equal(bottleCountOnly(0,'lost').endsWith('>0</p>'),true);
+  assert.doesNotMatch(sent,/>[^<]*(?:botella|enviada)/i);
+});
+
+test('mar: el compositor es breve y no anticipa el regreso', () => {
   const html=bottleComposer(setup,TODAY,{text:'un pensamiento pendiente',mood:4,sea:'current'});
   assert.match(html,/un pensamiento pendiente/);
-  assert.match(html,/name="sea" value="current"[^>]*checked/);
-  assert.match(html,/>3 palabras</);
-  for(const sea of ['shore','breeze','current','deep'])assert.ok(html.includes(`value="${sea}"`),`falta el mar ${sea}`);
+  assert.match(html,/name="mood" value="4" checked/);
+  assert.match(html,/type="range" name="force" min="1" max="5" step="1" value="3"/);
+  assert.match(html,/Fuerza/);
+  assert.match(html,/Lanzar botella<\/button>/);
+  assert.doesNotMatch(html,/name="sea"|sea-picker|arriveOn|regresará|volverá|vuelve en/);
 });
 
 test('mar: las botellas abiertas ofrecen responder, anclar o copiar al cuaderno', () => {
   const html=bottleModal(bottle({status:'returned',returnedAt:'2026-09-20'}),TODAY,setup);
+  assert.match(html,/<p class="tale">Recibida<\/p>/);
   assert.match(html,/data-modal="reply"/);
   assert.match(html,/data-modal="to-entry"/);
   assert.match(html,/data-modal="keep"/);
@@ -96,35 +181,43 @@ test('rutina: los botones llevan la acción y el día correctos', () => {
   assert.match(tomorrowBoard(entries[0]),/id="routine-goals"/);
 });
 
-test('el mar se pinta sin relojes ni pronósticos', () => {
+test('las botellas en camino no revelan contenido ni fecha de vuelta', () => {
+  const secret='mensaje reservado que no debe verse';
   const bottles=[
-    bottle(),
+    bottle({text:secret,reply:'respuesta reservada'}),
     bottle({id:'b2',status:'returned',returnedAt:'2026-09-28',seen:false,arriveOn:'2026-09-28'}),
-    bottle({id:'b3',arriveOn:'2026-10-03',castAt:'2026-09-05',driftDays:28})
+    bottle({id:'b3',text:'otro texto privado',arriveOn:'2026-10-03',castAt:'2026-09-05',driftDays:28})
   ];
-  sane(seaPanel(bottles,TODAY),'el panel del mar');
-  sane(seaPanel([],TODAY),'el panel del mar vacío');
+  sane(seaPanel(bottles,TODAY),'el panel de pensamientos');
+  sane(seaPanel([],TODAY),'el panel vacío');
   sane(castSplash(bottle()),'el chapuzón');
   sane(tideRule(),'la regla de marea');
-  sane(bottleComposer(setup,TODAY,{text:'algo escrito',mood:3,sea:'deep',restoredFrom:'hace 3 min'}),'el compositor con borrador recuperado');
-  sane(bottleModal(bottle({replyDraft:'Respuesta a medias'}),TODAY,setup),'la botella con respuesta a medias');
-  sane(shoreTeaser(bottles),'el teaser del mar');
-  for(const tab of ['shore','sea','kept','lost','raro'])sane(emptySea(tab),`el mar vacío (${tab})`);
+  sane(bottleComposer(setup,TODAY,{text:'algo escrito',mood:3}),'el compositor');
+  sane(bottleModal(bottle({status:'returned',returnedAt:'2026-09-20',replyDraft:'Respuesta a medias'}),TODAY,setup),'la respuesta recuperada');
+  sane(shoreTeaser(bottles),'el resumen de pensamientos');
+  for(const tab of ['shore','sea','kept','lost','raro'])sane(emptySea(tab),`estado vacío (${tab})`);
 
   const panel=seaPanel(bottles,TODAY);
-  assert.match(panel,/data-weather="(calm|haze|wind|rain|gale)"/,'el panel declara el clima, en silencio');
-  assert.match(panel,/style="[^"]*--water:/,'y el nivel del agua');
-  for(const muerto of ['ribbon-day','forecast-day','sea-part','mile','tide-dial','ledger']){
-    assert.equal(panel.includes(muerto),false,`el mar ya no muestra ${muerto}`);
-  }
-  const card=bottleCard(bottle({castAt:'2026-09-26',arriveOn:'2026-10-14',driftDays:18}),TODAY);
-  assert.match(card,/<article class="card bottle-card/);
-  assert.equal(card.includes('data-action="recall-bottle"'),false,'la ficha no ofrece traer la botella');
-  assert.match(card,/en el agua desde/,'y sólo dice desde cuándo está fuera');
-  const back=bottleCard(bottle({status:'returned',returnedAt:'2026-09-20'}),TODAY);
-  assert.match(back,/volvió el/);
+  assert.match(panel,/thought-vault/);
+  assert.doesNotMatch(panel,/mensaje reservado|respuesta reservada|otro texto privado|2026-10-03/);
+
+  const locked=bottle({text:secret,reply:'respuesta reservada',kept:true,castAt:'2026-09-26',arriveOn:'2026-10-14',driftDays:18});
+  const card=bottleCard(locked,TODAY);
+  assert.match(card,/<article class="card bottle-card[^>]*is-locked/);
+  assert.match(card,/En camino/);
+  assert.match(card,/Enviada/);
+  assert.match(card,/bottle-lock-mark/);
+  assert.doesNotMatch(card,/mensaje reservado|respuesta reservada|2026-10-14|data-action="open-bottle"/);
+  assert.equal(bottleModal(locked,TODAY,setup),'','ni la ruta directa abre una botella que deriva');
+
+  const back=bottleCard(bottle({status:'returned',returnedAt:'2026-09-20',seen:false}),TODAY);
+  assert.match(back,/is-unread/);
+  assert.match(back,/Nueva · recibida/);
+  assert.match(back,/data-action="open-bottle"/);
+  assert.match(back,/Hoy no sé qué hago aquí/);
   const lost=bottleCard(bottle({status:'lost',returns:false,lostOn:'2026-09-20'}),TODAY);
-  assert.match(lost,/nunca llegó/);
-  assert.match(lost,/data-modal|recast-bottle/,'las perdidas se pueden volver a lanzar');
-  assert.ok(bottleComposer(setup,TODAY,{text:''}).includes('disabled'),'sin texto, el botón de echar al mar sale apagado');
+  assert.match(lost,/Perdida/);
+  assert.doesNotMatch(lost,/Hoy no sé qué hago aquí|data-action="open-bottle"/);
+  assert.match(lost,/recast-bottle/,'las perdidas se pueden volver a lanzar');
+  assert.ok(bottleComposer(setup,TODAY,{text:''}).includes('disabled'),'sin texto, el botón de soltar queda apagado');
 });

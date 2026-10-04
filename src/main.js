@@ -16,8 +16,10 @@ import {
   AGE_GROUPS,INTEREST_OPTIONS,WRITING_RITUALS,TONE_STYLES
 } from './data/constants.js';
 import {dateKey,addDays,dayNumber,longDate,weekStart,monthRange,monthMove} from './utils/dates.js';
+import {inferBasePath,pathForState,routeStateFromPath,urlForState} from './utils/routes.js';
+import {createTransitionGuard} from './utils/transitions.js';
 import {
-  calculateStats,currentStreak,maxStreak,inRange,formatNumber as f,sleepInterpretation,studyInterpretation,
+  calculateStats,currentStreak,maxStreak,inRange,periodCoverage,formatNumber as f,sleepInterpretation,studyInterpretation,
   generateSummary,periodSummary,generateTrends,wordCount,tagFrequency,counterInterpretation,
   bestHabitStreak,liveHabitStreak
 } from './utils/stats.js';
@@ -26,14 +28,9 @@ import {
   loadHabits,saveHabit,deleteHabit,loadSetup,saveSetup,ageGroupFromAge,
   loadThoughts,saveThought,updateThought,deleteThought,recastThought
 } from './utils/storage.js';
-import {groupBottles,shoreQueue,seaById,seaPhrase} from './utils/ocean.js';
-import {
-  seaPanel,bottleComposer,bottleCard,bottleModal,shoreTeaser,emptySea,bottleGlyph,tideRule,castSplash
-} from './components/ocean.js';
-import {
-  DRAFT_SCOPES,setDraft,draftData,clearDraft,draftIsNewer,draftSummary,
-  pendingDrafts,clearAllDrafts,listDrafts,draftMinutes
-} from './utils/drafts.js';
+import {groupBottles,shoreQueue,canOpenBottle,sunPosition} from './utils/ocean.js';
+import {seaPanel,bottleComposer,bottleCard,bottleModal,bottleCountOnly,castSplash,wavesSvg,islandSceneSvg,castSplashPoint} from './components/ocean.js';
+import {DRAFT_SCOPES,setDraft,draftData,clearDraft,draftIsNewer,clearAllDrafts} from './utils/drafts.js';
 import {habitBoard,momentumGrid,habitStatsList,habitComposer,countersBoard,tomorrowBoard,routineTeaser,progressRing} from './components/habits.js';
 import {
   detectCrisisRisk,getWritingPrompt,calculateEntryCompletion,getGreeting,getAgeProfile,
@@ -47,20 +44,28 @@ import {
 } from './components/ui.js';
 
 const app=document.querySelector('#app');
+const APP_BASE_PATH=inferBasePath([...document.querySelectorAll('script[src]')].map(script=>script.src),window.location.origin);
 let entries=[],habits=[],thoughts=[],setup=loadSetup(),storageError='',view='diary',selected=dateKey(),month=dateKey(),miniMonth=dateKey(),
-    thoughtsTab='shore',routineTab='hoy',bottleDraft={text:'',mood:null,sea:'breeze'},oceanAnimating=false,
-    period=7,dirty=false,menu=false,sidebarCollapsed=false,historyQuery='',historyMood='',historyTag='',historyLayout='grid',
-    archiveTab='list',statsTab='pulse',profileTab='personal',moreDetailsOpen=false,
+    thoughtsTab='shore',routineTab='hoy',bottleDraft={text:'',mood:null,sea:'breeze',force:3},oceanAnimating=false,thoughtsLandscapeOnly=false,
+    period=7,menu=false,sidebarCollapsed=false,historyQuery='',historyMood='',historyTag='',historyLayout='grid',
+    archiveTab='list',statsTab='pulse',profileTab='personal',moreDetailsOpen=null,
     pendingImport=null,wordOffset=0,tipOffset=0,promptOffset=0,quoteOffset=0,showWritingPrompt=false,focusWriting=false,
-    crisisBannerDismissed=false,breathingTimer=null,pageTurnDir='',
-    oceanFilter='',lastView='',saveState='idle',saveAt=0,shellMounted=false,motionOn=true,panelEnter=true;
-/* Movimiento: quien pide poco movimiento en el sistema lo recibe. */
+    crisisBannerDismissed=false,breathingTimer=null,extrasCloseToken=0,
+    oceanFilter='',lastView='',saveState='idle',shellMounted=false,motionOn=true,panelEnter=true,
+    thoughtClockTimer=null,thoughtsDrawerOpen=false,mandatorySetupOpen=false,castSplashClassTimer=null;
+const thoughtsEntryWaveGuard=createTransitionGuard();
+/* Movimiento: respetamos tanto el sistema como la preferencia del cuaderno. */
+let motionQuery=null;
+function syncMotionPreference(){
+  const systemRequestsCalm=Boolean(motionQuery?.matches);
+  motionOn=!systemRequestsCalm&&!setup.reduceMotion;
+  document.documentElement.dataset.motion=motionOn?'full':'calm';
+}
 try{
-  const mq=window.matchMedia('(prefers-reduced-motion: reduce)');
-  motionOn=!mq.matches;
-  mq.addEventListener?.('change',e=>{motionOn=!e.matches;document.documentElement.dataset.motion=motionOn?'full':'calm';});
-}catch{}
-document.documentElement.dataset.motion=motionOn?'full':'calm';
+  motionQuery=window.matchMedia('(prefers-reduced-motion: reduce)');
+  syncMotionPreference();
+  motionQuery.addEventListener?.('change',syncMotionPreference);
+}catch{syncMotionPreference();}
 
 function applyTheme(themeId,customSetup=setup){
   const themeObj=THEMES.find(t=>t.id===themeId)||THEMES[0];
@@ -89,6 +94,7 @@ function refresh(){
   thoughts=loadThoughts();
   setup=loadSetup();
   sidebarCollapsed=Boolean(setup.sidebarCollapsed);
+  syncMotionPreference();
   applyTheme(setup.theme,setup);
 }
 try{refresh();}catch(e){
@@ -96,27 +102,73 @@ try{refresh();}catch(e){
 }
 
 const NAV_GROUPS=[
-  {label:'El cuaderno',items:[['diary','pen','Hoy'],['thoughts','wave','Pensamientos'],['archive','book','Archivo']]},
-  {label:'Constancia',items:[['routine','listChecks','Rutina'],['stats','chart','Progreso']]},
-  {label:'Tuyo',items:[['setup','sliders','Perfil']]}
+  {label:'Cuaderno',items:[['diary','pen','Hoy'],['archive','book','Archivo']]},
+  {label:'Bienestar',items:[['routine','listChecks','Rutina'],['stats','chart','Progreso']]},
+  {label:'Tu espacio',items:[['thoughts','spark','Pensamientos'],['setup','sliders','Ajustes']]}
 ];
-const MOBILE_TABS=['diary','thoughts','routine','archive','stats'];
+const MOBILE_TABS=['diary','routine','thoughts','archive','stats'];
 function getNavs(){return NAV_GROUPS.flatMap(g=>g.items);}
 const pageName=id=>getNavs().find(n=>n[0]===id)?.[2]||'Hoy';
+
+function currentRouteState(){return {view,thoughtsTab,routineTab,archiveTab,statsTab,profileTab};}
+function routeHrefForView(id){return urlForState({view:id},APP_BASE_PATH);}
+function updateRouteUrl(replace=false){
+  const next=urlForState(currentRouteState(),APP_BASE_PATH);
+  if(window.location.pathname===next)return;
+  window.history[replace?'replaceState':'pushState']({view,thoughtsTab,routineTab,archiveTab,statsTab,profileTab},'',next);
+}
+function applyRouteFromLocation(){
+  const route=routeStateFromPath(window.location.pathname,APP_BASE_PATH);
+  view=route.view;
+  thoughtsTab=route.thoughtsTab||'shore';
+  thoughtsDrawerOpen=route.view==='thoughts'&&thoughtsTab!=='shore';
+  thoughtsLandscapeOnly=false;
+  routineTab=route.routineTab||'hoy';
+  archiveTab=route.archiveTab||'list';
+  statsTab=route.statsTab||'pulse';
+  profileTab=route.profileTab||'personal';
+  const canonical=urlForState(currentRouteState(),APP_BASE_PATH);
+  if(route.path!==pathForState(currentRouteState())||window.location.pathname!==canonical){
+    window.history.replaceState({view,thoughtsTab,routineTab,archiveTab,statsTab,profileTab},'',canonical);
+  }
+}
+function applyView(nextView,{transition=true,replace=false,instant=false}={}){
+  view=nextView;
+  menu=false;
+  panelEnter=true;
+  if(view==='diary')selected=dateKey();
+  if(view==='thoughts'){thoughtsTab='shore';thoughtsDrawerOpen=false;thoughtsLandscapeOnly=false;}
+  if(view!=='thoughts')thoughtsLandscapeOnly=false;
+  if(view==='routine')routineTab='hoy';
+  if(view==='archive')archiveTab='list';
+  if(view==='stats')statsTab='pulse';
+  if(view==='setup')profileTab='personal';
+  updateRouteUrl(replace);
+  render({transition,instant});
+}
+function navigateToView(nextView,{transition=true,replace=false}={}){
+  savePendingText();
+  if(document.querySelector('.thoughts-entry-wave'))cancelThoughtsEntryWave();
+  if(nextView==='thoughts'&&view!=='thoughts'&&transition&&motionOn){
+    playThoughtsEntryWave(()=>applyView(nextView,{replace,transition:false,instant:true}));
+    return;
+  }
+  applyView(nextView,{transition,replace});
+}
 
 function navBadge(id){
   if(id!=='thoughts')return '';
   const unseen=shoreQueue(thoughts).some(t=>t.seen!==true);
-  return `<span class="nav-dot ${unseen?'is-new':''}" ${unseen?'':'hidden'} title="hay algo sin leer en la orilla"></span>`;
+  return `<span class="nav-dot ${unseen?'is-new':''}" ${unseen?'':'hidden'} title="hay pensamientos sin leer"></span>`;
 }
 
 function navButton([id,ico,label],index){
   const arrivals=id==='thoughts'?shoreQueue(thoughts).filter(t=>t.seen!==true).length:0;
-  return `<button class="nav-item ${view===id?'active':''}" style="--nav-i:${index}" data-view="${id}" title="${esc(label)}" data-tooltip="${esc(label)}" ${view===id?'aria-current="page"':''}>
+  return `<a class="nav-item ${view===id?'active':''}" style="--nav-i:${index}" data-view="${id}" href="${routeHrefForView(id)}" title="${esc(label)}" data-tooltip="${esc(label)}" ${view===id?'aria-current="page"':''}>
     <span class="nav-index">${String(index+1).padStart(2,'0')}</span>
     <span class="nav-item-icon">${icon(ico)}${arrivals?'<i class="nav-icon-ping" aria-hidden="true"></i>':''}</span>
     <span class="nav-label">${esc(label)}</span>${navBadge(id)}
-  </button>`;
+  </a>`;
 }
 
 function navGroups(){
@@ -132,10 +184,11 @@ function mobileTabs(){
     ${MOBILE_TABS.map(id=>{
       const item=getNavs().find(n=>n[0]===id);
       if(!item)return '';
-      return `<button type="button" class="tabbar-item ${view===id?'active':''}" data-view="${id}" ${view===id?'aria-current="page"':''}>
+      const label=item[2];
+      return `<a class="tabbar-item ${view===id?'active':''}" data-view="${id}" href="${routeHrefForView(id)}" ${view===id?'aria-current="page"':''}>
         <span class="tabbar-icon">${icon(item[1])}${navBadge(id)}</span>
-        <span class="tabbar-label">${esc(item[2])}</span>
-      </button>`;
+        <span class="tabbar-label">${esc(label)}</span>
+      </a>`;
     }).join('')}
   </nav>`;
 }
@@ -150,7 +203,7 @@ function shell(){
   <div class="sidebar-backdrop" data-action="close-menu" aria-hidden="true"></div>
   <aside class="sidebar" aria-label="Menú principal">
     <div class="sidebar-top-row">
-      <a href="#" class="brand" data-action="today" title="Ir a hoy">
+      <a href="${routeHrefForView('diary')}" class="brand" data-action="today" title="Ir a hoy">
         <span class="brand-mark"><span class="brand-full">diario</span><span class="brand-short">d</span><span class="brand-period">.</span></span>
       </a>
       <button type="button" class="icon-button sidebar-collapse-btn" data-action="toggle-sidebar" aria-label="Plegar o desplegar el menú">
@@ -163,20 +216,18 @@ function shell(){
       <span class="nav-rail" aria-hidden="true"></span>
       <nav class="sidebar-nav" id="sidebar-nav" aria-label="Navegación principal">${navGroups()}</nav>
     </div>
-    <div class="sidebar-bottom" id="sidebar-bottom">${sidebarBottom()}</div>
   </aside>
   <div class="shell">
     <header class="topbar">
       <div class="topbar-left">
+        <a class="mobile-brand" data-view="diary" href="${routeHrefForView('diary')}" aria-label="Ir a Hoy">diario<span>.</span></a>
+        <span class="mobile-page-name" id="mobile-page-name">${esc(pageName(view))}</span>
         <button class="icon-button ghost mobile-menu" data-action="menu" aria-label="Abrir navegación" aria-expanded="false">${icon('menu')}</button>
         <button class="icon-button ghost desktop-sidebar-toggle" data-action="toggle-sidebar" aria-label="Alternar barra lateral">${icon('sidebar')}</button>
         <span class="breadcrumb"><span id="breadcrumb-owner">${setup.name?`Cuaderno de ${esc(setup.name)}`:'Diario'}</span> <span>/</span> <span id="breadcrumb-view">${esc(pageName(view))}</span></span>
       </div>
       <div class="topbar-right">
-        <span id="draft-chip-slot"></span>
-        <button type="button" id="sea-quick" class="sea-quick" data-view="thoughts" title="El mar">
-          ${icon('wave')}
-        </button>
+        <a class="icon-button mobile-settings-link" data-view="setup" href="${routeHrefForView('setup')}" aria-label="Ajustes" title="Ajustes">${icon('sliders')}</a>
         <button type="button" id="theme-pill" class="theme-pill" data-action="cycle-theme">
           <span class="topbar-favicon-mini" id="theme-pill-favicon">${generateThemeFaviconSvg(setup.theme,setup)}</span>
           <span id="theme-pill-label"></span>
@@ -191,54 +242,12 @@ function shell(){
     </div>
     <footer class="page-footer">
       <span id="footer-motto">${icon('leaf')} ${esc(setup.motto||'Un día a la vez.')}</span>
-      <span id="footer-owner">${setup.name?`Cuaderno de ${esc(setup.name)}`:'Guardado localmente en este navegador'}</span>
+      <span id="footer-owner">${setup.name?`Cuaderno de ${esc(setup.name)}`:'Diario personal'}</span>
     </footer>
-  </div>
-  <div id="floating-save" class="floating-save-bar" aria-live="polite">
-    <span id="floating-save-text">${icon('pen')} Cambios sin guardar</span>
-    <button type="button" class="button solid small-btn" data-action="quick-save">${icon('stamp')} Guardar</button>
   </div>
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="stamp" aria-hidden="true"></div>
   <dialog id="modal"></dialog>`;
-}
-
-function sidebarBottom(){
-  const pend=pendingDrafts();
-  return `<div class="local-note">${icon('lock')}<div><strong>Guardado en tu dispositivo</strong>${setup.name?`Cuaderno de ${esc(setup.name)}.`:'Sin cuentas ni servidores externos.'}</div></div>
-    <div class="save-note ${pend.total?'has-pending':''}" id="save-note">
-      <span class="save-dot" data-state="${saveState}"></span>
-      <div>
-        <strong>${saveNoteTitle()}</strong>
-        <small>${esc(saveNoteDetail())}</small>
-      </div>
-    </div>`;
-}
-
-function saveNoteTitle(){
-  if(storageError)return 'Sin guardar';
-  switch(saveState){
-    case 'typing':case 'saving':return 'Guardando…';
-    case 'draft':return 'Borrador guardado';
-    case 'error':return 'No se pudo guardar';
-    default:return saveAt?`Guardado ${timeAgo(saveAt)}`:'Todo guardado';
-  }
-}
-function saveNoteDetail(){
-  const pend=pendingDrafts();
-  if(saveState==='error')return 'Tus palabras siguen en el borrador de este navegador.';
-  if(saveState==='draft'&&pend.total)return `${pend.total} ${pend.total===1?'texto a medias':'textos a medias'} recuperables.`;
-  if(storageError)return 'Revisa el almacenamiento del navegador o descarga una copia.';
-  return 'Se guarda solo, sin nube ni cuentas.';
-}
-function timeAgo(isoOrMs){
-  const t=typeof isoOrMs==='number'?isoOrMs:Date.parse(isoOrMs);
-  if(!Number.isFinite(t))return '';
-  const mins=Math.round((Date.now()-t)/60000);
-  if(mins<1)return 'ahora mismo';
-  if(mins<60)return `hace ${mins} min`;
-  if(mins<60*24)return `hace ${Math.round(mins/60)} h`;
-  return `el ${new Date(t).toLocaleDateString('es-ES',{day:'numeric',month:'short'})}`;
 }
 
 function initShell(){
@@ -277,6 +286,7 @@ function positionRails(){
 }
 
 function syncShell(){
+  app.classList.toggle('is-thoughts-immersive',view==='thoughts');
   const themeObj=THEMES.find(t=>t.id===setup.theme)||THEMES[0];
   const sidebar=app.querySelector('.sidebar');
   const backdrop=app.querySelector('.sidebar-backdrop');
@@ -291,7 +301,7 @@ function syncShell(){
   for(const sel of ['.sidebar-collapse-btn','.desktop-sidebar-toggle']){
     const btn=app.querySelector(sel);
     if(!btn)continue;
-    btn.title=`${sidebarCollapsed?'Desplegar menú (Ctrl+B)':'Plegar menú (Ctrl+B)'}`;
+    btn.title=`${sidebarCollapsed?'Desplegar menú · Ctrl+B':'Plegar menú · Ctrl+B'}`;
     btn.setAttribute('aria-expanded',String(!sidebarCollapsed));
   }
   const collapseIcon=app.querySelector('.sidebar-collapse-btn .icon');
@@ -306,16 +316,17 @@ function syncShell(){
   syncNavDots();
   const exSlot=app.querySelector('#ex-libris-slot');
   if(exSlot)exSlot.innerHTML=exLibrisBadge(setup,entries.length);
-  const bottom=app.querySelector('#sidebar-bottom');
-  if(bottom)bottom.innerHTML=sidebarBottom();
   const owner=app.querySelector('#breadcrumb-owner');
   if(owner)owner.textContent=setup.name?`Cuaderno de ${setup.name}`:'Diario';
   const crumb=app.querySelector('#breadcrumb-view');
   if(crumb)crumb.textContent=pageName(view);
+  document.title=`${pageName(view)} · ${setup.name?`Cuaderno de ${setup.name}`:'Diario personal'}`;
+  const mobileName=app.querySelector('#mobile-page-name');
+  if(mobileName)mobileName.textContent=pageName(view);
   const pillLabel=app.querySelector('#theme-pill-label');
   if(pillLabel)pillLabel.textContent=themeObj.name;
   const pill=app.querySelector('#theme-pill');
-  if(pill)pill.title=`Cambiar papel e icono (${themeObj.name})`;
+  if(pill)pill.title=`Cambiar papel e icono · ${themeObj.name}`;
   const fav=app.querySelector('#theme-pill-favicon');
   if(fav)fav.innerHTML=generateThemeFaviconSvg(setup.theme,setup);
   const avatar=app.querySelector('#avatar-slot');
@@ -323,28 +334,110 @@ function syncShell(){
   const motto=app.querySelector('#footer-motto');
   if(motto)motto.innerHTML=`${icon('leaf')} ${esc(setup.motto||'Un día a la vez.')}`;
   const footerOwner=app.querySelector('#footer-owner');
-  if(footerOwner)footerOwner.textContent=setup.name?`Cuaderno de ${setup.name}`:'Guardado localmente en este navegador';
-  syncDraftChip();
+  if(footerOwner)footerOwner.textContent=setup.name?`Cuaderno de ${setup.name}`:'Diario personal';
   positionRails();
 }
 
 function render(opts={}){
-  const run=()=>{
-    applyTheme(setup.theme,setup);
-    if(!shellMounted){
-      app.innerHTML=shell();
-      shellMounted=true;
-      initShell();
-    }
-    renderPage(opts);
-    syncShell();
-  };
-  /* La API de transiciones de vista hace el fundido entre páginas sin trampa ni cartón. */
-  if(opts.transition&&motionOn&&typeof document.startViewTransition==='function'){
-    document.startViewTransition(run);
-  }else{
-    run();
+  applyTheme(setup.theme,setup);
+  if(!shellMounted){
+    app.innerHTML=shell();
+    shellMounted=true;
+    initShell();
   }
+  renderPage(opts);
+  syncShell();
+  if(!setup.completed&&!mandatorySetupOpen){
+    mandatorySetupOpen=true;
+    openSetupWizard(1,{mandatory:true});
+  }
+}
+
+function cancelThoughtsEntryWave(){
+  thoughtsEntryWaveGuard.cancel();
+  document.querySelector('.thoughts-entry-wave')?.remove();
+}
+function playThoughtsEntryWave(onCovered=()=>{}){
+  cancelThoughtsEntryWave();
+  if(!motionOn){onCovered();return;}
+  const token=thoughtsEntryWaveGuard.begin();
+  const overlay=document.createElement('div');
+  overlay.className='thoughts-entry-wave';
+  overlay.setAttribute('aria-hidden','true');
+  overlay.innerHTML=`<svg class="thoughts-entry-water" viewBox="0 0 1440 1400" preserveAspectRatio="none" aria-hidden="true">
+    <defs><linearGradient id="thoughts-entry-gradient" x1="0" y1="0" x2="0" y2="1">
+      <stop class="entry-stop entry-stop-surface" offset="0%"/><stop class="entry-stop entry-stop-mid" offset="36%"/><stop class="entry-stop entry-stop-deep" offset="100%"/>
+    </linearGradient></defs>
+    <path class="thoughts-entry-sea" d="M-40 112C75 80 166 83 276 105S478 137 602 103 816 72 943 102 1160 137 1284 103 1410 83 1480 108V1400H-40Z"/>
+    <path class="thoughts-entry-crest" d="M-40 112C75 80 166 83 276 105S478 137 602 103 816 72 943 102 1160 137 1284 103 1410 83 1480 108"/>
+    <path class="thoughts-entry-foam" d="M-40 132C100 110 201 114 330 128S559 146 682 125 902 109 1030 127 1260 145 1380 121 1450 116 1480 126"/>
+  </svg>`;
+  document.body.appendChild(overlay);
+  const water=overlay.querySelector('.thoughts-entry-water');
+  if(!water){onCovered();overlay.remove();return;}
+  let phase='cover';
+  let fallback=setTimeout(finishCover,900);
+  const finish=()=>{
+    if(!thoughtsEntryWaveGuard.isCurrent(token))return;
+    clearTimeout(fallback);
+    overlay.remove();
+  };
+  function handleTransition(event){
+    if(event.target!==water||event.propertyName!=='transform')return;
+    if(phase==='cover')finishCover();
+    else if(phase==='reveal')finish();
+  }
+  function finishCover(){
+    if(phase!=='cover'||!thoughtsEntryWaveGuard.isCurrent(token))return;
+    clearTimeout(fallback);
+    phase='covered';
+    water.style.transition='none';
+    water.style.transform='translateY(0)';
+    onCovered();
+    requestAnimationFrame(()=>{
+      water.getBoundingClientRect();
+      water.style.transition='transform .78s cubic-bezier(.55,.05,.35,1)';
+      phase='reveal';
+      water.addEventListener('transitionend',handleTransition);
+      water.style.transform='translateY(-115%)';
+      fallback=setTimeout(finish,900);
+    });
+  }
+  water.addEventListener('transitionend',handleTransition);
+  water.getBoundingClientRect();
+  requestAnimationFrame(()=>{water.style.transform='translateY(0)';});
+}
+
+
+function updateThoughtSun(){
+  const stage=document.querySelector('.thoughts-ocean-stage');
+  if(!stage)return;
+  const position=sunPosition(new Date());
+  stage.dataset.dayphase=position.phase;
+  stage.style.setProperty('--sun-x',`${position.x}%`);
+  stage.style.setProperty('--sun-y',`${position.y}%`);
+  stage.style.setProperty('--moon-x',`${position.moonX}%`);
+  stage.style.setProperty('--moon-y',`${position.moonY}%`);
+}
+
+function syncThoughtSunClock(){
+  if(thoughtClockTimer){clearInterval(thoughtClockTimer);thoughtClockTimer=null;}
+  if(view!=='thoughts')return;
+  updateThoughtSun();
+  thoughtClockTimer=setInterval(updateThoughtSun,60_000);
+}
+function toggleThoughtsLandscape(){
+  thoughtsLandscapeOnly=!thoughtsLandscapeOnly;
+  const world=document.querySelector('.thoughts-world');
+  const button=document.querySelector('.thoughts-landscape-toggle');
+  world?.classList.toggle('is-landscape-only',thoughtsLandscapeOnly);
+  if(!button)return;
+  const label=thoughtsLandscapeOnly?'Mostrar interfaz':'Ocultar interfaz';
+  button.setAttribute('aria-label',label);
+  button.setAttribute('aria-pressed',String(thoughtsLandscapeOnly));
+  button.title=thoughtsLandscapeOnly?'Mostrar interfaz':'Ver paisaje sin interfaz';
+  const buttonIcon=button.querySelector('.icon');
+  if(buttonIcon)buttonIcon.outerHTML=icon(thoughtsLandscapeOnly?'eye':'expand');
 }
 
 function renderPage(opts={}){
@@ -352,24 +445,18 @@ function renderPage(opts={}){
   if(!main)return;
   if(view==='thoughts')primeBottleDraft();
   const viewChanged=lastView!==view;
-  const turning=Boolean(pageTurnDir);
-  const animate=viewChanged||turning||panelEnter;
+  const enteringThoughts=viewChanged&&view==='thoughts';
+
+  const animate=motionOn&&!opts.instant&&!enteringThoughts&&(Boolean(opts.transition)||viewChanged||panelEnter);
   panelEnter=false;
   const keepScroll=window.scrollY;
-  const turnClass=pageTurnDir?`page-turn-${pageTurnDir}`:(viewChanged?'view-enter':'');
-  pageTurnDir='';
   main.innerHTML=`
     ${storageError?`<div class="error-banner" role="alert">${esc(storageError)}</div>`:''}
     ${page()}`;
-  main.className=`${turnClass}`;
+  main.className='';
   if(animate){
-    main.classList.remove('view-enter');
     void main.offsetWidth;
-    main.classList.add('view-enter');
-    staggerCards(main);
-  }else{
-    /* al volver a pintar por guardar algo, no se vuelve a animar todo: sólo lo que cambió */
-    main.querySelectorAll('.tab-panel-enter').forEach(el=>el.classList.remove('tab-panel-enter'));
+    main.classList.add('page-enter');
   }
   bindForm();
   bindOceanForm();
@@ -377,22 +464,11 @@ function renderPage(opts={}){
   restoreAfterRender();
   if(viewChanged){
     lastView=view;
-    window.scrollTo({top:0,behavior:opts.instant?'auto':'smooth'});
+    window.scrollTo({top:0,behavior:'auto'});
   }else if(keepScroll){
     window.scrollTo(0,keepScroll);
   }
-  syncSaveIndicators();
-}
-
-/* Entrada escalonada de las tarjetas: solo al cambiar de vista. */
-function staggerCards(main){
-  if(!motionOn)return;
-  const cards=[...main.querySelectorAll('.page-heading, .sea-panel, .card, .day-hero')].slice(0,12);
-  cards.forEach((c,i)=>{
-    c.style.setProperty('--enter-i',i);
-    c.classList.add('is-entering');
-    setTimeout(()=>c.classList.remove('is-entering'),520+i*55);
-  });
+  syncThoughtSunClock();
 }
 
 function pageHeader(eyebrow,title,subtitle,action=''){
@@ -429,13 +505,12 @@ function setupOnboardingBanner(){
     <div class="setup-welcome-content">
       <span class="soft-icon accent">${icon('sliders')}</span>
       <div>
-        <h2>Adapta el diario a tu edad y a tus gustos</h2>
-        <p>En 30 segundos ajustamos las metas, los hábitos, las frases y el papel para que solo veas lo que te interesa.</p>
+        <h2>Personaliza tu diario</h2>
+        <p>Elige tus metas, hábitos y papel.</p>
       </div>
     </div>
     <div class="setup-welcome-actions">
       <button type="button" class="button solid" data-action="open-setup-wizard">${icon('sliders')} Personalizar ahora</button>
-      <button type="button" class="button outline" data-action="dismiss-setup-banner">Omitir</button>
     </div>
   </section>`;
 }
@@ -443,23 +518,17 @@ function setupOnboardingBanner(){
 function hero(e,profile){
   const done=e?Object.values(e.habits||{}).filter(Boolean).length:0;
   const greeting=getGreeting(setup.name);
-  const groups=groupBottles(thoughts,selected);
-  const atSea=groups.drifting.length,arrivals=groups.returned.length;
+  const unread=groupBottles(thoughts,selected).returned.filter(b=>b.seen!==true).length;
   return `<div class="day-hero">
     <div class="hero-left">
       <div class="hero-day-number"><small>Día</small><span>${dayNumber(selected,entries)}</span></div>
       <div class="hero-meta">
         <p class="hero-greeting">${esc(greeting)}</p>
         <span class="date-line">${longDate(selected)}</span>
-        <p class="hero-line">
-          <span class="entry-status ${e?'':'pending'}" id="hero-words-chip">${heroStatusHtml(e)}</span>
-          ${habits.length?`<button type="button" class="hero-link" data-view="routine" id="hero-routine-chip">${done} de ${habits.length} en la rutina</button><span class="hero-dot">·</span>`:''}
-          ${arrivals?`<button type="button" class="hero-link is-new" data-view="thoughts">${arrivals} ${arrivals===1?'botella':'botellas'} en la orilla</button>`
-            :atSea?`<button type="button" class="hero-link" data-view="thoughts">${atSea} ${atSea===1?'botella':'botellas'} por ahí fuera</button>`
-            :''}
-          <span class="hero-dot">·</span>
-          <span class="save-status" data-save-status>${saveStatusHtml()}</span>
-        </p>
+        ${(habits.length||unread)?`<p class="hero-line">
+          ${habits.length?`<button type="button" class="hero-link" data-view="routine">${done}/${habits.length} hábitos</button>`:''}
+          ${unread?`<button type="button" class="hero-link is-new" data-view="thoughts">${unread===1?'1 botella nueva':unread+' botellas nuevas'}</button>`:''}
+        </p>`:''}
       </div>
     </div>
     <div class="hero-right">
@@ -510,7 +579,7 @@ function goalRow(value=''){
 function savedNotebookSheet(e,profile){
   if(!e)return '';
   const doneHabits=habits.filter(h=>e.habits?.[h.id]);
-  const ownerSign=setup.name?`Cuaderno de ${setup.name}`:'Resumen guardado';
+  const ownerSign=setup.name?`Cuaderno de ${setup.name}`:'Resumen del día';
   return `<section class="card daily-summary notebook-sheet reveal">
     <div class="sheet-header">
       <div>
@@ -557,25 +626,22 @@ function diaryPage(){
   const moodColor=e?.mood?MOODS[e.mood-1].color:'';
   const defaultSleep=e?.sleepHours ?? setup.sleepGoal ?? profile.sleepRecommended ?? 7.5;
   const defaultStudy=e?.studyHours ?? 0;
-  const showExtras=moreDetailsOpen || hasExtraDetails(e);
+  const showExtras=moreDetailsOpen===null?hasExtraDetails(e):moreDetailsOpen;
   const sleepPresets=[6,7,7.5,8,9];
   const studyPresets=[0,1,2,3,4];
 
   return `
   ${setupOnboardingBanner()}
   ${hero(e,profile)}
-  <div class="tide-rule-wrap">${tideRule()}</div>
+  <div class="section-rule" aria-hidden="true"></div>
   <div id="crisis-alert-slot">${crisisBanner(risk,setup)}</div>
   <div class="diary-layout ${focusWriting?'is-focus-writing':''}">
     <div class="diary-main">
       <form id="diary-form" style="${moodColor?`--active-mood:${moodColor}`:''}" autocomplete="off">
-        <div id="entry-draft-slot" data-live="1"></div>
-
         <!-- 1 · CAPTURA RÁPIDA -->
         <section class="card mood-card-section quick-capture">
           <div class="section-heading">
             <p class="section-index" style="margin-bottom:0">¿Cómo ha ido hoy?</p>
-            <span class="capture-hint">${icon('spark')} un clic vale como entrada</span>
           </div>
           <div class="mood-scale" role="radiogroup" aria-label="¿Cómo te ha ido?">
             ${MOODS.map(m=>`<label class="mood-option" style="--mood-color:${m.color}">
@@ -595,7 +661,7 @@ function diaryPage(){
               </div>
               <div class="number-wrap compact">
                 <input id="sleepHours" name="sleepHours" type="number" min="0" max="24" step="0.5" value="${defaultSleep}">
-                <span>horas (meta: ${f(setup.sleepGoal||profile.sleepRecommended)} h)</span>
+                <span>h · Meta ${f(setup.sleepGoal||profile.sleepRecommended)}</span>
               </div>
             </div>
 
@@ -608,7 +674,7 @@ function diaryPage(){
               </div>
               <div class="number-wrap compact">
                 <input id="studyHours" name="studyHours" type="number" min="0" max="24" step="0.5" value="${defaultStudy}">
-                <span>horas (meta: ${f(setup.studyGoal??profile.studyRecommended)} h)</span>
+                <span>h · Meta ${f(setup.studyGoal??profile.studyRecommended)}</span>
               </div>
             </div>
           </div>
@@ -636,7 +702,7 @@ function diaryPage(){
               <button type="button" class="button solid small-btn" data-action="insert-writing-prompt">${icon('pen')} Usar</button>
             </div>
           </div>
-          ${textField('generalDay','Notas del día (opcional si solo quieres un registro rápido)',profile.placeholders.generalDay,e?.generalDay,true)}
+          ${textField('generalDay','Notas del día',profile.placeholders.generalDay,e?.generalDay,true)}
           ${entryPartsFields(e)}
           <div class="capsule-word-grid">
             <div class="writing-field" data-field="capsule">
@@ -652,14 +718,14 @@ function diaryPage(){
 
         <!-- 3 · MÁS DETALLES (etiquetas, momentos, gratitud) -->
         <div class="extras-accordion ${showExtras?'is-open':''}" id="extras-accordion">
-          <button type="button" class="extras-toggle-btn" data-action="toggle-more-details" aria-expanded="${showExtras}">
+          <button type="button" class="extras-toggle-btn" data-action="toggle-more-details" aria-expanded="${showExtras}" aria-controls="extras-panel">
             <div>
               <strong>Añadir más detalles al día</strong>
-              <small>Etiquetas, energía, lo mejor de hoy y tres cosas buenas · la rutina y los contadores viven en su pestaña</small>
+              <small>Etiquetas, energía y gratitud</small>
             </div>
             <span class="extras-chevron">${icon('chevronDown')}</span>
           </button>
-          <div class="extras-Work-shell">
+          <div id="extras-panel" class="extras-work-shell" ${showExtras?'':'hidden'}>
             <div class="extras-inner">
               <section class="card">
                 <p class="section-index">Etiquetas de hoy</p>
@@ -681,14 +747,12 @@ function diaryPage(){
                 <div class="gratitude-fields">
                   ${['1. Hoy agradezco o valoro...','2. También...','3. Y además...'].map((p,i)=>`<label><span>0${i+1}</span><input name="gratitude${i}" aria-label="${p}" placeholder="${p}" maxlength="20000" value="${esc(e?.gratitude?.[i]||'')}"></label>`).join('')}
                 </div>
-                <p class="aside-note" style="margin-top:14px">${icon('listChecks')}<span>Lo de mañana (intención y tareas) se apunta en la pestaña <button type="button" class="inline-link" data-view="routine">Rutina</button>.</span></p>
               </section>
             </div>
           </div>
         </div>
 
         <div class="save-area">
-          <span>${icon('lock')} Se guarda al instante en tu navegador.</span>
           <button class="button solid save-button" type="submit" ${storageError?'disabled':''}>${icon('stamp')} Guardar día</button>
         </div>
       </form>
@@ -696,13 +760,32 @@ function diaryPage(){
     </div>
 
     <aside class="diary-aside">
-      ${shoreTeaser(thoughts)}
+      ${thoughtsTeaser()}
       <div id="inspiration-slot">${dailyInspirationSection(selected,wordOffset,tipOffset,setup,e,e?.wordOfDay||'')}</div>
       ${routineTeaser(habits,e,entries,selected)}
       ${weekPreview()}
       <div id="quote-slot">${personalQuoteCard(selected,quoteOffset,setup)}</div>
     </aside>
   </div>`;
+}
+
+function thoughtsTeaser(){
+  const groups=groupBottles(thoughts,selected);
+  const unread=groups.returned.filter(thought=>thought.seen!==true).length;
+  const title=unread?'Recibidas':'Pensamientos';
+  const copy=unread?`${unread} ${unread===1?'nueva':'nuevas'}`:'';
+  const count=thoughts.length?`${thoughts.length} ${thoughts.length===1?'nota':'notas'}`:'Vacío';
+  return `<section class="card thoughts-teaser ${unread?'has-new':''}">
+    <div class="thoughts-teaser-heading">
+      <span class="soft-icon ${unread?'accent':''}">${icon('spark')}</span>
+      <div><p class="eyebrow">Pensamientos</p><h2>${esc(title)}</h2></div>
+    </div>
+    ${copy?`<p class="thoughts-teaser-copy">${esc(copy)}</p>`:''}
+    <div class="thoughts-teaser-footer">
+      <span>${esc(count)}</span>
+      <button type="button" class="text-button" data-view="thoughts">Abrir ${icon('arrow')}</button>
+    </div>
+  </section>`;
 }
 
 function weekPreview(){
@@ -724,44 +807,61 @@ function weekPreview(){
       <div>${icon('moon')}<strong>${s.count?f(s.sleep):'—'}<small>h</small></strong><span>Sueño</span></div>
       <div>${icon('study')}<strong>${s.count?f(s.study):'—'}<small>h</small></strong><span>Enfoque</span></div>
     </div>
-    <button class="text-button full-link" data-view="stats">Ver progreso completo ${icon('arrow')}</button>
+    <button class="text-button full-link" data-view="stats">Ver progreso ${icon('arrow')}</button>
   </section>`;
 }
 
-/* ================= PENSAMIENTOS: EL MAR DE LAS BOTELLAS ================= */
+/* ================= PENSAMIENTOS: MAR, ISLA Y BOTELLAS ================= */
 function thoughtsPage(){
   const today=dateKey();
   const groups=groupBottles(thoughts,today);
   const tabs=[
-    ['shore','anchor','En la orilla',groups.returned.length],
-    ['sea','wave','Por ahí fuera',groups.drifting.length],
-    ['kept','bookmark','Ancladas',groups.kept.length],
-    ['lost','storm','Nunca volvieron',groups.lost.length]
+    ['shore','spark','Recibidas',groups.returned.length],
+    ['sea','send','Enviadas',groups.drifting.length],
+    ['kept','bookmark','Guardadas',groups.kept.length],
+    ['lost','history','Perdidas',groups.lost.length]
   ];
-  return `${pageHeader('Pensamientos','El mar',
-    'Lo que no quieres dejar escrito aquí lo cierras y lo tiras. De vez en cuando vuelve algo.'
-  )}
-  ${seaPanel(thoughts,today)}
-  <div class="tide-rule-wrap is-after-sea">${tideRule()}</div>
-  <div class="ocean-layout">
-    <div class="ocean-main">
+  const bottleCount=thoughts.length;
+  const unreadCount=groups.returned.filter(b=>b.seen!==true).length;
+  const unreadLabel=unreadCount===1?'1 nueva':`${unreadCount} nuevas`;
+  return `<div class="thoughts-world${thoughtsLandscapeOnly?' is-landscape-only':''}">
+    <a class="thoughts-exit" data-view="diary" href="${routeHrefForView('diary')}" aria-label="Volver al diario" title="Volver al diario">
+      ${icon('left')}
+    </a>
+    <button type="button" class="thoughts-landscape-toggle" data-action="toggle-thoughts-landscape" aria-label="Ocultar interfaz" title="Ver paisaje sin interfaz" aria-pressed="${thoughtsLandscapeOnly}">${icon(thoughtsLandscapeOnly?'eye':'expand')}</button>
+    ${seaPanel(thoughts,today)}
+    <section class="thoughts-compose-dock" aria-labelledby="thoughts-compose-title">
+      <h2 id="thoughts-compose-title">Escribe una botella</h2>
       <div id="composer-slot">${bottleComposer(setup,today,bottleDraft)}</div>
-      <div class="segmented ocean-tabs">
-        ${tabs.map(([id,ico,label,count])=>`<button type="button" data-action="thoughts-tab" data-tab="${id}" class="${thoughtsTab===id?'active':''}">
-          ${icon(ico)} ${esc(label)}${count?`<span class="seg-count">${count}</span>`:''}
-        </button>`).join('')}
-      </div>
-      <div id="ocean-body" class="tab-panel-enter">${oceanTabBody(groups,today)}</div>
-    </div>
-    <aside class="ocean-aside">
-      ${seaRulesCard(groups,today)}
-    </aside>
+    </section>
+    <details id="thoughts-bottles-drawer" class="thoughts-bottles-drawer"${thoughtsDrawerOpen?' open':''}>
+      <summary class="thoughts-drawer-toggle" aria-label="Ver tus botellas${unreadCount?`, ${unreadLabel}`:''}">
+        ${icon('book')}<span>Botellas</span>
+        ${unreadCount?`<span class="thoughts-drawer-new">${unreadLabel}</span>`:''}
+        <span class="thoughts-drawer-count">${bottleCount}</span>
+        <span class="thoughts-drawer-chevron">${icon('chevronDown')}</span>
+      </summary>
+      <section class="thoughts-drawer-panel" aria-label="Tu isla y tus botellas">
+        <header class="thoughts-drawer-header">
+          <div><p class="island-kicker">La orilla</p><h2>Tu isla</h2></div>
+          <span class="thoughts-drawer-returned">${groups.returned.length} recibidas</span>
+        </header>
+        <div class="thoughts-island-bottles">
+          <div class="segmented ocean-tabs" role="tablist" aria-label="Estado de las botellas">
+            ${tabs.map(([id,ico,label,count])=>`<button type="button" id="thoughts-tab-${id}" role="tab" aria-controls="ocean-body" aria-selected="${thoughtsTab===id}" data-action="thoughts-tab" data-tab="${id}" class="${thoughtsTab===id?'active':''}">
+              ${icon(ico)} <span>${esc(label)}</span>${count||id==='sea'||id==='lost'?`<span class="seg-count">${count}</span>`:''}
+            </button>`).join('')}
+          </div>
+          <div id="ocean-body" role="tabpanel" aria-labelledby="thoughts-tab-${thoughtsTab}">${oceanTabBody(groups,today)}</div>
+        </div>
+      </section>
+    </details>
   </div>`;
 }
-
 function oceanTabBody(groups,today){
-  if(!thoughts.length)return emptySea(thoughtsTab);
-  const map={shore:groups.returned,sea:groups.drifting,kept:groups.kept,lost:groups.lost};
+  if(thoughtsTab==='sea')return bottleCountOnly(groups.drifting.length,'sent');
+  if(thoughtsTab==='lost')return bottleCountOnly(groups.lost.length,'lost');
+  const map={shore:groups.returned,sea:[],kept:groups.kept,lost:[]};
   const list=map[thoughtsTab]??groups.returned;
   if(!list.length)return oceanEmptyFor(thoughtsTab);
   return `<div class="bottle-grid">${list.map((b,i)=>bottleCard(b,today,i)).join('')}</div>`;
@@ -769,28 +869,14 @@ function oceanTabBody(groups,today){
 
 function oceanEmptyFor(tab){
   const copy={
-    shore:['La orilla está seca','Cuando vuelva alguna, aparecerá aquí y en la portada.'],
-    sea:['Nada a la deriva','Lo que eches se verá por aquí hasta que el mar lo devuelva.'],
-    kept:['Nada anclado','Al abrir una botella puedes dejarla prendida del cuaderno.'],
-    lost:['El mar no se ha quedado nada','Todavía.']
+    shore:['La orilla está vacía','Aquí aparecerán las botellas recibidas.'],
+    sea:['Mar en calma','Las botellas que envíes aparecerán aquí.'],
+    kept:['Sin botellas guardadas','Guarda las recibidas que quieras conservar.'],
+    lost:['Sin botellas perdidas','']
   };
   const [title,text]=copy[tab]||copy.shore;
-  return `${emptyState(title,text,tab==='lost'?'':`<button type="button" class="button outline" data-action="focus-composer">${icon('pen')} Escribir un pensamiento</button>`)}`;
-}
-
-
-function seaRulesCard(groups,today){
-  const nearest=groups.drifting[0];
-  return `<section class="card sea-rules">
-    <p class="field-title">${icon('wave')} Cómo va esto</p>
-    <ol class="sea-rules-list">
-      <li>Se escribe, se echa y se deja estar. No hay que volver a mirar.</li>
-      <li>Cuanto más lejos la tires, más tarda y más fácil que no regrese.</li>
-      <li>Lo decide este cuaderno, con tu texto y la fecha: sin servidores y sin IA.</li>
-      <li>Si vuelve, la lees, la anclas o la tiras otra vez. Si no, se queda fuera.</li>
-    </ol>
-    ${nearest?`<p class="sea-rules-now">${esc(seaPhrase(nearest,today))}.</p>`:'<p class="sea-rules-now">Nada en el agua ahora mismo.</p>'}
-  </section>`;
+  const action=tab==='shore'||tab==='sea'?`<button type="button" class="button outline" data-action="focus-composer">${icon('pen')} Escribir</button>`:'';
+  return `${emptyState(title,text,action)}`;
 }
 
 /* ================= RUTINA: HÁBITOS, CONTADORES Y MAÑANA ================= */
@@ -802,8 +888,7 @@ function routinePage(){
     ['counters','drop','Contadores'],
     ['streaks','flame','Rachas']
   ];
-  return `${pageHeader('Rutina','Hábitos, contadores y la lista de mañana',
-    'Todo lo que se marca en un toque y se guarda al instante, sin escribir una sola línea.',`
+  return `${pageHeader('Hoy','Rutina','',`
     <div class="segmented">
       ${tabs.map(([id,ico,label])=>`<button type="button" data-action="routine-tab" data-tab="${id}" class="${routineTab===id?'active':''}">${icon(ico)} ${esc(label)}</button>`).join('')}
     </div>
@@ -829,9 +914,9 @@ function routineHero(e){
   const done=habits.filter(h=>e?.habits?.[h.id]).length;
   const pct=habits.length?Math.round((done/habits.length)*100):0;
   const headline=!habits.length?'Tu lista está vacía':done===0?'Aún no has marcado nada':done===habits.length?'Rutina completa':`Vas a ${done} de ${habits.length}`;
-  const note=pct>=100?'Todos los casilleros llenos: eso también se lee en tus estadísticas.'
-    :pct>0?'Cada casilla cuenta igual que un párrafo entero.'
-    :'Si hoy no puedes con todo, marca uno y da el día por bueno.';
+  const note=pct>=100?'Lista completa.'
+    :pct>0?'Buen ritmo.'
+    :'Un paso basta.';
   return `<section class="card routine-hero">
     <div class="routine-hero-copy">
       <p class="eyebrow">${icon('sun')} ${esc(longDate(selected,{weekday:'long',day:'numeric',month:'long'}))}</p>
@@ -856,16 +941,15 @@ function routineBody(e){
   if(routineTab==='streaks'){
     return habits.length
       ? `${habitStatsList(habits,entries,today)}${streakBoard()}`
-      : emptyState('Todavía no hay hábitos','Añade el primero y en unos días verás aquí sus rachas y su constancia.',`<button type="button" class="button outline" data-action="routine-tab" data-tab="hoy">${icon('plus')} Crear hábitos</button>`);
+      : emptyState('Sin hábitos','Añade uno.',`<button type="button" class="button outline" data-action="routine-tab" data-tab="hoy">${icon('plus')} Añadir</button>`);
   }
   return `${habits.length?`<section class="card habit-board-card">
     <div class="section-heading">
-      <div><p class="eyebrow">${icon('listChecks')} La tasklist de hoy</p><h2>Marcar y seguir</h2></div>
+      <div><p class="eyebrow">${icon('listChecks')} Hoy</p><h2>Hábitos</h2></div>
       <span class="field-caption">${habits.filter(h=>e?.habits?.[h.id]).length}/${habits.length}</span>
     </div>
     ${habitBoard(habits,e,entries,selected,today)}
-    <p class="board-hint">${icon('spark')} Toca un hábito para marcarlo: se guarda solo, sin botón de guardar.</p>
-  </section>`:emptyState('Sin hábitos todavía','Crea tu lista abajo o toma prestados los sugeridos para tu etapa.',`<button type="button" class="button outline" data-action="routine-tab" data-tab="streaks">${icon('flame')} Ver rachas</button>`)}
+  </section>`:emptyState('Sin hábitos','Añade uno.',`<button type="button" class="button outline" data-action="routine-tab" data-tab="streaks">${icon('flame')} Rachas</button>`)}
   ${tomorrowBoard(e,selected)}
   ${habitComposer(profile,habits)}`;
 }
@@ -943,7 +1027,7 @@ function archivePage(){
     (!historyQuery||[e.date,e.generalDay,e.bestOfDay,e.differentToday,e.tomorrow,e.wordOfDay,e.capsule,...e.gratitude,...(e.goals||[]),...(e.tags||[])].join(' ').toLocaleLowerCase().includes(historyQuery.toLocaleLowerCase()))
   ).sort((a,b)=>b.date.localeCompare(a.date));
 
-  return `${pageHeader('Archivo',setup.name?`Recuerdos de ${esc(setup.name)}`:'Tus días guardados',`${entries.length} ${entries.length===1?'entrada':'entradas'} · ${f(entries.reduce((s,e)=>s+wordCount(e),0))} palabras`,`
+  return `${pageHeader('Cuaderno','Archivo','',`
     <div class="segmented">
       <button type="button" data-action="archive-tab" data-tab="list" class="${archiveTab==='list'?'active':''}">${icon('book')} Lista</button>
       <button type="button" data-action="archive-tab" data-tab="calendar" class="${archiveTab==='calendar'?'active':''}">${icon('calendar')} Calendario</button>
@@ -1006,7 +1090,7 @@ function archivePage(){
               <button class="icon-button ghost delete-button" data-action="delete" data-date="${e.date}" aria-label="Eliminar">${icon('trash')}</button>
             </div>
           </article>`;
-        }).join(''):emptyState(entries.length?'Sin resultados':'Aún no hay entradas guardadas','Las páginas que guardes aparecerán aquí.')}
+        }).join(''):emptyState(entries.length?'Sin resultados':'Sin entradas','')}
       </div>
     </div>
   `}`;
@@ -1014,7 +1098,7 @@ function archivePage(){
 
 /* ================= PROGRESO UNIFICADO (ESTADÍSTICAS + SEMANA + MES) ================= */
 function statsUnifiedPage(){
-  return `${pageHeader('Progreso',setup.name?`Tu evolución, ${esc(setup.name.split(' ')[0])}`:'Tu evolución','Tus patrones de descanso, ánimo, hábitos y metas personales.',`
+  return `${pageHeader('Cuaderno','Progreso','',`
     <div class="segmented">
       <button type="button" data-action="stats-tab" data-tab="pulse" class="${statsTab==='pulse'?'active':''}">Pulso y metas</button>
       <button type="button" data-action="stats-tab" data-tab="week" class="${statsTab==='week'?'active':''}">Semana</button>
@@ -1030,36 +1114,39 @@ function statsPulseBody(){
   const today=dateKey(),start=addDays(today,1-period);
   const recent=inRange(entries,start,today),prior=inRange(entries,addDays(start,-period),addDays(start,-1));
   const s=calculateStats(recent),p=calculateStats(prior),trends=generateTrends(entries);
+  const coverage=periodCoverage(entries,start,today,today);
   const profile=getAgeProfile(setup);
   const evolution=(key,unit)=>{
     if(recent.length<3||prior.length<3)return '';
+    if(s.metricCounts[key]<3||p.metricCounts[key]<3)return '';
     if(!Number.isFinite(s[key])||!Number.isFinite(p[key]))return '';
     const d=s[key]-p[key];
     return `${d>0?'↑':d<0?'↓':'→'} ${f(Math.abs(d))}${unit} vs. anterior`;
   };
   return `
   <div class="ledger-grid">
-    ${ledger('Estado medio',s.count?f(s.mood):'—','/ 5',evolution('mood',''))}
-    ${ledger('Sueño medio',s.count?f(s.sleep):'—','h',evolution('sleep',' h'))}
-    ${ledger(profile.focusLabel,s.count?f(s.study):'—','h',evolution('study',' h'))}
-    ${ledger('Racha actual',currentStreak(entries),'días',`${s.count} días registrados`)}
+    ${ledger('Registro',`${coverage.recorded}/${coverage.days}`,'días',`${coverage.pct}% de los días anotados`)}
+    ${ledger('Ánimo medio',s.metricCounts.mood?f(s.mood):'—','/ 5',evolution('mood',''))}
+    ${ledger('Sueño habitual',s.metricCounts.sleep?f(s.sleepMedian):'—','h',s.metricCounts.sleep?`media ${f(s.sleep)} h`:'sin datos')}
+    ${ledger(profile.focusLabel,s.metricCounts.study?f(s.study):'—','h',evolution('study',' h'))}
+    ${ledger('Racha actual',currentStreak(entries),'días',`${maxStreak(entries)} días · mejor racha`)}
   </div>
+  <p class="analytics-footnote">Solo días registrados.</p>
   ${personalGoalsPanel(recent,setup)}
   <section class="card chart-card">
     <div class="section-heading">
-      <h2>Ánimo y horas de sueño</h2>
+      <h2>Ánimo y sueño</h2>
       <div class="segmented">
         <button type="button" data-action="range" data-range="7" class="${period===7?'active':''}">7 días</button>
         <button type="button" data-action="range" data-range="30" class="${period===30?'active':''}">30 días</button>
       </div>
     </div>
     ${moodChart(recent,start,period,setup)}
-    <div class="chart-dates"><span>${longDate(start,{day:'numeric',month:'short'})}</span><span>${longDate(today,{day:'numeric',month:'short'})}</span></div>
   </section>
   <section class="card">
     <div class="section-heading">
       <h2>Últimos 28 días</h2>
-      <span class="field-caption">Pulsa cualquier día para abrirlo</span>
+      <span class="field-caption">Ánimo por día</span>
     </div>
     ${moodHeatmap(entries,today,28)}
   </section>
@@ -1067,33 +1154,42 @@ function statsPulseBody(){
     <section class="card">
       <h2>Tendencias detectadas</h2>
       <div style="margin-top:10px">
-        ${trends.length?trends.map(t=>`<p class="trend-item">${icon('arrow')}<span>${t}</span></p>`).join(''):'<p class="habit-empty">Con 3 o más registros por semana verás comparativas automáticas aquí.</p>'}
+        ${trends.length?trends.map(t=>`<p class="trend-item">${icon('arrow')}<span>${t}</span></p>`).join(''):'<p class="habit-empty">Sin tendencias.</p>'}
       </div>
     </section>
     <section class="card">
       <h2>Etiquetas más frecuentes</h2>
-      ${tagFrequency(recent).length?meterRows(tagFrequency(recent).slice(0,6).map(([t,c])=>({label:t,count:c,total:recent.length,color:'var(--red)'}))):'<p class="habit-empty">Aún no hay etiquetas en este período.</p>'}
+      ${tagFrequency(recent).length?meterRows(tagFrequency(recent).slice(0,6).map(([t,c])=>({label:t,count:c,total:recent.length,color:'var(--red)'}))):'<p class="habit-empty">Sin etiquetas.</p>'}
     </section>
   </div>`;
 }
 
 function periodBody(monthly){
+  const today=dateKey();
   const [start,end]=monthly?monthRange(month):[weekStart(selected),addDays(weekStart(selected),6)];
-  const records=inRange(entries,start,end),s=calculateStats(records);
+  const through=end>today?today:end;
+  const records=start<=through?inRange(entries,start,through):[];
+  const s=calculateStats(records),coverage=periodCoverage(entries,start,end,today);
+  const nextDisabled=monthly
+    ?monthMove(month,1).slice(0,7)>today.slice(0,7)
+    :addDays(weekStart(selected),7)>weekStart(today);
+  const profile=getAgeProfile(setup);
+  const heading=monthly?longDate(month,{month:'long',year:'numeric'}):`${longDate(weekStart(selected),{day:'numeric',month:'short'})} – ${longDate(addDays(weekStart(selected),6),{day:'numeric',month:'short',year:'numeric'})}`;
   return `
-  <div class="section-heading" style="margin-bottom:16px">
-    <h2>${monthly?longDate(month,{month:'long',year:'numeric'}):`${longDate(weekStart(selected),{day:'numeric',month:'short'})} – ${longDate(addDays(weekStart(selected),6),{day:'numeric',month:'short',year:'numeric'})}`}</h2>
+  <div class="section-heading period-heading">
+    <div><p class="eyebrow">${monthly?'Resumen mensual':'Resumen semanal'}</p><h2>${heading}</h2></div>
     <div class="period-controls">
-      <button class="icon-button ghost" data-action="period-prev" data-monthly="${monthly?'1':'0'}" aria-label="Anterior">${icon('left')}</button>
-      <button class="icon-button ghost" data-action="period-next" data-monthly="${monthly?'1':'0'}" aria-label="Siguiente">${icon('right')}</button>
+      <button class="icon-button ghost" data-action="period-prev" data-monthly="${monthly?'1':'0'}" aria-label="Período anterior">${icon('left')}</button>
+      <button class="icon-button ghost" data-action="period-next" data-monthly="${monthly?'1':'0'}" aria-label="Período siguiente" ${nextDisabled?'disabled':''}>${icon('right')}</button>
     </div>
   </div>
   <div class="ledger-grid">
-    ${ledger('Días registrados',s.count,monthly?'días':'/ 7')}
-    ${ledger('Estado medio',s.count?f(s.mood):'—','/ 5')}
-    ${ledger('Sueño medio',s.count?f(s.sleep):'—','h')}
-    ${ledger('Dedicación media',s.count?f(s.study):'—','h')}
+    ${ledger('Registro',`${coverage.recorded}/${coverage.days}`,'días',coverage.days?`${coverage.pct}% de los días transcurridos`:'sin días transcurridos')}
+    ${ledger('Ánimo medio',s.metricCounts.mood?f(s.mood):'—','/ 5')}
+    ${ledger('Sueño habitual',s.metricCounts.sleep?f(s.sleepMedian):'—','h',s.metricCounts.sleep?`media ${f(s.sleep)} h`:'sin datos')}
+    ${ledger(profile.focusLabel,s.metricCounts.study?f(s.study):'—','h')}
   </div>
+  <p class="analytics-footnote">Solo días transcurridos.</p>
   <section class="card period-summary">
     <span class="soft-icon">${icon('leaf')}</span>
     <div>
@@ -1119,18 +1215,35 @@ function periodBody(monthly){
   </div>`;
 }
 
-/* ================= PERFIL Y DATOS UNIFICADOS ================= */
+/* ================= AJUSTES Y SUBPÁGINAS ================= */
 function setupUnifiedPage(){
-  return `${pageHeader('Perfil y ajustes','Hecho a tu medida','Personaliza tu identidad, tus gustos, el papel del cuaderno o haz una copia de seguridad.',`
-    <div class="segmented">
-      <button type="button" data-action="profile-tab" data-tab="personal" class="${profileTab==='personal'?'active':''}">${icon('sliders')} Mi perfil</button>
-      <button type="button" data-action="profile-tab" data-tab="custom" class="${profileTab==='custom'?'active':''}">${icon('paper')} Personalizar</button>
-      <button type="button" data-action="profile-tab" data-tab="data" class="${profileTab==='data'?'active':''}">${icon('shield')} Datos y copias</button>
-    </div>
-  `)}
-  <div class="tab-panel-enter">
-    ${profileTab==='data'?dataAndPrivacyBody():profileTab==='custom'?customizationBody():setupFormBody()}
-  </div>`;
+  const sections=[
+    ['personal','user','Perfil'],
+    ['appearance','palette','Apariencia'],
+    ['custom','paper','Contenido'],
+    ['data','shield','Datos']
+  ];
+  const activeSection=sections.some(([id])=>id===profileTab)?profileTab:'personal';
+  const bodies={
+    personal:setupFormBody,
+    appearance:appearanceFormBody,
+    custom:customizationBody,
+    data:dataAndPrivacyBody
+  };
+  return `${pageHeader('','Ajustes','')}
+    <div class="settings-layout">
+      <nav class="settings-subnav" role="tablist" aria-label="Ajustes">
+        ${sections.map(([id,ico,label])=>`<button type="button" class="settings-subnav-item ${activeSection===id?'active':''}"
+          id="settings-tab-${id}" role="tab" aria-selected="${activeSection===id}" aria-controls="settings-panel"
+          tabindex="${activeSection===id?'0':'-1'}" data-action="profile-tab" data-tab="${id}">
+          <span class="settings-subnav-icon">${icon(ico)}</span>
+          <span><strong>${esc(label)}</strong></span>
+        </button>`).join('')}
+      </nav>
+      <section id="settings-panel" class="settings-page-panel tab-panel-enter" role="tabpanel" aria-labelledby="settings-tab-${activeSection}">
+        ${bodies[activeSection]()}
+      </section>
+    </div>`;
 }
 
 function saveCustomization(patch,msg='Guardado.'){
@@ -1159,7 +1272,7 @@ function addPart(presetLabel=''){
   if(!label){toast('Escribe un título para la parte.',true);document.querySelector('#new-part-label')?.focus();return;}
   if(parts.some(p=>p.label.toLowerCase()===label.toLowerCase())){toast('Esa parte ya está en el diario.',true);return;}
   const key=makeKey('p');
-  saveCustomization({parts:[...parts,{key,label,hint:preset?.hint||'',type:preset?.type||'text'}]},'Añadida, ya está en la página de hoy.');
+  saveCustomization({parts:[...parts,{key,label,hint:preset?.hint||'',type:preset?.type||'text'}]},'Parte añadida.');
   flashRow('part',key);
   focusCustom('part',key);
 }
@@ -1176,7 +1289,7 @@ function addCounter(){
     goal:parseFloat(document.querySelector('#new-counter-goal')?.value)||0,
     min:0,max:Math.max(20,(parseFloat(document.querySelector('#new-counter-goal')?.value)||0)*3),step:1,
     icon:'gauge'
-  }]},'Contador añadido a la Rutina.');
+  }]},'Contador añadido.');
   focusCustom('counter',key);
 }
 function applyCustomEdit(el){
@@ -1214,21 +1327,20 @@ function customizationBody(){
         <div><p class="eyebrow">${icon('paper')} Partes del diario</p><h2>Qué quieres escribir cada día</h2></div>
         <span class="field-caption">${parts.length} de ${MAX_PARTS}</span>
       </div>
-      <p class="custom-lead">Cada parte es un campo con tu título dentro de «Tu página de hoy». Se guarda con el día y se lee en el archivo.</p>
       ${parts.length?`<ul class="custom-list">
         ${parts.map(p=>`<li class="custom-row custom-row--part" data-part-row="${p.key}">
           <input class="custom-input custom-input--label" value="${esc(p.label)}" maxlength="60" aria-label="Título de la parte" data-edit="part" data-key="${p.key}" data-field="label">
-          <input class="custom-input custom-input--hint" value="${esc(p.hint)}" maxlength="140" placeholder="texto de ayuda, opcional" aria-label="Texto de ayuda" data-edit="part" data-key="${p.key}" data-field="hint">
+          <input class="custom-input custom-input--hint" value="${esc(p.hint)}" maxlength="140" placeholder="Ayuda" aria-label="Texto de ayuda" data-edit="part" data-key="${p.key}" data-field="hint">
           <div class="micro-seg">${PART_TYPES.map(t=>`<button type="button" class="${p.type===t.id?'active':''}" data-action="part-type" data-key="${p.key}" data-val="${t.id}">${t.label}</button>`).join('')}</div>
           <button type="button" class="icon-button ghost custom-remove" data-action="remove-part" data-key="${p.key}" aria-label="Quitar ${esc(p.label)}">${icon('close')}</button>
         </li>`).join('')}
-      </ul>`:`<p class="custom-none">Nada por ahora: el diario se queda con sus campos de siempre.</p>`}
+      </ul>`:`<p class="custom-none">Sin partes propias.</p>`}
       <div class="custom-add">
         <input id="new-part-label" class="custom-input" maxlength="60" placeholder="Título de la parte…" aria-label="Título de la parte nueva">
         <button type="button" class="button outline" data-action="add-part">${icon('plus')} Añadir parte</button>
       </div>
       ${parts.length<MAX_PARTS?`<div class="custom-presets">
-        <span class="custom-presets-label">O coge una ya escrita:</span>
+        <span class="custom-presets-label">Sugerencias</span>
         ${PART_PRESETS.filter(pre=>!parts.some(p=>p.label===pre.label)).map(pre=>`<button type="button" class="custom-preset" data-action="part-preset" data-val="${esc(pre.label)}">${esc(pre.label)}</button>`).join('')}
       </div>`:''}
     </section>
@@ -1238,7 +1350,6 @@ function customizationBody(){
         <div><p class="eyebrow">${icon('gauge')} Contadores</p><h2>Qué cuentas</h2></div>
         <span class="field-caption">${counters.length} de ${MAX_COUNTERS}</span>
       </div>
-      <p class="custom-lead">Los de siempre se pueden renombrar o quitar. Los tuyos llevan unidad y meta, y aparecen en la pestaña de Rutina junto a los otros.</p>
       <ul class="custom-list custom-list--counters">
         <li class="custom-head"><span>Nombre</span><span>Unidad</span><span>Meta</span><span>Icono</span><span></span></li>
         ${counters.map(c=>`<li class="custom-row custom-row--counter" data-counter-row="${c.key}">
@@ -1259,7 +1370,7 @@ function customizationBody(){
       </div>
       <p class="custom-foot">
         <button type="button" class="text-button" data-action="reset-counters">${icon('refresh')} Dejar los cuatro de siempre</button>
-        <span>Las cifras ya anotadas se conservan aunque quites un contador.</span>
+        <span>El historial se conserva al quitar un contador.</span>
       </p>
     </section>
   </div>`;
@@ -1271,7 +1382,7 @@ function setupFormBody(){
   const selectedInterests=new Set(setup.interests||[]);
   return `<form id="setup-page-form" class="setup-page-grid">
     <section class="card">
-      <h2>Identidad y etapa vital</h2>
+      <h2>Perfil</h2>
       <div class="setup-name-age-row">
         <div class="setup-field">
           <label for="sp-name">${icon('user')} Tu nombre o apodo</label>
@@ -1307,8 +1418,7 @@ function setupFormBody(){
     </section>
 
     <section class="card">
-      <h2>Tus gustos y estilo</h2>
-      <p class="field-caption" style="margin:6px 0 8px">El diario adapta sus contadores, etiquetas y frases a lo que marques aquí:</p>
+      <h2>Intereses y estilo</h2>
       <div class="interests-grid">
         ${INTEREST_OPTIONS.map(item=>`
           <label class="interest-chip">
@@ -1346,27 +1456,26 @@ function setupFormBody(){
     </section>
 
     <section class="card">
-      <h2>Metas, hábitos y frases propias</h2>
-      <p class="field-caption" style="margin-top:6px">Los hábitos que elijas se marcan en su propia pestaña, <b>Rutina</b>, junto a los contadores.</p>
+      <h2>Metas y hábitos</h2>
       <div class="age-adaptation-callout" id="sp-adaptation-callout" style="margin-top:12px">
         ${icon('compass')}
         <div>
-          <strong>Etapa activa: ${esc(profile.group.title)} (${esc(profile.group.label)})</strong>
-          <p>Sueño recomendado: <b>${f(profile.sleepRecommended)} h</b> · Dedicación sugerida: <b>${f(profile.studyRecommended)} h</b>.</p>
+          <strong>${esc(profile.group.title)} · ${esc(profile.group.label)}</strong>
+          <p>Sueño ${f(profile.sleepRecommended)} h · dedicación ${f(profile.studyRecommended)} h.</p>
         </div>
       </div>
       <div class="goals-setup-grid">
         <div class="setup-field">
-          <label for="sp-sleep">${icon('moon')} Meta de sueño (h)</label>
+          <label for="sp-sleep">${icon('moon')} Meta de sueño · h</label>
           <input id="sp-sleep" name="sleepGoal" type="number" min="4" max="14" step="0.5" value="${setup.sleepGoal}">
         </div>
         <div class="setup-field">
-          <label for="sp-study">${icon('study')} Meta de dedicación (h)</label>
+          <label for="sp-study">${icon('study')} Meta de dedicación · h</label>
           <input id="sp-study" name="studyGoal" type="number" min="0" max="16" step="0.5" value="${setup.studyGoal}">
         </div>
       </div>
       <div class="setup-field" style="margin-top:16px">
-        <label>Hábitos sugeridos para tu perfil</label>
+        <label>Hábitos sugeridos</label>
         <div class="tag-picker" id="sp-suggested-habits">
           ${profile.suggestedHabits.map(h=>{
             const already=existingNames.has(h.toLowerCase());
@@ -1375,7 +1484,7 @@ function setupFormBody(){
         </div>
       </div>
       <div class="setup-field" style="margin-top:18px">
-        <label>${icon('quote')} Tus frases guardadas (${(setup.savedQuotes||[]).length})</label>
+        <label>${icon('quote')} Frases guardadas · ${(setup.savedQuotes||[]).length}</label>
         ${(setup.savedQuotes||[]).length?`
           <div class="saved-quotes-list">
             ${setup.savedQuotes.map((q,idx)=>`
@@ -1394,9 +1503,19 @@ function setupFormBody(){
       </div>
     </section>
 
-    <section class="card">
-      <h2>Papel e icono de la pestaña</h2>
-      <div class="setup-field">
+    <div class="save-area" style="grid-column:1/-1">
+      <button type="submit" class="button solid save-button">${icon('check')} Guardar perfil</button>
+    </div>
+  </form>`;
+}
+
+function appearanceFormBody(){
+  return `<form id="appearance-form" class="appearance-page">
+    <div class="appearance-settings-grid">
+      <section class="card">
+        <div class="section-heading">
+          <div><p class="eyebrow">${icon('palette')} Apariencia</p><h2>Tu tema</h2></div>
+        </div>
         <div class="theme-picker-grid">
           ${THEMES.map(t=>`
             <label class="theme-card">
@@ -1410,26 +1529,34 @@ function setupFormBody(){
             </label>
           `).join('')}
         </div>
-      </div>
-      <div class="setup-toggles" style="margin-top:16px">
-        <label class="toggle-row">
-          <input type="checkbox" name="sidebarCollapsed" ${sidebarCollapsed?'checked':''}>
-          <span><strong>Barra lateral compacta</strong><small>Reducir el menú a iconos en escritorio (Ctrl+B).</small></span>
-        </label>
-        <label class="toggle-row">
-          <input type="checkbox" name="showDailyWord" ${setup.showDailyWord!==false?'checked':''}>
-          <span><strong>Mostrar Palabra del día</strong><small>Muestra una palabra diaria en la parte superior.</small></span>
-        </label>
-        <label class="toggle-row">
-          <input type="checkbox" name="showDailyTip" ${setup.showDailyTip!==false?'checked':''}>
-          <span><strong>Mostrar Consejo del día</strong><small>Recomendaciones breves adaptadas a tu edad y gustos.</small></span>
-        </label>
-      </div>
-    </section>
+      </section>
 
-    <div class="save-area" style="grid-column:1/-1">
-      <span>${icon('lock')} Guardado localmente en este dispositivo.</span>
-      <button type="submit" class="button solid save-button">${icon('check')} Guardar perfil</button>
+      <section class="card">
+        <div class="section-heading">
+          <div><h2>Preferencias</h2></div>
+        </div>
+        <div class="setup-toggles">
+          <label class="toggle-row">
+            <input type="checkbox" name="sidebarCollapsed" ${sidebarCollapsed?'checked':''}>
+            <span><strong>Menú compacto</strong><small>Solo iconos en escritorio · Ctrl+B.</small></span>
+          </label>
+          <label class="toggle-row">
+            <input type="checkbox" name="showDailyWord" ${setup.showDailyWord!==false?'checked':''}>
+            <span><strong>Palabra del día</strong></span>
+          </label>
+          <label class="toggle-row">
+            <input type="checkbox" name="showDailyTip" ${setup.showDailyTip!==false?'checked':''}>
+            <span><strong>Sugerencia diaria</strong></span>
+          </label>
+          <label class="toggle-row">
+            <input type="checkbox" name="reduceMotion" ${setup.reduceMotion?'checked':''}>
+            <span><strong>Reducir animaciones</strong></span>
+          </label>
+        </div>
+      </section>
+    </div>
+    <div class="save-area">
+      <button type="submit" class="button solid save-button">${icon('check')} Guardar apariencia</button>
     </div>
   </form>`;
 }
@@ -1438,13 +1565,13 @@ function dataAndPrivacyBody(){
   return `
   <div class="two-columns">
     <section class="card">
-      <h2>Exportar copia de seguridad</h2>
-      <p style="margin:8px 0 16px;color:var(--ink-soft)">Descarga todas tus entradas, hábitos y tu perfil en un archivo JSON para guardarlo o llevarlo a otro dispositivo.</p>
-      <button class="button solid" data-action="export">${icon('download')} Descargar copia (.json)</button>
+      <h2>Exportar copia</h2>
+      <p style="margin:8px 0 16px;color:var(--ink-soft)">Entradas, hábitos y perfil en un JSON.</p>
+      <button class="button solid" data-action="export">${icon('download')} Descargar JSON</button>
     </section>
     <section class="card">
       <h2>Importar copia</h2>
-      <p style="margin:8px 0 16px;color:var(--ink-soft)">Recupera un archivo JSON exportado previamente. Te pedirá confirmación antes de fusionar los datos.</p>
+      <p style="margin:8px 0 16px;color:var(--ink-soft)">Elige un JSON y confirma la importación.</p>
       <button class="button outline" data-action="import">${icon('upload')} Seleccionar archivo</button>
       <input type="file" id="import-file" accept=".json,application/json" hidden>
     </section>
@@ -1452,15 +1579,15 @@ function dataAndPrivacyBody(){
   <section class="card">
     <h2>Privacidad local</h2>
     <ul class="privacy-list">
-      <li>Tus entradas y preferencias se guardan únicamente en el almacenamiento local (<code>localStorage</code>) de este navegador.</li>
-      <li>No existen cuentas, servidores externos, telemetría ni envíos a terceros.</li>
-      <li>La aplicación funciona sin conexión a internet tras la primera carga.</li>
+      <li>Tus datos se quedan en este navegador.</li>
+      <li>Sin cuentas ni envíos a terceros.</li>
+      <li>Disponible sin conexión tras la primera carga.</li>
     </ul>
   </section>
   <section class="card danger-zone">
     <div>
       <h2>Borrar todos los datos</h2>
-      <p>Elimina todas las entradas, hábitos y ajustes guardados en este navegador.</p>
+      <p>Borra entradas, hábitos y ajustes de este navegador.</p>
     </div>
     <button class="button danger" data-action="clear">${icon('trash')} Borrar todo</button>
   </section>`;
@@ -1577,7 +1704,7 @@ function syncNavDots(){
     el.hidden=!unseen;
     el.classList.toggle('is-new',unseen);
   });
-  document.querySelectorAll('#sea-quick,.tabbar-item[data-view="thoughts"]').forEach(el=>{
+  document.querySelectorAll('.tabbar-item[data-view="thoughts"]').forEach(el=>{
     el.classList.toggle('has-new',unseen);
   });
 }
@@ -1585,7 +1712,7 @@ function syncNavDots(){
 /* ---------- abrir, traer y volver a lanzar botellas ---------- */
 function openBottle(id){
   const bottle=thoughts.find(t=>t.id===id);
-  if(!bottle)return;
+  if(!canOpenBottle(bottle,dateKey()))return;
   if(bottle.status==='returned'&&bottle.seen!==true){
     thoughts=updateThought(id,{seen:true});
     syncNavDots();
@@ -1642,7 +1769,7 @@ function openBottle(id){
 function bottleToEntry(bottle){
   const today=dateKey();
   const entry=entries.find(x=>x.date===today);
-  const line=`Del mar (botella del ${longDate(bottle.castAt,{day:'numeric',month:'long'})}): «${bottle.text}»`;
+  const line=`Del mar · botella del ${longDate(bottle.castAt,{day:'numeric',month:'long'})}: «${bottle.text}»`;
   const generalDay=[entry?.generalDay,line].filter(Boolean).join('\n\n');
   patchDay(today,{
     generalDay,
@@ -1652,32 +1779,49 @@ function bottleToEntry(bottle){
   thoughts=updateThought(bottle.id,{kept:true,keptOn:today,seen:true});
   selected=today;
   view='diary';
+  updateRouteUrl();
 }
 
 /* El momento del chapuzón: arco, golpe de agua, ondas y la superficie agitándose. */
-function playCastSplash(bottle){
+function playCastSplash(bottle,form){
+  const stage=document.querySelector('.thought-vault');
+  const stageRect=stage?.getBoundingClientRect();
+  const waterRect=stage?.querySelector('.vault-water')?.getBoundingClientRect();
+  const buttonRect=form?.querySelector('button[type="submit"]')?.getBoundingClientRect();
+  const point=castSplashPoint(bottle);
+  const stageWidth=stageRect?.width||window.innerWidth;
+  const stageLeft=stageRect?.left||0;
+  const fromX=buttonRect?buttonRect.left+buttonRect.width/2:window.innerWidth*.18;
+  const fromY=buttonRect?buttonRect.top+buttonRect.height/2:window.innerHeight*.72;
+  const toX=stageLeft+stageWidth*point.x/100;
+  const toY=waterRect?waterRect.top+waterRect.height*point.depth/100:window.innerHeight*.52;
+  const flightX=toX-fromX;
+  const flightY=toY-fromY;
+  const midX=flightX*.52;
+  const midY=flightY*.52-Math.min(150,window.innerHeight*.2);
+  if(!motionOn)return;
   const layerHost=document.querySelector('#ocean-fx')||document.body;
   if(layerHost===document.body){
     const created=document.createElement('div');
     created.id='ocean-fx';
-    created.className='ocean-fx';
+    created.setAttribute('aria-hidden','true');
     document.body.appendChild(created);
   }
   const layer=document.querySelector('#ocean-fx');
-  const target=document.querySelector('.sea-panel')||document.querySelector('#bottle-form');
-  const rect=target?.getBoundingClientRect();
   const el=document.createElement('div');
   el.className='splash-wrap';
   el.innerHTML=castSplash(bottle);
-  if(rect){
-    el.style.setProperty('--to-x',`${Math.round(rect.left+rect.width*.5)}px`);
-    el.style.setProperty('--to-y',`${Math.round(rect.top+rect.height*.42)}px`);
-  }
+  for(const [name,value] of Object.entries({
+    '--from-x':fromX,'--from-y':fromY,'--to-x':toX,'--to-y':toY,
+    '--flight-x':flightX,'--flight-y':flightY,'--mid-x':midX,'--mid-y':midY
+  }))el.style.setProperty(name,`${Math.round(value)}px`);
   layer.appendChild(el);
   document.documentElement.classList.add('is-casting');
-  setTimeout(()=>document.documentElement.classList.remove('is-casting'),1400);
-  setTimeout(()=>el.remove(),motionOn?1500:60);
+  clearTimeout(castSplashClassTimer);
+  castSplashClassTimer=setTimeout(()=>document.documentElement.classList.remove('is-casting'),1400);
+  setTimeout(()=>el.remove(),1800);
 }
+
 function playModalUncork(modal){
   const card=modal.querySelector('.bottle-modal');
   if(!card||!motionOn)return;
@@ -1688,49 +1832,53 @@ function playModalUncork(modal){
 function castBottle(form){
   const data=new FormData(form);
   const value=(data.get('text')||'').toString().trim();
-  if(value.length<2){toast('Escribe algo antes de soltar la botella.',true);return;}
+  if(value.length<2){toast('Escribe algo antes de lanzar la botella.',true);return;}
   const moodRaw=data.get('mood');
-  const sea=data.get('sea')||'breeze';
+  const sea='breeze';
   try{
     const id=crypto.randomUUID();
-    thoughts=saveThought({id,text:value,mood:moodRaw?+moodRaw:null,sea,castAt:dateKey()});
+    const force=Math.max(1,Math.min(5,Math.round(Number(data.get('force'))||3)));
+    thoughts=saveThought({id,text:value,mood:moodRaw?+moodRaw:null,sea,force,castAt:dateKey()});
     const bottle=thoughts.find(t=>t.id===id);
     draftCancel('botella');
     clearDraft(DRAFT_SCOPES.bottle());
-    bottleDraft={text:'',mood:null,sea};
-    bottleDraftRestored='';
+    bottleDraft={text:'',mood:null,sea,force:3};
     thoughtsTab='sea';
-    playCastSplash(bottle||{});
+    thoughtsDrawerOpen=true;
+    updateRouteUrl();
+    playCastSplash(bottle||{},form);
+    const submit=form.querySelector('button[type="submit"]');
+    if(submit){
+      submit.disabled=true;
+      submit.classList.add('is-launching');
+      submit.innerHTML=`${icon('send')} Lanzando…`;
+    }
     setSaveState('saved');
-    setTimeout(()=>render(),motionOn?1150:0);
-    toast('Ya está fuera.');
-  }catch(err){toast(err.message||'No se pudo echar la botella al mar.',true);}
+    setTimeout(()=>render(),motionOn?1120:0);
+    toast('Botella lanzada al mar.');
+  }catch(err){toast(err.message||'No se pudo lanzar la botella.',true);}
 }
-
 function bindOceanForm(){
+  const drawer=document.querySelector('#thoughts-bottles-drawer');
+  drawer?.addEventListener('toggle',()=>{thoughtsDrawerOpen=drawer.open;});
   const form=document.querySelector('#bottle-form');
   if(!form)return;
   const text=form.querySelector('#bottle-text');
-  const words=form.querySelector('#bottle-words');
+  const forceInput=form.querySelector('#bottle-force');
+  const forceOutput=form.querySelector('#bottle-force-value');
   const sync=()=>{
     const moodEl=form.querySelector('[name="mood"]:checked');
-    bottleDraft={
-      text:text?.value||'',
-      mood:moodEl?+moodEl.value:null,
-      sea:form.querySelector('[name="sea"]:checked')?.value||'breeze'
-    };
-    if(words)words.textContent=`${countWords(text?.value||'')} palabras`;
+    bottleDraft={text:text?.value||'',mood:moodEl?+moodEl.value:null,sea:'breeze',force:Number(forceInput?.value)||3};
   };
   const submit=form.querySelector('button[type="submit"]');
-  const arm=()=>{
-    if(!submit)return;
-    const has=Boolean((text?.value||'').trim());
-    submit.disabled=!has;
-    submit.classList.toggle('is-armed',has);
-  };
+  const arm=()=>{if(submit)submit.disabled=!(text?.value||'').trim();};
   sync();
   arm();
   text?.addEventListener('input',()=>{sync();arm();});
+  forceInput?.addEventListener('input',()=>{
+    sync();
+    if(forceOutput)forceOutput.value=forceInput.value;
+  });
   form.addEventListener('change',()=>{sync();arm();});
   if(document.activeElement===text&&text.value)text.setSelectionRange(text.value.length,text.value.length);
   form.addEventListener('submit',event=>{
@@ -1770,14 +1918,11 @@ function entryTextFields(){
   return [...ENTRY_TEXT_FIELDS,...partDefs(setup).map(p=>`part_${p.key}`)];
 }
 const draftTimers=new Map();
-let bottleDraftRestored='',autosavePending=false;
+let autosavePending=false;
 
 function draftCancel(key){
   const timer=draftTimers.get(key);
   if(timer){clearTimeout(timer);draftTimers.delete(key);}
-}
-function draftCancelAll(matcher){
-  for(const key of [...draftTimers.keys()]){if(matcher(key)){draftCancel(key);}}
 }
 function draftDebounce(key,fn,ms=460){
   clearTimeout(draftTimers.get(key));
@@ -1855,13 +2000,11 @@ function captureEntryDraft(){
     const had=clearDraft(entryScope());
     if(had)setSaveState('saved');
     else setSaveState(saveState==='typing'?'saved':saveState);
-    renderDraftSlot();
     return;
   }
   const meta=setDraft(entryScope(),values);
   if(meta&&!meta.ok)setSaveState('error');
   else if(meta)setSaveState('draft');
-  renderDraftSlot();
 }
 
 function captureBottleDraft(){
@@ -1870,7 +2013,8 @@ function captureBottleDraft(){
   const meta=setDraft(DRAFT_SCOPES.bottle(),{
     text:form.querySelector('#bottle-text')?.value||'',
     mood:+(form.querySelector('[name="mood"]:checked')?.value||0)||null,
-    sea:form.querySelector('[name="sea"]:checked')?.value||'breeze'
+    sea:form.querySelector('[name="sea"]:checked')?.value||'breeze',
+    force:Number(form.querySelector('#bottle-force')?.value)||3
   });
   if(meta&&!meta.ok)setSaveState('error');
 }
@@ -1892,7 +2036,8 @@ function onBottleEdit(){
   bottleDraft={
     text:text?.value||'',
     mood:+(form.querySelector('[name="mood"]:checked')?.value||0)||null,
-    sea:form.querySelector('[name="sea"]:checked')?.value||'breeze'
+    sea:form.querySelector('[name="sea"]:checked')?.value||'breeze',
+    force:Number(form.querySelector('#bottle-force')?.value)||3
   };
   setSaveState('typing');
   draftDebounce('botella',captureBottleDraft,380);
@@ -1950,7 +2095,6 @@ function flushAllDrafts(){
 /* ---------- recuperar lo escrito a medias ---------- */
 function restoreAfterRender(){
   restoreEntryDraft();
-  renderDraftSlot();
 }
 function applyToField(form,name,value){
   if(value===undefined||value===null)return;
@@ -1996,29 +2140,11 @@ function restoreEntryDraft(){
   form.dispatchEvent(new Event('input',{bubbles:true}));
   setSaveState('draft');
 }
-function renderDraftSlot(){
-  const slot=document.querySelector('#entry-draft-slot');
-  if(!slot)return;
-  const stored=entries.find(x=>x.date===selected);
-  const live=slot.dataset.live==='1';
-  if(!live&&!draftIsNewer(entryScope(),stored?.updatedAt)){slot.innerHTML='';return;}
-  const summary=draftSummary(entryScope());
-  if(!summary){slot.innerHTML='';return;}
-  slot.innerHTML=`<div class="draft-note ${live?'is-live':''}" role="status">
-    ${icon(live?'pen':'refresh')}
-    <span>${live
-      ?`Escribiendo: guardado <b>${esc(summary.when||'ahora mismo')}</b> · ${summary.words} palabras`
-      :`Recuperado de donde lo dejaste <b>${esc(summary.when)}</b> · ${summary.words} palabras`}</span>
-    <button type="button" class="text-button" data-action="commit-draft">${icon('stamp')} Dejarlo escrito ya</button>
-    <button type="button" class="text-button is-danger" data-action="discard-draft">${icon('close')} Descartar</button>
-  </div>`;
-}
 function primeBottleDraft(){
-  if(bottleDraft.text||bottleDraftRestored)return;
+  if(bottleDraft.text)return;
   const data=draftData(DRAFT_SCOPES.bottle());
-  if(!data?.text)return;
-  bottleDraft={text:data.text,mood:data.mood||null,sea:data.sea||'breeze'};
-  bottleDraftRestored=draftSummary(DRAFT_SCOPES.bottle())?.when||'';
+  if(!data)return;
+  bottleDraft={text:String(data.text||''),mood:data.mood||null,sea:data.sea||'breeze',force:Number(data.force)||3};
 }
 
 /* ---------- el autoguardado ---------- */
@@ -2049,9 +2175,7 @@ function commitEntry({silent=false,final=false}={}){
     const entry=validateForForm(collectForm(form));
     entries=saveEntry(entry);
     clearDraft(entryScope());
-    dirty=false;
     setSaveState(silent?'autosaved':'saved');
-    syncHeroChips(entries.find(x=>x.date===selected));
     if(!silent){
       render();
       showStamp();
@@ -2066,201 +2190,14 @@ function commitEntry({silent=false,final=false}={}){
     return true;
   }catch(err){
     setSaveState('error');
-    if(!silent)toast(err.message||'No se ha podido guardar este día.',true);
-    else if(!String(err.message||'').includes('Ese día'))toast('No he podido autoguardar; tu texto sigue a salvo en el borrador.',true);
+    if(!silent)toast(err.message||'No se ha podido guardar.',true);
     return false;
   }finally{
     autosavePending=false;
   }
 }
-function syncHeroChips(entry){
-  const stored=entry||entries.find(x=>x.date===selected);
-  const chip=document.querySelector('#hero-words-chip');
-  if(chip){
-    chip.innerHTML=heroStatusHtml(stored);
-    chip.classList.toggle('pending',!stored);
-    chip.classList.remove('is-flash');
-    void chip.offsetWidth;
-    chip.classList.add('is-flash');
-  }
-  syncDraftChip();
-}
-
-function heroStatusHtml(entry){
-  if(!entry)return 'todavía sin escribir';
-  const w=wordCount(entry);
-  return `${w} ${w===1?'palabra':'palabras'} escritas`;
-}
-
-/* ---------- indicadores ---------- */
 function setSaveState(next){
-  if(next==='saved'||next==='autosaved')saveAt=Date.now();
   saveState=next;
-  syncSaveIndicators();
-}
-function saveStatusHtml(){
-  const map={
-    typing:['pen','Escribiendo…','is-working'],
-    saving:['save','Guardando…','is-working'],
-    draft:['paper','Borrador guardado','is-draft'],
-    error:['close','No se ha guardado','is-error'],
-    autosaved:['check','Autoguardado','is-ok'],
-    idle:['check',saveAt?`Guardado ${timeAgo(saveAt)}`:'Todo guardado','is-ok']
-  };
-  const [name,text,cls]=map[saveState]||map.idle;
-  return `${icon(name)}<span>${esc(text)}</span>`;
-}
-function syncSaveIndicators(){
-  document.querySelectorAll('[data-save-status]').forEach(el=>{
-    el.className=`save-status ${saveState==='draft'?'is-draft':''} ${saveState==='error'?'is-error':''} ${saveState==='typing'||saveState==='saving'?'is-working':''}`;
-    el.innerHTML=saveStatusHtml();
-  });
-  const note=document.querySelector('#save-note');
-  if(note){
-    note.outerHTML=`<div class="save-note ${pendingDrafts().total?'has-pending':''}" id="save-note">
-      <span class="save-dot ${saveState==='error'?'is-error':saveState==='draft'?'is-draft':'is-ok'}"></span>
-      <div><strong>${saveNoteTitle()}</strong><small>${esc(saveNoteDetail())}</small></div>
-    </div>`;
-  }
-  const bar=document.querySelector('#floating-save');
-  if(bar){
-    const show=saveState==='error'||dirty;
-    bar.classList.toggle('is-visible',show);
-    const text=document.querySelector('#floating-save-text');
-    if(text)text.innerHTML=saveState==='error'
-      ?`${icon('close')} El autoguardado falló · tu texto está en el borrador`
-      :`${icon('pen')} Cambios sin guardar`;
-  }
-  syncDraftChip();
-}
-function syncDraftChip(){
-  const slot=document.querySelector('#draft-chip-slot');
-  if(!slot)return;
-  const pend=pendingDrafts();
-  if(!pend.total){
-    if(slot.firstElementChild)slot.innerHTML='';
-    return;
-  }
-  slot.innerHTML=`<button type="button" class="draft-chip" data-action="show-drafts" title="${pend.total} ${pend.total===1?'texto a medias guardado':'textos a medias guardados'}">
-    ${icon('paper')}<span>${pend.total}</span>
-  </button>`;
-}
-
-/* ---------- el inventario de borradores ---------- */
-function draftBrief(d){
-  const text=Object.entries(d.data||{})
-    .filter(([,v])=>typeof v==='string')
-    .map(([,v])=>v)
-    .join(' ')
-    .replace(/\s+/g,' ')
-    .trim();
-  const words=text?text.split(/\s+/).length:0;
-  const minutes=draftMinutes(d.scope);
-  const when=minutes===null?'':minutes<1?'hace un momento':minutes<60?`hace ${minutes} min`:`el ${new Date(d.savedAt).toLocaleDateString('es-ES',{day:'numeric',month:'short'})}`;
-  return {
-    scope:d.scope,
-    label:draftLabel(d.scope),
-    words,
-    when,
-    preview:text?`«${text.slice(0,76)}${text.length>76?'…':''}»`:'(solo cifras y marcas)',
-    goto:d.scope.startsWith('entrada:')?d.scope.slice(8):''
-  };
-}
-function draftsModalHtml(){
-  const list=listDrafts().map(draftBrief);
-  const rows=list.length?list.map(d=>`
-    <li class="draft-row">
-      <div class="draft-row-main">
-        <strong>${esc(d.label)}</strong>
-        <small>${d.words} palabras · ${esc(d.when)} · ${esc(d.preview)}</small>
-      </div>
-      <div class="draft-row-actions">
-        ${d.goto?`<button type="button" class="text-button" data-modal="goto" data-date="${esc(d.goto)}">${icon('arrow')} Ir a recuperarlo</button>`:''}
-        <button type="button" class="text-button is-danger" data-modal="drop" data-scope="${esc(d.scope)}">${icon('close')} Descartar</button>
-      </div>
-    </li>`).join(''):`<li class="draft-row is-empty">${icon('check')} No hay nada a medias: todo está escrito ya en el cuaderno.</li>`;
-  return `<div class="modal-card drafts-modal">
-    <button type="button" class="icon-button ghost bottle-close" data-modal="close" aria-label="Cerrar">${icon('close')}</button>
-    <p class="eyebrow">${icon('paper')} Lo que se quedó a medias</p>
-    <h2>Ni una palabra perdida</h2>
-    <p class="modal-lead">Esto es lo que escribiste y todavía no está cerrado en el cuaderno. Se guarda solo en este dispositivo: nada viaja a ningún sitio.</p>
-    <ul class="draft-list">${rows}</ul>
-    <div class="modal-actions">
-      <button class="button outline" data-modal="close">Cerrar</button>
-      ${list.length?`<button class="button danger" data-modal="drop-all">${icon('trash')} Descartar todos</button>`:''}
-      <button class="button solid" data-modal="save-all">${icon('stamp')} Escribirlo todo ahora</button>
-    </div>
-  </div>`;
-}
-function draftLabel(scope){
-  if(scope.startsWith('entrada:'))return `La entrada del ${longDate(scope.slice(8),{day:'numeric',month:'long'})}`;
-  if(scope==='botella')return 'Una botella a medio escribir';
-  if(scope.startsWith('respuesta:'))return 'Una respuesta a una botella';
-  if(scope==='perfil')return 'Tu perfil';
-  return 'Un texto pendiente';
-}
-function openDraftsModal(){
-  const modal=showModal(draftsModalHtml());
-  modal.onclick=event=>{
-    const btn=event.target.closest('[data-modal]');
-    const act=btn?.dataset.modal;
-    if(!act){if(event.target===modal)modal.close();return;}
-    if(act==='close'){modal.close();render();return;}
-    if(act==='drop'){
-      clearDraft(btn.dataset.scope);
-      modal.innerHTML=draftsModalHtml();
-      setSaveState(pendingDrafts().total?'draft':'saved');
-      render();
-      modal.showModal();
-      toast('Borrador descartado');
-      return;
-    }
-    if(act==='drop-all'){
-      clearAllDrafts();
-      modal.close();
-      render();
-      toast('Todos los borradores descartados');
-      return;
-    }
-    if(act==='save-all'){
-      const before=pendingDrafts().total;
-      for(const d of listDrafts()){
-        if(d.scope.startsWith('entrada:')){
-          selected=d.scope.slice(8);
-          view='diary';
-          renderPage();
-          commitEntry({silent:false});
-        }else if(d.scope==='botella'&&draftData('botella')?.text){
-          castBottleFromDraft(draftData('botella'));
-        }else if(d.scope.startsWith('respuesta:')){
-          const rid=d.scope.slice(10);
-          const text=draftData(d.scope)?.text;
-          if(text){thoughts=updateThought(rid,{reply:text,seen:true,repliedAt:new Date().toISOString()});toast('Respuesta guardada');}
-        }
-      }
-      modal.close();
-      clearAllDrafts();
-      render();
-      toast(before?`Cerrados ${before} textos a medias`:'No había nada que escribir');
-      return;
-    }
-    if(act==='goto'){
-      modal.close();
-      openDay(btn.dataset.date);
-      return;
-    }
-  };
-}
-function castBottleFromDraft(data){
-  if(!data?.text)return;
-  try{
-    const id=crypto.randomUUID();
-    thoughts=saveThought({id,text:data.text,mood:data.mood||null,sea:data.sea||'breeze',castAt:dateKey()});
-    clearDraft(DRAFT_SCOPES.bottle());
-    bottleDraft={text:'',mood:null,sea:data.sea||'breeze'};
-    bottleDraftRestored='';
-    toast('Ya está fuera.');
-  }catch(err){toast(err.message||'No se pudo echar la botella al mar.',true);}
 }
 
 /* ================= INTERACCIÓN ================= */
@@ -2352,10 +2289,7 @@ function updateLiveIndicators(form){
     wordsChip.classList.toggle('pending',!n);
   }
 
-  const floatBar=document.querySelector('#floating-save');
-  if(floatBar)floatBar.classList.toggle('is-visible',dirty||saveState==='error');
-
-  /* el aviso no se re-monta en cada tecla: sólo cuando cambia de verdad */
+  /* El aviso no se re-monta en cada tecla: sólo cuando cambia de verdad. */
   const risk=detectCrisisRisk(draft);
   const show=risk.triggered&&risk.level==='high'&&!crisisBannerDismissed;
   const sig=show?`high:${(risk.reasons||[]).length}`:'none';
@@ -2393,8 +2327,8 @@ function bindAgeAndInterestsLivePreview(formEl,prefix){
       callout.innerHTML=`
         ${icon('compass')}
         <div>
-          <strong>Adaptado a: ${esc(previewProfile.group.title)} (${esc(previewProfile.group.label)})</strong>
-          <p>Sueño recomendado: <b>${f(previewProfile.sleepRecommended)} h</b> · Dedicación sugerida: <b>${f(previewProfile.studyRecommended)} h</b>.</p>
+          <strong>${esc(previewProfile.group.title)} · ${esc(previewProfile.group.label)}</strong>
+          <p>Sueño ${f(previewProfile.sleepRecommended)} h · dedicación ${f(previewProfile.studyRecommended)} h.</p>
         </div>`;
     }
 
@@ -2426,10 +2360,18 @@ function bindForm(){
       render();
       toast('Perfil actualizado');
     });
-    setupPageForm.addEventListener('change',event=>{
+  }
+
+  const appearanceForm=document.querySelector('#appearance-form');
+  if(appearanceForm){
+    appearanceForm.addEventListener('change',event=>{
       if(event.target.name==='theme'){
-        applyTheme(event.target.value,setup);
+        applyTheme(event.target.value,{...setup,theme:event.target.value});
       }
+    });
+    appearanceForm.addEventListener('submit',event=>{
+      event.preventDefault();
+      saveAppearanceFromForm(appearanceForm);
     });
   }
 
@@ -2441,7 +2383,6 @@ function bindForm(){
     commitEntry();
   });
   form.addEventListener('input',event=>{
-    dirty=true;
     const t=event.target;
     if(t.name==='mood'){
       const mObj=MOODS[+t.value-1];
@@ -2492,13 +2433,27 @@ function bindForm(){
           picker.insertAdjacentHTML('beforebegin',`<label class="tag-chip"><input type="checkbox" name="tags" value="${esc(value)}" checked><span>${esc(value)}</span></label>`);
         }
         event.target.value='';
-        dirty=true;
         updateLiveIndicators(form);
       }
     }
   });
 
   refreshCounterHints();
+}
+
+function saveAppearanceFromForm(formEl){
+  setup=saveSetup({
+    theme:formEl.querySelector('[name="theme"]:checked')?.value||setup.theme,
+    sidebarCollapsed:Boolean(formEl.querySelector('[name="sidebarCollapsed"]')?.checked),
+    showDailyWord:Boolean(formEl.querySelector('[name="showDailyWord"]')?.checked),
+    showDailyTip:Boolean(formEl.querySelector('[name="showDailyTip"]')?.checked),
+    reduceMotion:Boolean(formEl.querySelector('[name="reduceMotion"]')?.checked)
+  });
+  sidebarCollapsed=Boolean(setup.sidebarCollapsed);
+  syncMotionPreference();
+  applyTheme(setup.theme,setup);
+  render();
+  toast('Apariencia actualizada');
 }
 
 function saveSetupFromForm(formEl){
@@ -2530,12 +2485,14 @@ function saveSetupFromForm(formEl){
     theme:data.get('theme')||setup.theme,
     sleepGoal:parseFloat(data.get('sleepGoal'))||7.5,
     studyGoal:parseFloat(data.get('studyGoal'))??2,
-    showDailyWord:formEl.querySelector('[name="showDailyWord"]')?.checked??true,
-    showDailyTip:formEl.querySelector('[name="showDailyTip"]')?.checked??true,
-    sidebarCollapsed:hasSidebarToggle?Boolean(formEl.querySelector('[name="sidebarCollapsed"]')?.checked):sidebarCollapsed
+    showDailyWord:formEl.querySelector('[name="showDailyWord"]')?.checked??setup.showDailyWord,
+    showDailyTip:formEl.querySelector('[name="showDailyTip"]')?.checked??setup.showDailyTip,
+    sidebarCollapsed:hasSidebarToggle?Boolean(formEl.querySelector('[name="sidebarCollapsed"]')?.checked):setup.sidebarCollapsed,
+    reduceMotion:formEl.querySelector('[name="reduceMotion"]')?.checked??setup.reduceMotion
   });
   setup=nextSetup;
   sidebarCollapsed=Boolean(setup.sidebarCollapsed);
+  syncMotionPreference();
   applyTheme(setup.theme,setup);
 }
 
@@ -2676,9 +2633,17 @@ function openCrisisModal(initialTab='help'){
   };
 }
 
-function openSetupWizard(initialStep=1){
+function openSetupWizard(initialStep=1,{mandatory=false}={}){
   let currentStep=initialStep;
-  const modal=showModal(setupWizardModal(setup,habits,currentStep));
+  const modal=showModal(setupWizardModal(setup,habits,currentStep,mandatory));
+  mandatorySetupOpen=mandatory;
+  modal.oncancel=mandatory?event=>event.preventDefault():null;
+  modal.onclose=()=>{
+    if(mandatory&&!setup.completed){
+      mandatorySetupOpen=false;
+      queueMicrotask(()=>render());
+    }
+  };
   const formEl=modal.querySelector('#setup-wizard-form');
   bindAgeAndInterestsLivePreview(formEl,'wiz');
 
@@ -2692,7 +2657,7 @@ function openSetupWizard(initialStep=1){
     const eyebrow=modal.querySelector('.setup-wizard-header .eyebrow');
     const title=modal.querySelector('.setup-wizard-header h2');
     if(eyebrow)eyebrow.innerHTML=`${icon('sliders')} Paso ${currentStep} de 3`;
-    if(title)title.textContent=currentStep===1?'Sobre ti, tu edad y tus gustos':currentStep===2?'Tu ritmo y tus hábitos':'Papel e icono de tu cuaderno';
+    if(title)title.textContent=currentStep===1?'Tu perfil':currentStep===2?'Tu ritmo':'Tu papel';
     const stepsBar=modal.querySelectorAll('.wizard-steps-bar span');
     stepsBar.forEach((sp,idx)=>{
       sp.classList.toggle('done',currentStep>=idx+1);
@@ -2701,7 +2666,7 @@ function openSetupWizard(initialStep=1){
     const footer=modal.querySelector('.wizard-footer');
     if(footer){
       footer.innerHTML=`
-        ${currentStep>1?`<button type="button" class="button outline" data-wizard="prev">${icon('left')} Anterior</button>`:`<button type="button" class="button outline" data-modal="close">Ahora no</button>`}
+        ${currentStep>1?`<button type="button" class="button outline" data-wizard="prev">${icon('left')} Anterior</button>`:mandatory?'':`<button type="button" class="button outline" data-modal="close">Ahora no</button>`}
         <div style="flex:1"></div>
         ${currentStep<3
           ?`<button type="button" class="button solid" data-wizard="next">Siguiente ${icon('right')}</button>`
@@ -2719,15 +2684,21 @@ function openSetupWizard(initialStep=1){
   modal.onsubmit=event=>{
     event.preventDefault();
     if(formEl)saveSetupFromForm(formEl);
+    const wasMandatory=mandatory;
+    mandatorySetupOpen=false;
+    modal.oncancel=null;
     modal.close();
     render();
-    toast('Tu cuaderno se ha adaptado a tus gustos');
+    if(wasMandatory&&view==='thoughts')requestAnimationFrame(()=>playThoughtsEntryWave());
+    toast('Perfil actualizado');
   };
 
   modal.onclick=event=>{
     const closeBtn=event.target.closest('[data-modal="close"]');
     if(closeBtn || event.target===modal){
+      if(mandatory){event.preventDefault();return;}
       applyTheme(setup.theme,setup);
+      modal.oncancel=null;
       modal.close();
       return;
     }
@@ -2797,11 +2768,10 @@ function readEntry(date){
   };
 }
 
-function openDay(date,dir=''){
-  if(date>dateKey()){toast('Ese día todavía no ha llegado.',true);return;}
+function openDay(date){
+  if(date>dateKey()){toast('Aún no ha llegado.',true);return;}
   savePendingText();
-  pageTurnDir=dir||(date<selected?'prev':date>selected?'next':'');
-  dirty=false;selected=date;view='diary';menu=false;crisisBannerDismissed=false;render({transition:true});
+  selected=date;view='diary';menu=false;crisisBannerDismissed=false;updateRouteUrl();render({transition:true});
 }
 /* Antes de mudar de página o de día: se guarda lo escrito (y se autocommite si hay materia). */
 function savePendingText(){
@@ -2825,7 +2795,7 @@ function toggleSidebar(){
     const btn=sb.querySelector('.sidebar-collapse-btn');
     if(btn){
       btn.innerHTML=icon(sidebarCollapsed?'right':'left');
-      btn.title=sidebarCollapsed?'Desplegar menú (Ctrl+B)':'Plegar menú (Ctrl+B)';
+      btn.title=sidebarCollapsed?'Desplegar menú · Ctrl+B':'Plegar menú · Ctrl+B';
       btn.setAttribute('aria-expanded',String(!sidebarCollapsed));
     }
     sb.classList.add('is-animating');
@@ -2856,14 +2826,17 @@ function download(name,content){
 app.addEventListener('click',async event=>{
   const viewButton=event.target.closest('[data-view]');
   const actionButton=event.target.closest('[data-action]');
-  if(event.target.closest('.brand')){event.preventDefault();openDay(dateKey());return;}
+  const brand=event.target.closest('.brand');
+  if(brand){
+    if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey||event.button!==0)return;
+    event.preventDefault();
+    openDay(dateKey());
+    return;
+  }
   if(viewButton&&!actionButton){
-    const next=viewButton.dataset.view;
-    savePendingText();
-    dirty=false;
-    view=next;menu=false;panelEnter=true;
-    if(view==='diary')selected=dateKey();
-    render({transition:true});
+    if(viewButton.tagName==='A'&&(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey||event.button!==0))return;
+    event.preventDefault();
+    navigateToView(viewButton.dataset.view,{transition:true});
     return;
   }
   if(!actionButton)return;
@@ -2872,9 +2845,9 @@ app.addEventListener('click',async event=>{
     case 'menu':menu=!menu;render();break;
     case 'close-menu':menu=false;render();break;
     case 'toggle-sidebar':toggleSidebar();break;
-    case 'archive-tab':archiveTab=tab||'list';panelEnter=true;render();break;
-    case 'stats-tab':statsTab=tab||'pulse';panelEnter=true;render();break;
-    case 'profile-tab':profileTab=tab||'personal';panelEnter=true;render();break;
+    case 'archive-tab':archiveTab=tab||'list';updateRouteUrl();panelEnter=true;render();break;
+    case 'stats-tab':statsTab=tab||'pulse';updateRouteUrl();panelEnter=true;render();break;
+    case 'profile-tab':profileTab=tab||'personal';updateRouteUrl();panelEnter=true;render();break;
     case 'add-part':addPart();break;
     case 'part-preset':addPart(val);break;
     case 'part-type':{
@@ -2896,44 +2869,26 @@ app.addEventListener('click',async event=>{
       break;
     }
     case 'reset-counters':saveCustomization({counters:COUNTERS.map(c=>({...c}))},'Vuelta a los cuatro de siempre.');break;
-    case 'thoughts-tab':thoughtsTab=tab||'shore';panelEnter=true;render();break;
-    case 'show-drafts':openDraftsModal();break;
-    case 'commit-draft':commitEntry();break;
-    case 'discard-draft':{
-      confirmDialog({
-        title:'¿Descartar lo escrito a medias?',
-        text:'Se borrar el borrador de este día en este dispositivo. Lo que ya está guardado en el cuaderno se queda.',
-        confirmLabel:'Descartarlo',danger:true
-      }).then(ok=>{
-        if(!ok)return;
-        draftCancel('entrada');
-        draftCancel('autosave');
-        clearDraft(entryScope());
-        setSaveState('saved');
-        render();
-        toast('Borrador descartado');
-      });
-      break;
-    }
-    case 'discard-bottle-draft':{
-      draftCancel('botella');
-      clearDraft(DRAFT_SCOPES.bottle());
-      bottleDraft={text:'',mood:null,sea:bottleDraft.sea||'breeze'};
-      bottleDraftRestored='';
-      render();
-      toast('Borrador de la botella descartado');
-      break;
-    }
-    case 'routine-tab':routineTab=tab||'hoy';panelEnter=true;render();break;
+    case 'thoughts-tab':thoughtsTab=tab||'shore';thoughtsDrawerOpen=true;updateRouteUrl();panelEnter=true;render();break;
+    case 'toggle-thoughts-landscape':toggleThoughtsLandscape();break;
+    case 'routine-tab':routineTab=tab||'hoy';updateRouteUrl();panelEnter=true;render();break;
     case 'shift-day':{
       const next=addDays(selected,parseInt(delta||'1',10));
       if(next>dateKey()){toast('Ese día todavía no ha llegado.',true);break;}
       selected=next;render();window.scrollTo({top:0,behavior:'smooth'});break;
     }
     case 'today-routine':selected=dateKey();render();break;
+    case 'thoughts-island':{
+      const drawer=document.querySelector('#thoughts-bottles-drawer');
+      if(drawer){drawer.open=true;thoughtsDrawerOpen=true;}
+      break;
+    }
+    case 'thoughts-top':window.scrollTo({top:0,behavior:motionOn?'smooth':'auto'});break;
     case 'focus-composer':{
+      const drawer=document.querySelector('#thoughts-bottles-drawer');
+      if(drawer?.open){drawer.open=false;thoughtsDrawerOpen=false;}
       const el=document.querySelector('#bottle-text');
-      if(el){el.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>el.focus(),250);}
+      if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}
       break;
     }
     case 'toggle-habit':{
@@ -3019,17 +2974,43 @@ app.addEventListener('click',async event=>{
     case 'recast-bottle':{
       thoughts=recastThought(id);
       render();
-      toast('Vuelve a estar en el agua');
+      toast('Botella enviada de nuevo.');
       break;
     }
     case 'delete-bottle':requestDeleteBottle(id);break;
 
     case 'toggle-more-details':{
-      moreDetailsOpen=!moreDetailsOpen;
+      moreDetailsOpen=actionButton.getAttribute('aria-expanded')!=='true';
+      const closeToken=++extrasCloseToken;
       const acc=document.querySelector('#extras-accordion');
-      if(acc){
-        acc.classList.toggle('is-open',moreDetailsOpen);
-        actionButton.setAttribute('aria-expanded',String(moreDetailsOpen));
+      const panel=document.querySelector('#extras-panel');
+      actionButton.setAttribute('aria-expanded',String(moreDetailsOpen));
+      if(!acc||!panel)break;
+      if(moreDetailsOpen){
+        panel.hidden=false;
+        acc.classList.remove('is-closing');
+        acc.classList.add('is-open','is-revealing');
+        setTimeout(()=>acc.classList.remove('is-revealing'),360);
+      }else{
+        acc.classList.remove('is-open','is-revealing');
+        acc.classList.add('is-closing');
+        const finishClose=()=>{
+          if(!moreDetailsOpen&&closeToken===extrasCloseToken){
+            panel.hidden=true;
+            acc.classList.remove('is-closing');
+          }
+        };
+        if(!motionOn){finishClose();break;}
+        const onEnd=event=>{
+          if(event.target!==panel)return;
+          panel.removeEventListener('animationend',onEnd);
+          finishClose();
+        };
+        panel.addEventListener('animationend',onEnd);
+        setTimeout(()=>{
+          panel.removeEventListener('animationend',onEnd);
+          finishClose();
+        },260);
       }
       break;
     }
@@ -3059,10 +3040,6 @@ app.addEventListener('click',async event=>{
       break;
     }
     case 'open-setup-wizard':openSetupWizard(1);break;
-    case 'dismiss-setup-banner':
-      setup=saveSetup({completed:true});
-      document.querySelector('.setup-welcome-banner')?.remove();
-      break;
     case 'open-crisis-modal':openCrisisModal(tab||'help');break;
     case 'dismiss-crisis-banner':
       crisisBannerDismissed=true;
@@ -3121,7 +3098,6 @@ app.addEventListener('click',async event=>{
       const wordInput=document.querySelector('#wordOfDay');
       if(wordInput&&word){
         wordInput.value=word;
-        dirty=true;
         wordInput.dispatchEvent(new Event('input',{bubbles:true}));
         wordInput.classList.add('highlight-flash');
         setTimeout(()=>wordInput.classList.remove('highlight-flash'),900);
@@ -3162,13 +3138,8 @@ app.addEventListener('click',async event=>{
       }
       break;
     }
-    case 'quick-save':{
-      const form=document.querySelector('#diary-form');
-      if(form)form.requestSubmit();
-      break;
-    }
-    case 'previous':openDay(addDays(selected,-1),'prev');break;
-    case 'next':openDay(addDays(selected,1),'next');break;
+    case 'previous':openDay(addDays(selected,-1));break;
+    case 'next':openDay(addDays(selected,1));break;
     case 'today':openDay(dateKey());break;
     case 'open-day':openDay(date);break;
     case 'read':readEntry(date);break;
@@ -3176,8 +3147,8 @@ app.addEventListener('click',async event=>{
     case 'add-goal':
       document.querySelector('#goals').insertAdjacentHTML('beforeend',goalRow());
       document.querySelector('#goals .goal-row:last-child input')?.focus();
-      dirty=true;break;
-    case 'remove-goal':actionButton.closest('.goal-row').remove();dirty=true;break;
+      break;
+    case 'remove-goal':actionButton.closest('.goal-row').remove();break;
     case 'counter-plus':case 'counter-minus':{
       const input=document.querySelector(`[name="counter_${key}"]`);
       if(!input)break;
@@ -3228,11 +3199,31 @@ app.addEventListener('click',async event=>{
         text:'Se eliminarán todas las entradas, hábitos y preferencias de este navegador.',
         confirmLabel:'Borrar todo',danger:true
       })){
-        clearEntries();refresh();selected=dateKey();view='diary';render();
-        toast('Datos eliminados');
+        try{
+          clearEntries();
+          clearAllDrafts();
+          refresh();selected=dateKey();view='diary';updateRouteUrl();render();
+          toast('Datos eliminados');
+        }catch(err){toast(err.message||'No se han podido eliminar los datos.',true);}
       }
       break;
   }
+});
+
+app.addEventListener('keydown',event=>{
+  const current=event.target.closest('.settings-subnav-item[role="tab"]');
+  if(!current)return;
+  const tabs=[...app.querySelectorAll('.settings-subnav-item[role="tab"]')];
+  const currentIndex=tabs.indexOf(current);
+  const nextKey=['ArrowDown','ArrowRight'].includes(event.key)?1:['ArrowUp','ArrowLeft'].includes(event.key)?-1:0;
+  if(!nextKey)return;
+  event.preventDefault();
+  const next=tabs[(currentIndex+nextKey+tabs.length)%tabs.length];
+  profileTab=next.dataset.tab;
+  updateRouteUrl();
+  panelEnter=true;
+  render();
+  app.querySelector(`#settings-tab-${profileTab}`)?.focus();
 });
 
 app.addEventListener('change',event=>{
@@ -3253,7 +3244,10 @@ app.addEventListener('change',event=>{
         </div>`);
         modal.onclick=e=>{
           const a=e.target.closest('[data-modal]')?.dataset.modal;
-          if(a==='confirm'){importData(pendingImport);refresh();toast('Copia importada');}
+          if(a==='confirm'){
+            try{importData(pendingImport);refresh();toast('Copia importada');}
+            catch(err){toast(err.message||'No se ha podido importar la copia.',true);return;}
+          }
           if(a||e.target===modal){modal.close();render();}
         };
       }catch(err){toast(err.message||'No se ha podido importar el archivo.',true);}
@@ -3285,12 +3279,8 @@ window.addEventListener('keydown',event=>{
   }
 });
 
-/* El autoguardado ya escribe solo: solo molestamos si algo no ha podido guardarse. */
-window.addEventListener('beforeunload',event=>{
-  flushAllDrafts();
-  if(saveState==='error'){event.preventDefault();event.returnValue='';}
-});
-/* Otra pestaña toca el cuaderno: se refresca y el texto en curso sigue en el borrador. */
+window.addEventListener('beforeunload',flushAllDrafts);
+/* Otra pestaña toca el cuaderno: se refresca sin alterar el texto en curso. */
 window.addEventListener('storage',event=>{
   if(!event.key||!String(event.key).startsWith('diario.'))return;
   try{
@@ -3302,10 +3292,21 @@ window.addEventListener('storage',event=>{
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
-    const swUrl = `${import.meta.env.BASE_URL}sw.js`;
-    navigator.serviceWorker.register(swUrl).catch(() => {});
+    const scope=`${APP_BASE_PATH}/`;
+    const swUrl=`${scope}sw.js`;
+    navigator.serviceWorker.register(swUrl,{scope}).catch(() => {});
   });
 }
+
+applyRouteFromLocation();
+window.addEventListener('popstate',()=>{
+  savePendingText();
+  cancelThoughtsEntryWave();
+  menu=false;
+  applyRouteFromLocation();
+  panelEnter=true;
+  render({instant:true});
+});
 
 render();
 setSaveState('idle');
@@ -3315,24 +3316,13 @@ setSaveState('idle');
 const arrivalsAtBoot=shoreQueue(thoughts).filter(t=>t.seen!==true);
 if(arrivalsAtBoot.length){
   setTimeout(()=>{
-    toast(arrivalsAtBoot.length===1?'Ha vuelto una de tus botellas.':'Han vuelto un par de tus botellas.');
-    document.querySelectorAll('.shore-bottle').forEach((el,i)=>{
+    toast(arrivalsAtBoot.length===1?'Has recibido una botella.':`${arrivalsAtBoot.length} botellas recibidas.`);
+    document.querySelectorAll('.vault-arrival').forEach((el,i)=>{
       el.style.setProperty('--wash-delay',`${i*140}ms`);
       el.classList.add('is-washing');
     });
-    document.querySelector('.sea-panel')?.classList.add('is-rising');
-    setTimeout(()=>document.querySelector('.sea-panel')?.classList.remove('is-rising'),2600);
+    const vault=document.querySelector('.thought-vault');
+    vault?.classList.add('is-rising');
+    setTimeout(()=>vault?.classList.remove('is-rising'),1400);
   },820);
-}
-
-/* Y si algo se quedó a medias, se recupera solo: basta con decirlo. */
-const pend=awaitPendingNotice();
-function awaitPendingNotice(){
-  const drafts=pendingDrafts();
-  if(!drafts.total)return drafts;
-  const bits=[];
-  if(drafts.entries)bits.push(`${drafts.entries} ${drafts.entries===1?'entrada':'entradas'}`);
-  if(drafts.bottles)bits.push(`${drafts.bottles} ${drafts.bottles===1?'botella':'botellas'} a medio escribir`);
-  if(bits.length)setTimeout(()=>toast(`Recuperado lo que dejaste a medias: ${bits.join(' y ')}`),arrivalsAtBoot.length?2400:1100);
-  return drafts;
 }

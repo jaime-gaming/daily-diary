@@ -1,9 +1,10 @@
-# Diario · Un momento para ti
+# Diario · Tu espacio personal
 
-Diario personal, minimalista y **100 % local**. Sin backend, sin cuentas, sin IA y sin APIs externas:
-todos los resúmenes, estadísticas y tendencias se calculan en tu navegador con JavaScript, reglas y
-plantillas de texto. Las entradas se guardan en el `localStorage` de tu dispositivo y la aplicación
-funciona sin conexión después de la primera carga.
+Diario personal, minimalista y **100 % local**. La navegación se organiza alrededor de Hoy, Rutina,
+Archivo y Progreso; Pensamientos es un espacio opcional, no el tema de todo el cuaderno. Sin
+backend, sin cuentas, sin IA y sin APIs externas: los resúmenes, estadísticas y tendencias se
+calculan en tu navegador con JavaScript, reglas y plantillas de texto. Las entradas se guardan en
+`localStorage` y la aplicación funciona sin conexión después de la primera carga.
 
 ## Cómo usarlo
 
@@ -23,44 +24,30 @@ También puedes servir la carpeta `docs/` (build de producción) con cualquier s
 
 ## Qué incluye
 
-- **Hoy** — portada con captura rápida: estado de ánimo (1–5) en un clic, horas de sueño y
-  dedicación con atajos, «Tu página de hoy» (nota libre + palabra del día), etiquetas, energía,
-  estrés y tres cosas buenas. Los resúmenes se generan con reglas, nunca con IA.
-- **Pensamientos (el mar)** — notas rápidas que se escriben, se cierran en una botella y se tiran.
-  No hay que volver a mirar: cada botella sortea su travesía (cuatro mares, de «a la orilla» a
-  «alta mar», de 2 a 240 días) y, cuando toca, la marea viva la devuelve; algunas se pierden para
-  siempre. Al volver puedes leerla, responder a tu yo de entonces, anclarla al cuaderno o volver a
-  lanzarla. El clima del día (brisa, viento, temporal) existe, pero solo dentro del sorteo: cambia
-  lo que tarda y cuánto se aleja el agua, sin paneles ni pronósticos. Todo el azar se calcula en tu
-  navegador con una semilla derivada de tus palabras, la fecha y el mar elegido — y solo vuelven
-  pensamientos tuyos: no hay otros navegantes ni textos generados.
-- **Rutina** — pestaña propia para la tasklist: hábitos del día con rachas, rejilla de constancia
-  (35 días, se puede pintar cualquier día pasado), contadores (agua, ejercicio, lectura, pausa)
-  y la lista de «para mañana». Todo se guarda al instante, sin botón de guardar.
-- **Personalizar** (en *Perfil*) — el diario se monta con lo que tú necesites. En «Partes del diario» añades campos propios a la página de hoy (una línea o un párrafo), con presets —
-  cuerpo, cabeza, sueño, comida, entrenamiento, lectura, gratitud, pendiente, sueño de mañana —
-  y quitas los que sobran. En «Contadores» haces lo mismo con las cifras de la Rutina: nombre,
-  unidad y meta, con icono. Los que trae el cuaderno (agua, ejercicio, lectura, pausa) se pueden
-  editar y ocultar, y volver a los cuatro de siempre cuando quieras. Cada línea se edita en su
-  propio sitio y se guarda al salir del campo.
-- **Guardado a prueba de pestañas cerradas** — dos capas: (1) cada tecla escribe un *borrador*
-  local con su hora (`diario.drafts.v1`) y (2) si dejas de escribir dos segundos, el día se
-  autoguarda en el cuaderno. Al volver, lo que estaba a medias se recupera solo y te lo dice
-  («Recuperado de donde lo dejaste · hace 6 min»), con opciones de *Dejarlo escrito ya* o
-  *Descartar*. Un chip en la barra superior lista todos los textos pendientes. Se autoguarda
-  también al cambiar de día, al pulsar `Esc`, al cambiar de app y al cerrar la pestaña
-  (`pagehide`), y si otra pestaña modifica el cuaderno, esta se refresca sola. Nunca se crea una
-  entrada vacía por autoguardar.
-- **Movimiento** — un pequeño sistema de animaciones (curvas `--ease-ink`, `--ease-tide`,
-  `--ease-pop`) para la barra lateral con indicador deslizante, la entrada escalonada de las
-  tarjetas, el chapuzón de la botella, el papel que se despliega al abrirla, la espuma de la
-  orilla y las transiciones de vista. Todo se apaga solo si el sistema pide
-  `prefers-reduced-motion`.
+- **Rutas reales** — `/pensamientos` y sus vistas `/pensamientos/pendientes`, `/pensamientos/guardados`
+  y `/pensamientos/archivados`; `/rutina` con `/rutina/semana`, `/rutina/contadores` y `/rutina/rachas`;
+  `/archivo` y `/archivo/calendario`; `/progreso`, `/progreso/semana` y `/progreso/mes`; `/ajustes`,
+  `/ajustes/apariencia`, `/ajustes/contenido` y `/ajustes/datos`. Atrás y Adelante funcionan; el build crea páginas estáticas.
+- **Hoy** — ánimo, sueño, dedicación, notas, etiquetas, energía, estrés y gratitud. Las tendencias
+  y los resúmenes usan reglas locales.
+- **Pensamientos** — un espacio independiente. Las botellas no muestran ni permiten abrir el texto
+  mientras están a la deriva; solo se leen al volver. La fecha de regreso no aparece en pantalla.
+- **Rutina** — hábitos, rachas, constancia de 35 días, contadores y tareas para mañana.
+- **Ajustes** — perfil, apariencia, contenido y datos. Permite elegir temas, añadir campos y crear
+  contadores con unidad, meta e icono.
+- **Guardado local** — conserva cambios y borradores internos, recupera la escritura y sincroniza
+  al cerrar o cambiar de día. La interfaz no muestra avisos de borradores ni de autoguardado.
+- **Móvil** — cabecera compacta, acceso a Ajustes y navegación inferior con espacio para las áreas
+  seguras del dispositivo.
+- **Movimiento** — transiciones entre páginas y animaciones de tarjetas. Respeta
+  `prefers-reduced-motion` y la opción de reducir animaciones en Ajustes.
 - **Resumen del día** generado con plantillas `if/else` y frases fijas (sin ningún modelo).
 - **Historial** — tarjetas con búsqueda y filtro por estado; ver, editar y eliminar con confirmación.
 - **Calendario** — los días registrados se marcan con el color de su estado de ánimo.
-- **Estadísticas** — gráfico SVG de ánimo de 7/30 días, medias de sueño y estudio, racha actual,
-  evolución frente al período anterior y tendencias por reglas («parece coincidir», nunca causalidad).
+- **Estadísticas** — gráfico SVG adaptable con escalas explícitas para ánimo y sueño, huecos cuando
+  faltan días y meta de sueño. Incluye cobertura real (sin contar días futuros), media y mediana,
+  ignora métricas opcionales no registradas y evita duplicar días; las tendencias comparan medianas
+  y exigen más datos antes de sugerir asociaciones (nunca causalidad).
 - **Tu semana / Resumen del mes** — promedios, totales, mejores y peores días, rachas y un texto
   automático por plantillas.
 - **Privacidad y datos** — exportar/importar JSON, descargar copia y borrar todo, con confirmación.
@@ -76,7 +63,8 @@ src/
 ├── data/constants.js     # estados de ánimo, etiquetas y las piezas que se pueden personalizar
 ├── utils/
 │   ├── dates.js          # fechas, número de día, semanas, meses, calendario
-│   ├── stats.js          # medias, rachas (diario y por hábito), resúmenes, tendencias
+│   ├── routes.js         # rutas, subpáginas, URL y base del sitio
+│   ├── stats.js          # métricas, mediana, cobertura, rachas y tendencias
 │   ├── ocean.js          # mareas, clima, sorteo del viaje y estado de cada botella
 │   ├── drafts.js         # los borradores: que nada se quede a medias
 │   └── storage.js        # validar, guardar, cargar, borrar, exportar, importar
@@ -84,7 +72,7 @@ src/
 │   ├── main.css          # identidad de papel, portada, diario, rutina, archivo, progreso
 │   ├── sea.css           # el mar y sus animaciones (agua, orilla, botellas, chapuzón)
 │   └── motion.css        # sistema de movimiento, barra lateral y transiciones de vista
-└── main.js               # navegación (Hoy · Pensamientos · Rutina · Archivo · Progreso · Perfil) y las vistas
+└── main.js               # navegación (Hoy · Archivo · Rutina · Progreso · Pensamientos · Ajustes) y las vistas
 public/                   # icono, manifest y service worker offline
 tests/                    # pruebas de las funciones puras y de pintado (npm test)
 ```
@@ -148,7 +136,7 @@ de la Rutina y `parts`, las partes de la entrada:
   las entradas nunca se rompen por un número raro en un contador propio: se ignora la cifra.
 - El contador del agua usa como meta tu `waterGoal` del perfil; los demás llevan su meta propia.
 - Hay ocho rótulos de partida (`COUNTERS` en `src/data/constants.js`) y ocho presets de escritura
-  (`PART_PRESETS`). Añadir uno nuevo es, literalmente, un botón en *Perfil → Personalizar*.
+  (`PART_PRESETS`). Añadir uno nuevo es, literalmente, un botón en *Ajustes → Contenido*.
 
 Los pensamientos viajan en `diario.thoughts.v1`. El parte del día en que la tiraste es una función
 determinista de la fecha, así que viaja dentro de la botella y no necesita red:
@@ -198,8 +186,10 @@ texto viejo ni duplica nada.
 Este repositorio está configurado para **GitHub Pages por branch**, sin usar GitHub Actions.
 
 - El build de producción se genera en `docs/` (`vite.config.js` → `outDir: 'docs'`).
-- `docs/` incluye `.nojekyll` para que GitHub Pages sirva los assets tal cual.
-- `base: './'` en Vite permite que funcione tanto en `usuario.github.io/daily-diary/` como en dominio propio.
+- `docs/` incluye `.nojekyll` para que GitHub Pages sirva los assets tal cual y publica un `index.html`
+  por cada ruta para admitir enlaces directos en hosting estático.
+- `base: './'` en Vite y los enlaces relativos permiten que funcione tanto en
+  `usuario.github.io/daily-diary/` como en dominio propio.
 
 **Pasos para activar Pages:**
 
