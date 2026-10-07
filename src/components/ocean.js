@@ -8,7 +8,7 @@
 import {icon,escape as esc} from './ui.js';
 import {MOODS} from '../data/constants.js';
 import {dateKey} from '../utils/dates.js';
-import {GLASS_TINTS,fateOf,canOpenBottle,groupBottles,thoughtWordCount,hashSeed,weatherOf,sunPosition,tideInfo} from '../utils/ocean.js';
+import {GLASS_TINTS,fateOf,canOpenBottle,groupBottles,thoughtWordCount,hashSeed,weatherOf,sunPosition,tideInfo,voyageLine} from '../utils/ocean.js';
 
 export const tintOf=bottle=>GLASS_TINTS.find(g=>g.id===bottle?.glass)||GLASS_TINTS[0];
 
@@ -243,6 +243,42 @@ export function seaPanel(thoughts=[],today=dateKey(),now=new Date()){
   </section>`;
 }
 /* ---------- escribir y soltar ---------- */
+/* ---------- las cuentas del mar ----------
+   Todo lo que se enseña aquí sale de las botellas que hay: cuántas se han
+   soltado, cuántas han vuelto, cuántas siguen en camino y cuánto han navegado. */
+export function oceanFigures(stats){
+  if(!stats||!stats.sent){
+    return `<div class="ocean-figures is-empty">
+      <p>Aún no has echado ninguna botella. Escribe algo y suéltalo: el mar se encarga del resto.</p>
+    </div>`;
+  }
+  const miles=stats.miles>=1000?`${Math.round(stats.miles/100)/10}k`:`${stats.miles}`;
+  return `<div class="ocean-figures">
+    <div class="ocean-figure">
+      <strong>${stats.sent}</strong>
+      <span>${stats.sent===1?'botella echada':'botellas echadas'}</span>
+    </div>
+    <div class="ocean-figure">
+      <strong>${stats.drifting}</strong>
+      <span>en camino</span>
+    </div>
+    <div class="ocean-figure">
+      <strong>${stats.returned}</strong>
+      <span>${stats.returned===1?'recibida':'recibidas'}</span>
+    </div>
+    <div class="ocean-figure">
+      <strong>${stats.lost}</strong>
+      <span>${stats.lost===1?'perdida':'perdidas'}</span>
+    </div>
+    <p class="ocean-figures-note">
+      ${stats.returnPct===null?'Todavía no ha vuelto ninguna.':`Han vuelto el ${stats.returnPct}% de las que ya terminaron su viaje.`}
+      ${stats.miles?` Llevan ${miles} millas navegadas en total.`:''}
+      ${stats.oldestAtSea?` La más vieja sigue en el agua desde hace ${stats.oldestAtSea.days} ${stats.oldestAtSea.days===1?'día':'días'}.`:''}
+      ${stats.answered?` Has respondido ${stats.answered} ${stats.answered===1?'botella':'botellas'}.`:''}
+    </p>
+  </div>`;
+}
+
 export function bottleCountOnly(count=0,state='sent'){
   const numeric=Number(count);
   const total=Number.isFinite(numeric)?Math.max(0,Math.floor(numeric)):0;
@@ -290,6 +326,7 @@ export function bottleCard(bottle,today=dateKey(),index=0){
         <div class="bottle-card-who"><p class="field-caption">${detail}</p><h3>${state}</h3></div>
         ${fate==='drifting'?`<span class="bottle-lock-mark" aria-hidden="true">${icon('lock')}</span>`:''}
       </header>
+      <p class="bottle-card-journey">${esc(voyageLine(bottle,today))}</p>
       <footer class="bottle-card-foot">
         ${fate==='lost'?`<button type="button" class="text-button" data-action="recast-bottle" data-id="${bottle.id}">Soltar otra vez</button>`:''}
         ${remove}
@@ -305,6 +342,7 @@ export function bottleCard(bottle,today=dateKey(),index=0){
       ${bottle.kept?`<span class="kept-mark" title="Guardado">${icon('bookmark')}</span>`:''}
     </header>
     <p class="bottle-card-text ${thoughtWordCount(bottle.text)<=26?'is-short':''}">${esc(bottle.text)}</p>
+    <p class="bottle-card-journey">${esc(voyageLine(bottle,today))}</p>
     ${bottle.reply?`<p class="bottle-card-reply"><span>Respuesta</span> ${esc(bottle.reply)}</p>`:''}
     <footer class="bottle-card-foot">
       <button type="button" class="button outline small-btn" data-action="open-bottle" data-id="${bottle.id}" aria-label="${unread?'Abrir botella nueva':'Abrir botella recibida'}">Abrir</button>
@@ -328,14 +366,14 @@ export function bottleModal(bottle,today=dateKey(),setup={}){
     </div>
     ${bottle.reply?`<div class="bottle-reply-box"><span>Respuesta</span><p>${esc(bottle.reply)}</p></div>`:`
       <div class="bottle-reply-form">
-        <label for="bottle-reply">Responder</label>
+        <label for="bottle-reply">Tu respuesta</label>
         <textarea id="bottle-reply" maxlength="1200" rows="3" data-draft="respuesta:${bottle.id}:text" placeholder="Tu respuesta…">${esc(bottle.replyDraft||'')}</textarea>
       </div>`}
     <div class="modal-actions">
       <button class="button outline" data-modal="close">Cerrar</button>
       ${bottle.reply?`<button class="button outline" data-modal="reply-clear">Quitar respuesta</button>`:`<button class="button outline" data-modal="reply">Responder</button>`}
-      <button class="button outline" data-modal="keep">${bottle.kept?'Quitar de guardados':'Guardar'}</button>
-      <button class="button solid" data-modal="to-entry">Guardar hoy</button>
+      <button class="button outline" data-modal="keep" title="Se queda en la isla, en tu lista de guardadas">${bottle.kept?'Quitar de guardadas':'Guardar en la isla'}</button>
+      <button class="button solid" data-modal="to-entry" title="Añade este pensamiento al día de hoy">${icon('pen')} Llevar al diario</button>
     </div>
   </div>`;
 }

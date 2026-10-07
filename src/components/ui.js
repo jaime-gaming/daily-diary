@@ -1,6 +1,6 @@
 import {MOODS,WEEKDAYS,CRISIS_HELPLINES,THEMES,AGE_GROUPS,INTEREST_OPTIONS,WRITING_RITUALS,TONE_STYLES,counterGoal,COUNTERS} from '../data/constants.js';
 import {dateKey,generateCalendar,longDate,dayNumber,addDays} from '../utils/dates.js';
-import {formatNumber,counterInterpretation} from '../utils/stats.js';
+import {formatNumber,counterInterpretation,weekdayStats,weekdayInsight} from '../utils/stats.js';
 import {getDailyWord,getDailyTip,getContextualAdvice,getAgeProfile,getPersonalQuote,calculateGoalStats,generateThemeFaviconSvg} from '../utils/wellbeing.js';
 
 const ICONS={
@@ -374,6 +374,40 @@ export function rankRow(label,entry,field='mood'){
   </div>`;
 }
 
+/* ---------- la semana, día a día ----------
+   «¿Qué días se me dan mejor?» respondido con las entradas propias: el ánimo
+   medio de cada día de la semana y lo que se cumple la rutina. */
+export function weekdayPanel(entries=[],habits=[],today=dateKey()){
+  const rows=weekdayStats(entries,habits,today);
+  const withMood=rows.filter(row=>row.moodCount>0).length;
+  const withHabits=habits.length?rows.filter(row=>row.entries>0).length:0;
+  const moodColor=value=>value===null?'var(--rule-strong)':MOODS[Math.min(4,Math.max(0,Math.round(value)-1))].color;
+  const body=withMood<2&&withHabits<2
+    ?`<p class="habit-empty">Con unos cuantos días más podrás ver aquí qué días de la semana se te dan mejor.</p>`
+    :`<div class="weekday-grid" role="table" aria-label="Ánimo y rutina por día de la semana">
+        <span class="weekday-head" role="columnheader">Día</span>
+        <span class="weekday-head" role="columnheader">Ánimo</span>
+        <span class="weekday-head" role="columnheader">Rutina</span>
+        ${rows.map(row=>`<span class="weekday-name" role="rowheader">${row.name}</span>
+          <span class="weekday-cell">
+            <span class="weekday-bar" role="img" aria-label="${row.moodCount?`Ánimo medio ${formatNumber(row.mood)} de 5 en ${row.entries} ${row.entries===1?'día':'días'}`:'sin datos de ánimo'}"><i style="width:${row.mood===null?0:Math.round(row.mood/5*100)}%;background:${moodColor(row.mood)}"></i></span>
+            <strong>${row.mood===null?'—':formatNumber(row.mood)}</strong>
+          </span>
+          <span class="weekday-cell">
+            <span class="weekday-bar is-habit" role="img" aria-label="${row.habitPct===null?'sin días registrados':`Rutina cumplida el ${row.habitPct}% de las casillas`}"><i style="width:${row.habitPct??0}%"></i></span>
+            <strong>${row.habitPct===null?'—':`${row.habitPct}%`}</strong>
+          </span>`).join('')}
+      </div>
+      <p class="weekday-insight">${escape(weekdayInsight(rows,'mood')||'Tu ánimo se parece bastante todos los días.')}${habits.length?` ${escape(weekdayInsight(rows,'habit'))}`:''}</p>`;
+  return `<section class="card weekday-card">
+    <div class="section-heading">
+      <div><p class="eyebrow">${icon('chart')} Tu semana</p><h2>Qué días se te dan mejor</h2></div>
+      <span class="field-caption">solo días registrados</span>
+    </div>
+    ${body}
+  </section>`;
+}
+
 export function emptyState(title,text,action=''){
   return `<div class="empty-state">
     ${icon('leaf')}
@@ -574,7 +608,8 @@ export function setupWizardModal(setup={},habits=[],step=1,mandatory=false){
       <span class="${step>=3?'done':''} ${step===3?'current':''}">3. Papel</span>
     </div>
 
-    <form id="setup-wizard-form">
+    <form id="setup-wizard-form" novalidate>
+      <p class="form-alert" id="setup-wizard-alert" role="alert" hidden></p>
       <div class="wizard-step-body ${step===1?'active':''}" data-step="1" ${step===1?'':'hidden'}>
         <div class="setup-name-age-row">
           <div class="setup-field">
@@ -584,9 +619,10 @@ export function setupWizardModal(setup={},habits=[],step=1,mandatory=false){
           <div class="setup-field">
             <label for="setup-age">¿Cuántos años tienes?</label>
             <div class="age-input-wrap">
-              <input id="setup-age" name="age" type="number" min="10" max="110" step="1" placeholder="Ej. 20" value="${setup.age??''}">
+              <input id="setup-age" name="age" type="number" min="8" max="115" step="1" inputmode="numeric" placeholder="Ej. 20" value="${setup.age??''}" aria-describedby="setup-age-hint">
               <span>años</span>
             </div>
+            <small class="field-hint" id="setup-age-hint">Opcional · entre 8 y 115 años</small>
           </div>
         </div>
 
@@ -630,21 +666,21 @@ export function setupWizardModal(setup={},habits=[],step=1,mandatory=false){
           <div class="setup-field">
             <label for="setup-sleep">${icon('moon')} Meta de sueño</label>
             <div class="number-wrap">
-              <input id="setup-sleep" name="sleepGoal" type="number" min="4" max="14" step="0.5" value="${setup.sleepGoal??profile.sleepRecommended}">
+              <input id="setup-sleep" name="sleepGoal" type="number" min="4" max="14" step="any" inputmode="decimal" value="${setup.sleepGoal??profile.sleepRecommended}">
               <span>h / día</span>
             </div>
           </div>
           <div class="setup-field">
             <label for="setup-study">${icon('study')} Meta de dedicación</label>
             <div class="number-wrap">
-              <input id="setup-study" name="studyGoal" type="number" min="0" max="16" step="0.5" value="${setup.studyGoal??profile.studyRecommended}">
+              <input id="setup-study" name="studyGoal" type="number" min="0" max="16" step="any" inputmode="decimal" value="${setup.studyGoal??profile.studyRecommended}">
               <span>h / día</span>
             </div>
           </div>
           <div class="setup-field">
             <label for="setup-water">${icon('drop')} Vasos de agua</label>
             <div class="number-wrap">
-              <input id="setup-water" name="waterGoal" type="number" min="1" max="25" step="1" value="${setup.waterGoal??8}">
+              <input id="setup-water" name="waterGoal" type="number" min="1" max="25" step="any" inputmode="numeric" value="${setup.waterGoal??8}">
               <span>vasos</span>
             </div>
           </div>

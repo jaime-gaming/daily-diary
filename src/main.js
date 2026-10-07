@@ -26,12 +26,15 @@ import {
 import {
   loadEntries,saveEntry,deleteEntry,clearEntries,exportData,parseImport,importData,
   loadHabits,saveHabit,deleteHabit,loadSetup,saveSetup,ageGroupFromAge,
-  loadThoughts,saveThought,updateThought,deleteThought,recastThought
+  loadThoughts,saveThought,updateThought,deleteThought,recastThought,
+  validateSetup,DEFAULT_SETUP,SaveError
 } from './utils/storage.js';
-import {groupBottles,shoreQueue,canOpenBottle,sunPosition} from './utils/ocean.js';
-import {seaPanel,bottleComposer,bottleCard,bottleModal,bottleCountOnly,castSplash,wavesSvg,islandSceneSvg,castSplashPoint} from './components/ocean.js';
-import {DRAFT_SCOPES,setDraft,draftData,clearDraft,draftIsNewer,clearAllDrafts} from './utils/drafts.js';
-import {habitBoard,momentumGrid,habitStatsList,habitComposer,countersBoard,tomorrowBoard,routineTeaser,progressRing} from './components/habits.js';
+import {readSetupFields,setupPatchFromFields,setupStepNotes,setupStepValues,SETUP_LIMITS} from './utils/setupForm.js';
+import {saveIssue,onSaveChange,retryPending,hasPendingWrites,pendingWriteCount} from './utils/persist.js';
+import {groupBottles,shoreQueue,canOpenBottle,sunPosition,oceanStats,voyageLine} from './utils/ocean.js';
+import {seaPanel,bottleComposer,bottleCard,bottleModal,bottleCountOnly,castSplash,wavesSvg,islandSceneSvg,castSplashPoint,oceanFigures} from './components/ocean.js';
+import {DRAFT_SCOPES,setDraft,draftData,clearDraft,draftIsNewer,clearAllDrafts,listDrafts,draftTitle,draftSummary,DRAFTS_KEY} from './utils/drafts.js';
+import {habitBoard,momentumGrid,habitStatsList,habitComposer,countersBoard,tomorrowBoard,tomorrowTaskRow,routineTeaser,progressRing} from './components/habits.js';
 import {
   detectCrisisRisk,getWritingPrompt,calculateEntryCompletion,getGreeting,getAgeProfile,
   generateThemeFaviconDataUri,generateThemeFaviconSvg
@@ -40,19 +43,20 @@ import {
   icon,escape as esc,calendar,scaleField,tagPicker,
   moodChart,moodHeatmap,personalGoalsPanel,personalQuoteCard,exLibrisBadge,
   ledger,rankRow,emptyState,meterRows,crisisBanner,crisisSupportModal,
-  dailyInspirationSection,setupWizardModal
+  dailyInspirationSection,setupWizardModal,weekdayPanel
 } from './components/ui.js';
 
 const app=document.querySelector('#app');
 const APP_BASE_PATH=inferBasePath([...document.querySelectorAll('script[src]')].map(script=>script.src),window.location.origin);
-let entries=[],habits=[],thoughts=[],setup=loadSetup(),storageError='',view='diary',selected=dateKey(),month=dateKey(),miniMonth=dateKey(),
+let entries=[],habits=[],thoughts=[],setup={...DEFAULT_SETUP},storageError='',view='diary',selected=dateKey(),month=dateKey(),miniMonth=dateKey(),
     thoughtsTab='shore',routineTab='hoy',bottleDraft={text:'',mood:null,sea:'breeze',force:3},oceanAnimating=false,thoughtsLandscapeOnly=false,
     period=7,menu=false,sidebarCollapsed=false,historyQuery='',historyMood='',historyTag='',historyLayout='grid',
     archiveTab='list',statsTab='pulse',profileTab='personal',moreDetailsOpen=null,
     pendingImport=null,wordOffset=0,tipOffset=0,promptOffset=0,quoteOffset=0,showWritingPrompt=false,focusWriting=false,
     crisisBannerDismissed=false,breathingTimer=null,extrasCloseToken=0,
     oceanFilter='',lastView='',saveState='idle',shellMounted=false,motionOn=true,panelEnter=true,
-    thoughtClockTimer=null,thoughtsDrawerOpen=false,mandatorySetupOpen=false,castSplashClassTimer=null;
+    thoughtClockTimer=null,thoughtsDrawerOpen=false,mandatorySetupOpen=false,castSplashClassTimer=null,
+    saveHealthSignature='',draftNoticeShown=false;
 const thoughtsEntryWaveGuard=createTransitionGuard();
 /* Movimiento: respetamos tanto el sistema como la preferencia del cuaderno. */
 let motionQuery=null;
@@ -247,6 +251,7 @@ function shell(){
   </div>
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="stamp" aria-hidden="true"></div>
+  <div id="save-health" class="save-health" role="status" aria-live="polite" hidden></div>
   <dialog id="modal"></dialog>`;
 }
 
@@ -338,19 +343,67 @@ function syncShell(){
   positionRails();
 }
 
+let insideRender=false;
 function render(opts={}){
-  applyTheme(setup.theme,setup);
-  if(!shellMounted){
-    app.innerHTML=shell();
-    shellMounted=true;
-    initShell();
+  /* Un repintado destruye el formulario: lo primero es dejar a salvo lo que
+     hubiera escrito (borrador + autoguardado). */
+  if(insideRender)return;
+  insideRender=true;
+  try{
+    flushAllDrafts();
+    applyTheme(setup.theme,setup);
+    if(!shellMounted){
+      app.innerHTML=shell();
+      shellMounted=true;
+      initShell();
+    }
+    renderPage(opts);
+    syncShell();
+    syncSaveHealth();
+    if(!setup.completed&&!mandatorySetupOpen){
+      mandatorySetupOpen=true;
+      openSetupWizard(1,{mandatory:true});
+    }
+  }finally{
+    insideRender=false;
   }
-  renderPage(opts);
-  syncShell();
-  if(!setup.completed&&!mandatorySetupOpen){
-    mandatorySetupOpen=true;
-    openSetupWizard(1,{mandatory:true});
+}
+
+/* ============================================================
+   SI NO SE PUEDE GUARDAR, SE DICE
+   ------------------------------------------------------------
+   El cuaderno no da la lata con avisos de autoguardado, pero cuando el
+   navegador rechaza una escritura hay que enterarse: aparece una píldora
+   con el motivo y dos salidas (reintentar o descargar una copia), y se
+   avisa antes de cerrar la pestaña si algo sigue sin escribirse.
+   ============================================================ */
+function saveHealthLabel(issue){
+  if(!issue)return '';
+  const reason=issue.reason==='full'?'el almacenamiento del navegador está lleno'
+    :issue.reason==='blocked'?'el navegador tiene bloqueado el almacenamiento'
+    :'el navegador no ha aceptado la escritura';
+  const count=pendingWriteCount();
+  return `${issue.label} sin guardar: ${reason}.${count>1?` (${count} escrituras en espera)`:''}`;
+}
+function syncSaveHealth(){
+  const slot=document.querySelector('#save-health');
+  const issue=saveIssue();
+  const signature=issue?`${issue.key}|${issue.reason}|${pendingWriteCount()}`:'';
+  if(slot&&signature!==saveHealthSignature){
+    saveHealthSignature=signature;
+    if(!issue){
+      slot.hidden=true;
+      slot.innerHTML='';
+    }else{
+      slot.hidden=false;
+      slot.innerHTML=`
+        <span class="save-health-dot" aria-hidden="true"></span>
+        <span class="save-health-text">${esc(saveHealthLabel(issue))}</span>
+        <button type="button" class="text-button" data-action="retry-save">Reintentar</button>
+        <button type="button" class="text-button" data-action="export">Descargar copia</button>`;
+    }
   }
+  return issue;
 }
 
 function cancelThoughtsEntryWave(){
@@ -846,6 +899,7 @@ function thoughtsPage(){
           <div><p class="island-kicker">La orilla</p><h2>Tu isla</h2></div>
           <span class="thoughts-drawer-returned">${groups.returned.length} recibidas</span>
         </header>
+        ${oceanFigures(oceanStats(thoughts,today))}
         <div class="thoughts-island-bottles">
           <div class="segmented ocean-tabs" role="tablist" aria-label="Estado de las botellas">
             ${tabs.map(([id,ico,label,count])=>`<button type="button" id="thoughts-tab-${id}" role="tab" aria-controls="ocean-body" aria-selected="${thoughtsTab===id}" data-action="thoughts-tab" data-tab="${id}" class="${thoughtsTab===id?'active':''}">
@@ -1130,9 +1184,11 @@ function statsPulseBody(){
     ${ledger('Sueño habitual',s.metricCounts.sleep?f(s.sleepMedian):'—','h',s.metricCounts.sleep?`media ${f(s.sleep)} h`:'sin datos')}
     ${ledger(profile.focusLabel,s.metricCounts.study?f(s.study):'—','h',evolution('study',' h'))}
     ${ledger('Racha actual',currentStreak(entries),'días',`${maxStreak(entries)} días · mejor racha`)}
+    ${ledger('Palabras escritas',s.words?f(s.words):'—','',s.words?`${f(Math.round(s.words/s.count))} por día anotado`:'sin texto todavía')}
   </div>
   <p class="analytics-footnote">Solo días registrados.</p>
   ${personalGoalsPanel(recent,setup)}
+  ${weekdayPanel(entries,habits,today)}
   <section class="card chart-card">
     <div class="section-heading">
       <h2>Ánimo y sueño</h2>
@@ -1154,12 +1210,12 @@ function statsPulseBody(){
     <section class="card">
       <h2>Tendencias detectadas</h2>
       <div style="margin-top:10px">
-        ${trends.length?trends.map(t=>`<p class="trend-item">${icon('arrow')}<span>${t}</span></p>`).join(''):'<p class="habit-empty">Sin tendencias.</p>'}
+        ${trends.length?trends.map(t=>`<p class="trend-item">${icon('arrow')}<span>${t}</span></p>`).join(''):'<p class="habit-empty">Todavía no hay tendencias claras: hacen falta unos cuantos días de cada semana para poder compararlas.</p>'}
       </div>
     </section>
     <section class="card">
       <h2>Etiquetas más frecuentes</h2>
-      ${tagFrequency(recent).length?meterRows(tagFrequency(recent).slice(0,6).map(([t,c])=>({label:t,count:c,total:recent.length,color:'var(--red)'}))):'<p class="habit-empty">Sin etiquetas.</p>'}
+      ${tagFrequency(recent).length?meterRows(tagFrequency(recent).slice(0,6).map(([t,c])=>({label:t,count:c,total:recent.length,color:'var(--red)'}))):'<p class="habit-empty">Sin etiquetas en estos días: al escribir el día puedes marcar las que te representen.</p>'}
     </section>
   </div>`;
 }
@@ -1380,7 +1436,8 @@ function setupFormBody(){
   const profile=getAgeProfile(setup);
   const existingNames=new Set(habits.map(h=>h.name.toLowerCase()));
   const selectedInterests=new Set(setup.interests||[]);
-  return `<form id="setup-page-form" class="setup-page-grid">
+  return `<form id="setup-page-form" class="setup-page-grid" novalidate>
+    <p class="form-alert" id="setup-page-alert" role="alert" hidden></p>
     <section class="card">
       <h2>Perfil</h2>
       <div class="setup-name-age-row">
@@ -1391,9 +1448,10 @@ function setupFormBody(){
         <div class="setup-field">
           <label for="sp-age">Tu edad</label>
           <div class="age-input-wrap">
-            <input id="sp-age" name="age" type="number" min="10" max="110" step="1" placeholder="Ej. 20" value="${setup.age??''}">
+            <input id="sp-age" name="age" type="number" min="8" max="115" step="1" inputmode="numeric" placeholder="Ej. 20" value="${setup.age??''}" aria-describedby="sp-age-hint">
             <span>años</span>
           </div>
+          <small class="field-hint" id="sp-age-hint">Opcional · entre 8 y 115 años</small>
         </div>
       </div>
 
@@ -1467,11 +1525,11 @@ function setupFormBody(){
       <div class="goals-setup-grid">
         <div class="setup-field">
           <label for="sp-sleep">${icon('moon')} Meta de sueño · h</label>
-          <input id="sp-sleep" name="sleepGoal" type="number" min="4" max="14" step="0.5" value="${setup.sleepGoal}">
+          <input id="sp-sleep" name="sleepGoal" type="number" min="4" max="14" step="any" inputmode="decimal" value="${setup.sleepGoal}">
         </div>
         <div class="setup-field">
           <label for="sp-study">${icon('study')} Meta de dedicación · h</label>
-          <input id="sp-study" name="studyGoal" type="number" min="0" max="16" step="0.5" value="${setup.studyGoal}">
+          <input id="sp-study" name="studyGoal" type="number" min="0" max="16" step="any" inputmode="decimal" value="${setup.studyGoal}">
         </div>
       </div>
       <div class="setup-field" style="margin-top:16px">
@@ -1561,8 +1619,69 @@ function appearanceFormBody(){
   </form>`;
 }
 
+/* Los textos a medias también se pueden rescatar a mano: si algo no volvió
+   solo a su sitio, aquí está, con su día y su hora. */
+function draftsRecoveryBody(){
+  const list=listDrafts().filter(d=>d.data&&Object.keys(d.data).length);
+  if(!list.length)return '';
+  return `<section class="card drafts-card">
+    <div class="section-heading">
+      <div><p class="eyebrow">${icon('pen')} Sin terminar</p><h2>Textos a medias</h2></div>
+      <span class="field-caption">${list.length} ${list.length===1?'borrador':'borradores'}</span>
+    </div>
+    <p class="drafts-lead">Se guardan solos mientras escribes. Puedes volver a ellos cuando quieras o descartarlos.</p>
+    <ul class="drafts-list">
+      ${list.map(d=>{
+        const summary=draftSummary(d.scope);
+        const detail=summary?[summary.words?`${summary.words} ${summary.words===1?'palabra':'palabras'}`:'',summary.when].filter(Boolean).join(' · '):'';
+        return `<li class="drafts-row" data-draft-row="${esc(d.scope)}">
+          <div class="drafts-row-info">
+            <strong>${esc(draftTitle(d.scope))}</strong>
+            ${detail?`<small>${esc(detail)}</small>`:''}
+          </div>
+          <div class="drafts-row-actions">
+            <button type="button" class="button outline small" data-action="open-draft" data-scope="${esc(d.scope)}">Recuperar</button>
+            <button type="button" class="icon-button ghost" data-action="discard-draft" data-scope="${esc(d.scope)}" aria-label="Descartar ${esc(draftTitle(d.scope))}">${icon('close')}</button>
+          </div>
+        </li>`;
+      }).join('')}
+    </ul>
+  </section>`;
+}
+
+/* Lleva al sitio donde vive un borrador y lo deja listo para seguir. */
+function openDraft(scope){
+  if(scope.startsWith('entrada:')){
+    const date=scope.slice('entrada:'.length);
+    if(/^\d{4}-\d{2}-\d{2}$/.test(date)&&date<=dateKey()){
+      openDay(date);
+      toast('Ahí tienes lo que escribiste.');
+      return;
+    }
+  }
+  if(scope==='botella'){
+    view='thoughts';thoughtsTab='shore';updateRouteUrl();panelEnter=true;render();
+    toast('Tu botella sigue esperando, lista para soltar.');
+    return;
+  }
+  if(scope==='perfil'){
+    view='setup';profileTab='personal';updateRouteUrl();panelEnter=true;render();
+    toast('Sigue donde lo dejaste.');
+    return;
+  }
+  if(scope==='asistente'){openSetupWizard(1);return;}
+  if(scope.startsWith('respuesta:')){
+    const id=scope.slice('respuesta:'.length);
+    const bottle=thoughts.find(t=>t.id===id);
+    if(bottle&&canOpenBottle(bottle,dateKey())){openBottle(id);return;}
+    toast('Esa botella todavía no se puede abrir.',true);
+    return;
+  }
+  toast('No sé cómo recuperar ese borrador.',true);
+}
+
 function dataAndPrivacyBody(){
-  return `
+  return `${draftsRecoveryBody()}
   <div class="two-columns">
     <section class="card">
       <h2>Exportar copia</h2>
@@ -1612,7 +1731,7 @@ function entryDraftFor(date){
 }
 function patchDay(date,patch){
   if(date>dateKey())throw new Error('Ese día todavía no ha llegado.');
-  entries=saveEntry({...entryDraftFor(date),...patch});
+  return tryWrite('el día',()=>{entries=saveEntry({...entryDraftFor(date),...patch});return entries;}).value;
 }
 
 function currentGoalsRaw(){
@@ -1627,6 +1746,28 @@ function commitTomorrowFromDom(){
 }
 
 function bindRoutineForm(){
+  /* Los contadores de Rutina se guardan también al escribirlos a mano: antes
+     solo se grababan con los botones +/-, así que una cifra tecleada se perdía
+     al cambiar de página. */
+  document.querySelectorAll('#routine-body [data-counter-input]').forEach(inputEl=>{
+    const key=inputEl.dataset.counterInput;
+    const flush=()=>{
+      clearTimeout(routineCounterTimer);
+      updateCounterRow(inputEl,key,parseFloat(inputEl.value)||0);
+      saveRoutineCounters();
+    };
+    inputEl.addEventListener('input',()=>{
+      updateCounterRow(inputEl,key,parseFloat(inputEl.value)||0);
+      clearTimeout(routineCounterTimer);
+      routineCounterTimer=setTimeout(saveRoutineCounters,500);
+    });
+    inputEl.addEventListener('change',flush);
+    inputEl.addEventListener('blur',flush);
+    inputEl.addEventListener('keydown',event=>{
+      if(event.key==='Enter'){event.preventDefault();flush();}
+      if(event.key==='Escape')render();
+    });
+  });
   const textarea=document.querySelector('#routine-tomorrow');
   if(!textarea)return;
   textarea.addEventListener('change',commitTomorrowFromDom);
@@ -1678,7 +1819,8 @@ function commitHabitName(id,value){
     toast('Ya tienes un hábito con ese nombre.',true);return;
   }
   if(name===habit.name)return;
-  habits=saveHabit({...habit,name});
+  const saved=tryWrite('el hábito',()=>{habits=saveHabit({...habit,name});});
+  if(!saved.ok)return;
   render();
   toast('Hábito renombrado');
 }
@@ -1714,13 +1856,14 @@ function openBottle(id){
   const bottle=thoughts.find(t=>t.id===id);
   if(!canOpenBottle(bottle,dateKey()))return;
   if(bottle.status==='returned'&&bottle.seen!==true){
-    thoughts=updateThought(id,{seen:true});
+    tryWrite('el pensamiento',()=>{thoughts=updateThought(id,{seen:true});});
     syncNavDots();
   }
   const replyDraft=bottle.reply?'':(draftData(DRAFT_SCOPES.reply(id))?.text||'');
   const modal=showModal(bottleModal({...bottle,replyDraft},dateKey(),setup));
   playModalUncork(modal);
   const again=()=>{modal.close();render();};
+  const write=fn=>tryWrite('el pensamiento',fn);
   modal.onclick=event=>{
     const act=event.target.closest('[data-modal]')?.dataset.modal;
     if(!act){if(event.target===modal)modal.close();return;}
@@ -1729,7 +1872,8 @@ function openBottle(id){
       const value=(modal.querySelector('#bottle-reply')?.value||'').trim();
       if(!value){toast('Escribe primero lo que quieres contestarte.',true);return;}
       draftCancel(`respuesta:${id}`);
-      thoughts=updateThought(id,{reply:value,seen:true,repliedAt:new Date().toISOString()});
+      const saved=write(()=>{thoughts=updateThought(id,{reply:value,seen:true,repliedAt:new Date().toISOString()});});
+      if(!saved.ok)return;
       clearDraft(DRAFT_SCOPES.reply(id));
       modal.close();render();openBottle(id);
       toast('Contestada.');
@@ -1738,13 +1882,15 @@ function openBottle(id){
     if(act==='reply-clear'){
       draftCancel(`respuesta:${id}`);
       clearDraft(DRAFT_SCOPES.reply(id));
-      thoughts=updateThought(id,{reply:''});
+      const saved=write(()=>{thoughts=updateThought(id,{reply:''});});
+      if(!saved.ok)return;
       modal.close();render();openBottle(id);
       return;
     }
     if(act==='keep'){
       const keep=!bottle.kept;
-      thoughts=updateThought(id,{kept:keep,keptOn:keep?dateKey():null,seen:true});
+      const saved=write(()=>{thoughts=updateThought(id,{kept:keep,keptOn:keep?dateKey():null,seen:true});});
+      if(!saved.ok)return;
       again();
       toast(keep?'Anclada.':'Desanclada.');
       return;
@@ -1758,7 +1904,8 @@ function openBottle(id){
       return;
     }
     if(act==='recast'){
-      thoughts=recastThought(id);
+      const saved=write(()=>{thoughts=recastThought(id);});
+      if(!saved.ok)return;
       again();
       toast('Otra vez fuera.');
       return;
@@ -1771,12 +1918,15 @@ function bottleToEntry(bottle){
   const entry=entries.find(x=>x.date===today);
   const line=`Del mar · botella del ${longDate(bottle.castAt,{day:'numeric',month:'long'})}: «${bottle.text}»`;
   const generalDay=[entry?.generalDay,line].filter(Boolean).join('\n\n');
-  patchDay(today,{
-    generalDay,
-    capsule:entry?.capsule||String(bottle.text).slice(0,240),
-    tags:[...new Set([...(entry?.tags||[]),'Pensamiento'])].slice(0,20)
+  const saved=tryWrite('el pensamiento',()=>{
+    patchDay(today,{
+      generalDay,
+      capsule:entry?.capsule||String(bottle.text).slice(0,240),
+      tags:[...new Set([...(entry?.tags||[]),'Pensamiento'])].slice(0,20)
+    });
+    thoughts=updateThought(bottle.id,{kept:true,keptOn:today,seen:true});
   });
-  thoughts=updateThought(bottle.id,{kept:true,keptOn:today,seen:true});
+  if(!saved.ok)return;
   selected=today;
   view='diary';
   updateRouteUrl();
@@ -1896,7 +2046,8 @@ function requestDeleteBottle(id){
     confirmLabel:'Romperla',danger:true
   }).then(ok=>{
     if(!ok)return;
-    thoughts=deleteThought(id);
+    const removed=tryWrite('el pensamiento',()=>{thoughts=deleteThought(id);});
+    if(!removed.ok)return;
     render();
     toast('Rota.');
   });
@@ -1919,6 +2070,30 @@ function entryTextFields(){
 }
 const draftTimers=new Map();
 let autosavePending=false;
+/* El autoguardado espera un poco a que dejes de teclear, pero nunca más de
+   `AUTOSAVE_MAX`: así una sesión larga sin pausas también queda escrita. */
+const AUTOSAVE_IDLE=1200;
+const AUTOSAVE_MAX=12000;
+let autosaveIdleTimer=null,autosaveMaxTimer=null;
+function cancelAutosaveTimers(){
+  if(autosaveIdleTimer){clearTimeout(autosaveIdleTimer);autosaveIdleTimer=null;}
+  if(autosaveMaxTimer){clearTimeout(autosaveMaxTimer);autosaveMaxTimer=null;}
+}
+function scheduleAutosave(){
+  if(autosaveIdleTimer)clearTimeout(autosaveIdleTimer);
+  autosaveIdleTimer=setTimeout(()=>{
+    autosaveIdleTimer=null;
+    cancelAutosaveTimers();
+    commitEntry({silent:true});
+  },AUTOSAVE_IDLE);
+  if(!autosaveMaxTimer){
+    autosaveMaxTimer=setTimeout(()=>{
+      autosaveMaxTimer=null;
+      if(autosaveIdleTimer){clearTimeout(autosaveIdleTimer);autosaveIdleTimer=null;}
+      commitEntry({silent:true});
+    },AUTOSAVE_MAX);
+  }
+}
 
 function draftCancel(key){
   const timer=draftTimers.get(key);
@@ -1930,6 +2105,14 @@ function draftDebounce(key,fn,ms=460){
 }
 function draftFlushNow(key,fn){
   if(draftTimers.has(key)){clearTimeout(draftTimers.get(key));draftTimers.delete(key);fn();}
+}
+/* Igual que `draftFlushNow`, pero sin esperar a que haya un temporizador
+   pendiente: la captura se repite con la hora de ahora. Es lo que hace que un
+   borrador sea más reciente que lo que acaba de escribir otra pestaña. */
+function draftCaptureNow(key,fn){
+  const timer=draftTimers.get(key);
+  if(timer){clearTimeout(timer);draftTimers.delete(key);}
+  fn();
 }
 function entryScope(){return DRAFT_SCOPES.entry(selected);}
 
@@ -2027,7 +2210,7 @@ function captureReplyDraft(id,el){
 function onEntryEdit(){
   setSaveState('typing');
   draftDebounce('entrada',captureEntryDraft,420);
-  draftDebounce('autosave',()=>commitEntry({silent:true}),2400);
+  scheduleAutosave();
 }
 function onBottleEdit(){
   const form=document.querySelector('#bottle-form');
@@ -2042,20 +2225,76 @@ function onBottleEdit(){
   setSaveState('typing');
   draftDebounce('botella',captureBottleDraft,380);
 }
-function captureSetupDraft(){
-  const form=document.querySelector('#setup-page-form');
-  if(!form)return;
+/* Los campos de texto y número de un formulario, con nombre propio. */
+const DRAFT_FIELD_SELECTOR='textarea,input[type="text"],input[type="number"],input:not([type])';
+const SAFE_NAME=/^[A-Za-z0-9_-]{1,40}$/;
+
+function captureFormDraft(form,scope){
+  if(!form)return null;
   const data={};
-  for(const el of form.querySelectorAll('textarea,input[type="text"],input:not([type])')){
-    if(!el.name)continue;
+  for(const el of form.querySelectorAll(DRAFT_FIELD_SELECTOR)){
+    if(!el.name||!SAFE_NAME.test(el.name))continue;
     data[el.name]=el.value;
   }
   const quotes=form.querySelector('#new-custom-quote');
   if(quotes?.value)data.customQuote=quotes.value;
-  setDraft(DRAFT_SCOPES.setup(),data);
+  const meta=setDraft(scope,data);
+  if(meta&&!meta.ok)setSaveState('error');
+  return meta;
+}
+
+/* Devuelve true si de verdad había algo que recuperar. */
+function applyDraftToForm(form,data){
+  if(!form||!data)return false;
+  let applied=false;
+  for(const [name,value] of Object.entries(data)){
+    if(name==='customQuote')continue;
+    if(!SAFE_NAME.test(name))continue;
+    const el=form.querySelector(`[name="${name}"]`);
+    if(!el||el.type==='checkbox'||el.type==='radio')continue;
+    if(String(el.value)===String(value))continue;
+    el.value=value;
+    applied=true;
+  }
+  if(data.customQuote){
+    const quotes=form.querySelector('#new-custom-quote');
+    if(quotes&&!quotes.value){quotes.value=data.customQuote;applied=true;}
+  }
+  return applied;
+}
+
+/* ¿El formulario dice lo mismo que el perfil guardado? Entonces no hay nada a
+   medias que rescatar: no se escribe borrador (ni se avisa de nada al volver). */
+function setupFieldsMatchStored(fields){
+  const same=(a,b)=>String(a??'').trim()===String(b??'').trim();
+  if(!same(fields.name,setup.name))return false;
+  if(!same(fields.motto??'Un día a la vez.',setup.motto))return false;
+  const ageRaw=fields.age===''||fields.age===null||fields.age===undefined?null:Number(fields.age);
+  if(ageRaw!==null&&ageRaw!==Number(setup.age))return false;
+  for(const name of ['sleepGoal','studyGoal','waterGoal']){
+    const raw=fields[name];
+    if(raw===''||raw===null||raw===undefined)continue;
+    if(Number(raw)!==Number(setup[name]))return false;
+  }
+  return true;
+}
+function captureSetupDraft(){
+  const form=document.querySelector('#setup-page-form');
+  if(!form)return null;
+  const quote=form.querySelector('#new-custom-quote')?.value.trim();
+  if(!quote&&setupFieldsMatchStored(readFormFields(form))){clearDraft(DRAFT_SCOPES.setup());return null;}
+  return captureFormDraft(form,DRAFT_SCOPES.setup());
+}
+function captureWizardDraft(){
+  const form=document.querySelector('#setup-wizard-form');
+  if(!form)return null;
+  if(setupFieldsMatchStored(readFormFields(form))){clearDraft(DRAFT_SCOPES.wizard());return null;}
+  return captureFormDraft(form,DRAFT_SCOPES.wizard());
 }
 function onSetupEdit(){
-  draftDebounce('perfil',captureSetupDraft,700);
+  const form=document.querySelector('#setup-page-form');
+  if(form){draftDebounce('perfil',captureSetupDraft,700);return;}
+  if(document.querySelector('#setup-wizard-form'))draftDebounce('asistente',captureWizardDraft,700);
 }
 
 function bindDraftListeners(){
@@ -2064,7 +2303,7 @@ function bindDraftListeners(){
     if(!el||!el.closest)return;
     if(el.closest('#diary-form')){onEntryEdit();return;}
     if(el.closest('#bottle-form')){onBottleEdit();return;}
-    if(el.closest('#setup-page-form')){onSetupEdit();return;}
+    if(el.closest('#setup-page-form')||el.closest('#setup-wizard-form')){onSetupEdit();return;}
     if(el.id==='bottle-reply'&&el.closest('#modal')){
       const id=el.closest('[data-modal-bottle]')?.dataset.modalBottle;
       if(id)draftDebounce(`respuesta:${id}`,()=>captureReplyDraft(id,el),360);
@@ -2077,24 +2316,78 @@ function bindDraftListeners(){
     if(el.closest('#diary-form'))onEntryEdit();
     if(el.closest('#bottle-form'))onBottleEdit();
   });
+  /* Cambiar de campo o salir del formulario también cierra el ciclo: no hay
+     que esperar a que pasen los segundos del autoguardado. */
+  app.addEventListener('focusout',event=>{
+    const from=event.target;
+    if(!from||!from.closest)return;
+    const form=from.closest('#diary-form');
+    if(!form)return;
+    const to=event.relatedTarget;
+    if(to&&form.contains(to))return;
+    savePendingText();
+  });
   /* Al irse, cerrar la pestaña o cambiar de app: se guarda lo último sin preguntar. */
   window.addEventListener('pagehide',flushAllDrafts);
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushAllDrafts();});
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='hidden')flushAllDrafts();
+    else retryPendingNow();
+  });
+  window.addEventListener('focus',retryPendingNow);
+  window.addEventListener('online',retryPendingNow);
+}
+/* Los temporizadores de respuesta se capturan antes de descartarlos: la
+   respuesta a una botella también merece sobrevivir a un cierre. */
+function flushReplyDrafts(){
+  for(const [key] of [...draftTimers.entries()]){
+    if(!key.startsWith('respuesta:'))continue;
+    const id=key.slice('respuesta:'.length);
+    const el=document.querySelector(`[data-modal-bottle="${id}"] #bottle-reply`);
+    draftFlushNow(key,()=>captureReplyDraft(id,el));
+  }
 }
 function flushAllDrafts(){
-  draftFlushNow('entrada',captureEntryDraft);
-  draftFlushNow('botella',captureBottleDraft);
+  draftCaptureNow('entrada',captureEntryDraft);
+  draftCaptureNow('botella',captureBottleDraft);
+  draftCaptureNow('perfil',captureSetupDraft);
+  draftCaptureNow('asistente',captureWizardDraft);
+  /* La lista de mañana se guarda de verdad en el cuaderno: solo cuando toca. */
   draftFlushNow('manana',commitTomorrowFromDom);
   draftFlushNow('manana-tarea',commitTomorrowFromDom);
-  for(const [key,timer] of [...draftTimers.entries()]){
-    if(key.startsWith('respuesta:')){clearTimeout(timer);draftTimers.delete(key);}
-  }
+  flushReplyDrafts();
+  cancelAutosaveTimers();
   if(document.querySelector('#diary-form')&&!autosavePending&&saveState==='draft')commitEntry({silent:true,final:true});
+  retryPendingNow();
+}
+function retryPendingNow(){
+  if(!hasPendingWrites())return false;
+  const result=retryPending();
+  syncSaveHealth();
+  if(result.recovered&&!saveIssue())toast('Guardado lo que quedaba pendiente.');
+  return result.ok;
 }
 
 /* ---------- recuperar lo escrito a medias ---------- */
 function restoreAfterRender(){
   restoreEntryDraft();
+  restoreProfileDraft();
+}
+/* El perfil también se escribe a medias: si hay algo más nuevo que lo guardado,
+   se recupera al volver a Ajustes en vez de dejar que se pierda. */
+function restoreProfileDraft(){
+  const form=document.querySelector('#setup-page-form');
+  if(!form)return false;
+  if(!draftIsNewer(DRAFT_SCOPES.setup(),setup.updatedAt))return false;
+  const data=draftData(DRAFT_SCOPES.setup());
+  if(!data)return false;
+  const applied=applyDraftToForm(form,data);
+  if(!applied)return false;
+  setSaveState('draft');
+  if(!draftNoticeShown){
+    draftNoticeShown=true;
+    toast('He recuperado lo que estabas escribiendo en el perfil.');
+  }
+  return true;
 }
 function applyToField(form,name,value){
   if(value===undefined||value===null)return;
@@ -2151,11 +2444,14 @@ function primeBottleDraft(){
 function entryHasSubstance(values){
   const words=entryTextFields()
     .map(k=>String(values[k]||''))
+    .filter(text=>text.trim())
     .join(' ')
     .trim()
     .split(/\s+/)
     .filter(Boolean).length;
-  if(words>3)return true;
+  /* «Hoy bien» ya es un día: antes hacían falta más de tres palabras y una
+     frase corta se quedaba fuera del cuaderno para siempre. */
+  if(words>=2)return true;
   if(Object.values(values.counters||{}).some(v=>Number(v)>0))return true;
   if(Object.values(values.habits||{}).some(Boolean))return true;
   if((values.tags||[]).length)return true;
@@ -2170,7 +2466,7 @@ function commitEntry({silent=false,final=false}={}){
   autosavePending=true;
   /* lo que había en el tintero del debounce ya no hace falta: se guarda ahora */
   draftCancel('entrada');
-  draftCancel('autosave');
+  cancelAutosaveTimers();
   try{
     const entry=validateForForm(collectForm(form));
     entries=saveEntry(entry);
@@ -2190,7 +2486,10 @@ function commitEntry({silent=false,final=false}={}){
     return true;
   }catch(err){
     setSaveState('error');
-    if(!silent)toast(err.message||'No se ha podido guardar.',true);
+    /* Aunque el guardado fuera de fondo, el usuario tiene que enterarse: si no,
+       cerraría la pestaña creyendo que su texto está a salvo. */
+    toast(err.message||'No se ha podido guardar.',true);
+    syncSaveHealth();
     return false;
   }finally{
     autosavePending=false;
@@ -2350,15 +2649,50 @@ function bindAgeAndInterestsLivePreview(formEl,prefix){
   });
 }
 
+/* Cualquier escritura del cuaderno pasa por aquí: si el navegador la rechaza,
+   se cuenta con un aviso y la píldora de «sin guardar» (el reintento ya está
+   en cola), pero la interfaz sigue viva y el usuario puede seguir trabajando. */
+function tryWrite(label,fn){
+  try{
+    return {ok:true,value:fn()};
+  }catch(error){
+    setSaveState('error');
+    toast(error?.message||`No se ha podido guardar ${label}.`,true);
+    syncSaveHealth();
+    return {ok:false,error};
+  }
+}
+
+/* Aviso dentro de una página de Ajustes (mismo aspecto que el del asistente). */
+function pageAlert(selector,message){
+  const slot=document.querySelector(selector);
+  if(!slot)return;
+  slot.hidden=false;
+  slot.textContent=message;
+}
+function clearPageAlert(selector){
+  const slot=document.querySelector(selector);
+  if(!slot)return;
+  slot.hidden=true;
+  slot.textContent='';
+}
+
 function bindForm(){
   const setupPageForm=document.querySelector('#setup-page-form');
   if(setupPageForm){
     bindAgeAndInterestsLivePreview(setupPageForm,'sp');
     setupPageForm.addEventListener('submit',event=>{
       event.preventDefault();
-      saveSetupFromForm(setupPageForm);
+      const result=saveSetupFromForm(setupPageForm);
+      if(!result.ok){
+        /* Nada de botones muertos: el motivo se ve aquí mismo. */
+        pageAlert('#setup-page-alert',result.error?.message||'No se ha podido guardar el perfil.');
+        toast(result.error?.message||'No se ha podido guardar el perfil.',true);
+        return;
+      }
+      clearDraft(DRAFT_SCOPES.setup());
       render();
-      toast('Perfil actualizado');
+      toast(result.notes.length?`Perfil guardado. ${result.notes.join(' ')}`:'Perfil actualizado');
     });
   }
 
@@ -2456,44 +2790,58 @@ function saveAppearanceFromForm(formEl){
   toast('Apariencia actualizada');
 }
 
+/* Los nombres que existen de verdad en el formulario: así se distingue un
+   interruptor desmarcado de uno que este formulario ni tiene. */
+function presentNames(formEl){
+  return new Set([...(formEl?.querySelectorAll('[name]')||[])].map(el=>el.name));
+}
+function readFormFields(formEl){
+  return readSetupFields(new FormData(formEl),presentNames(formEl));
+}
+
+/* Guarda el perfil sin poder fallar «a medias»: si el navegador rechaza la
+   escritura, el perfil sigue aplicado en memoria (y en la cola de reintentos)
+   y el llamante recibe el motivo para poder contarlo. */
+function setupWrite(patch){
+  const wanted=validateSetup({...setup,...patch,updatedAt:new Date().toISOString()});
+  try{
+    setup=saveSetup(patch);
+    return {ok:true};
+  }catch(error){
+    setup=wanted;
+    return {ok:false,error};
+  }
+}
+
+const HABIT_LIMIT=30;
+/**
+ * @returns {{ok:boolean, setup:object, notes:string[], error?:Error}}
+ */
 function saveSetupFromForm(formEl){
+  if(!formEl)return {ok:false,setup,notes:[],error:new Error('No encuentro el formulario del perfil.')};
   const data=new FormData(formEl);
   const chosenHabits=data.getAll('suggestedHabits').map(s=>s.toString().trim()).filter(Boolean);
   const existingNames=new Set(habits.map(h=>h.name.toLowerCase()));
-  for(const hName of chosenHabits){
-    if(!existingNames.has(hName.toLowerCase()) && habits.length<30){
-      habits=saveHabit({name:hName});
-      existingNames.add(hName.toLowerCase());
+  const notes=[];
+  try{
+    for(const hName of chosenHabits){
+      if(!existingNames.has(hName.toLowerCase()) && habits.length<HABIT_LIMIT){
+        habits=saveHabit({name:hName});
+        existingNames.add(hName.toLowerCase());
+      }
     }
+  }catch(error){
+    /* Los hábitos son un extra: no pueden impedir terminar de configurar. */
+    notes.push('Los hábitos sugeridos no se han podido añadir.');
   }
-  const hasSidebarToggle=formEl.querySelector('[name="sidebarCollapsed"]')!==null;
-  const rawAge=data.get('age');
-  const parsedAge=rawAge!==null&&rawAge!==''?parseInt(rawAge.toString(),10):null;
-  const chosenAgeGroup=parsedAge?ageGroupFromAge(parsedAge,data.get('ageGroup')||'young'):(data.get('ageGroup')||setup.ageGroup);
-  const chosenInterests=data.getAll('interests').map(s=>s.toString().trim()).filter(Boolean);
-
-  const nextSetup=saveSetup({
-    completed:true,
-    name:data.get('name')||'',
-    age:Number.isFinite(parsedAge)?parsedAge:null,
-    ageGroup:chosenAgeGroup,
-    interests:chosenInterests,
-    ritual:data.get('ritual')||setup.ritual,
-    tone:data.get('tone')||setup.tone,
-    purpose:data.get('purpose')||setup.purpose,
-    motto:data.get('motto')||'Un día a la vez.',
-    theme:data.get('theme')||setup.theme,
-    sleepGoal:parseFloat(data.get('sleepGoal'))||7.5,
-    studyGoal:parseFloat(data.get('studyGoal'))??2,
-    showDailyWord:formEl.querySelector('[name="showDailyWord"]')?.checked??setup.showDailyWord,
-    showDailyTip:formEl.querySelector('[name="showDailyTip"]')?.checked??setup.showDailyTip,
-    sidebarCollapsed:hasSidebarToggle?Boolean(formEl.querySelector('[name="sidebarCollapsed"]')?.checked):setup.sidebarCollapsed,
-    reduceMotion:formEl.querySelector('[name="reduceMotion"]')?.checked??setup.reduceMotion
-  });
-  setup=nextSetup;
+  const fields=readFormFields(formEl);
+  const {patch,notes:fieldNotes}=setupPatchFromFields(fields,setup);
+  notes.push(...fieldNotes);
+  const result=setupWrite(patch);
   sidebarCollapsed=Boolean(setup.sidebarCollapsed);
   syncMotionPreference();
   applyTheme(setup.theme,setup);
+  return {ok:result.ok,setup,notes,error:result.error};
 }
 
 function refreshCounterHints(){
@@ -2647,6 +2995,38 @@ function openSetupWizard(initialStep=1,{mandatory=false}={}){
   const formEl=modal.querySelector('#setup-wizard-form');
   bindAgeAndInterestsLivePreview(formEl,'wiz');
 
+  /* ---------- avisos dentro del propio asistente ----------
+     El formulario lleva `novalidate`: el navegador ya no puede bloquear el
+     botón Guardar sin decir nada (los pasos ocultos no se pueden enfocar, así
+     que el aviso nativo se perdía). Aquí se cuenta todo en voz alta. */
+  const alert=modal.querySelector('#setup-wizard-alert');
+  const showAlert=(message,{escape=false}={})=>{
+    if(!alert)return;
+    alert.hidden=false;
+    alert.className='form-alert is-visible';
+    alert.innerHTML=`<span>${esc(message)}</span>${escape?'<button type="button" class="text-button" data-wizard="skip">Seguir sin guardar</button>':''}`;
+    alert.scrollIntoView?.({block:'nearest'});
+  };
+  const hideAlert=()=>{if(alert){alert.hidden=true;alert.innerHTML='';}};
+
+  /* Lo que quedó a medias la última vez vuelve a su sitio. */
+  const sketched=draftData(DRAFT_SCOPES.wizard());
+  if(sketched&&applyDraftToForm(formEl,sketched))showAlert('He recuperado lo que habías empezado.');
+
+  /* Ajusta los números del paso a la vista y cuenta qué se ha corregido. */
+  const tidyStep=step=>{
+    const fields=readSetupFields(new FormData(formEl),presentNames(formEl));
+    const notes=setupStepNotes(step,fields,setup);
+    const fixed=setupStepValues(step,fields,setup);
+    for(const [name,value] of Object.entries(fixed)){
+      const input=formEl?.querySelector(`[name="${name}"]`);
+      if(input&&input.value!==String(value))input.value=value;
+    }
+    if(notes.length)showAlert(notes.join(' '));
+    else hideAlert();
+    return notes;
+  };
+
   const switchStep=nextStep=>{
     currentStep=Math.max(1,Math.min(3,nextStep));
     modal.querySelectorAll('.wizard-step-body').forEach(el=>{
@@ -2681,16 +3061,38 @@ function openSetupWizard(initialStep=1,{mandatory=false}={}){
     }
   };
 
-  modal.onsubmit=event=>{
-    event.preventDefault();
-    if(formEl)saveSetupFromForm(formEl);
+  /* ---------- terminar: con salida siempre ---------- */
+  const finishWizard=()=>{
+    const result=saveSetupFromForm(formEl);
+    if(!result.ok){
+      /* El navegador no ha aceptado la escritura. Se cuenta, se deja reintentar
+         y —si es el asistente obligatorio— se ofrece seguir sin guardar: nadie
+         se queda encerrado en esta pantalla. */
+      showAlert(result.error?.message||'No se ha podido guardar el perfil.',{escape:mandatory});
+      return false;
+    }
+    clearDraft(DRAFT_SCOPES.wizard());
+    if(result.setup.completed)clearDraft(DRAFT_SCOPES.setup());
     const wasMandatory=mandatory;
     mandatorySetupOpen=false;
     modal.oncancel=null;
     modal.close();
     render();
     if(wasMandatory&&view==='thoughts')requestAnimationFrame(()=>playThoughtsEntryWave());
-    toast('Perfil actualizado');
+    toast(result.notes.length?`Perfil guardado. ${result.notes.join(' ')}`:'Perfil actualizado');
+    return true;
+  };
+
+  modal.onsubmit=event=>{
+    event.preventDefault();
+    /* Enter en un paso intermedio avanza: nunca guarda a medias ni se queda
+       en silencio. */
+    if(currentStep<3){
+      tidyStep(currentStep);
+      switchStep(currentStep+1);
+      return;
+    }
+    finishWizard();
   };
 
   modal.onclick=event=>{
@@ -2705,7 +3107,18 @@ function openSetupWizard(initialStep=1,{mandatory=false}={}){
     const wizBtn=event.target.closest('[data-wizard]');
     if(wizBtn){
       const dir=wizBtn.dataset.wizard;
-      switchStep(dir==='next'?currentStep+1:currentStep-1);
+      if(dir==='skip'){
+        /* Salida de emergencia: el perfil ya está aplicado en memoria y la
+           escritura espera su turno en la cola de reintentos. */
+        mandatorySetupOpen=false;
+        modal.oncancel=null;
+        modal.close();
+        render();
+        toast('Sigo sin poder guardar el perfil: lo reintentaré solo.');
+        return;
+      }
+      if(dir==='next'){tidyStep(currentStep);switchStep(currentStep+1);}
+      else switchStep(currentStep-1);
     }
   };
 }
@@ -2774,10 +3187,16 @@ function openDay(date){
   selected=date;view='diary';menu=false;crisisBannerDismissed=false;updateRouteUrl();render({transition:true});
 }
 /* Antes de mudar de página o de día: se guarda lo escrito (y se autocommite si hay materia). */
+/* Se llama antes de cambiar de página, de día o de foco: deja a salvo todo lo
+   que estuviera a medio escribir, incluido el perfil y las respuestas. */
 function savePendingText(){
-  draftFlushNow('entrada',captureEntryDraft);
-  draftFlushNow('botella',captureBottleDraft);
+  draftCaptureNow('entrada',captureEntryDraft);
+  draftCaptureNow('botella',captureBottleDraft);
+  draftCaptureNow('perfil',captureSetupDraft);
+  draftCaptureNow('asistente',captureWizardDraft);
+  flushReplyDrafts();
   if(document.querySelector('#diary-form')&&saveState==='draft')commitEntry({silent:true});
+  retryPendingNow();
 }
 
 function toggleSidebar(){
@@ -2788,7 +3207,8 @@ function toggleSidebar(){
     return;
   }
   sidebarCollapsed=!sidebarCollapsed;
-  setup=saveSetup({sidebarCollapsed});
+  /* Plegar el menú no puede quedarse a medias por un fallo de escritura. */
+  tryWrite('el menú',()=>{setup=saveSetup({sidebarCollapsed});});
   const sb=document.querySelector('.sidebar');
   if(sb){
     sb.classList.toggle('is-collapsed',sidebarCollapsed);
@@ -2810,7 +3230,9 @@ async function requestDelete(date){
     text:`Se borrará del dispositivo el registro de ${longDate(date)}.`,
     confirmLabel:'Eliminar',danger:true
   })){
-    entries=deleteEntry(date);render();toast('Entrada eliminada.');
+    const removed=tryWrite('la entrada',()=>{entries=deleteEntry(date);});
+    if(!removed.ok)return;
+    render();toast('Entrada eliminada.');
   }
 }
 
@@ -2916,7 +3338,8 @@ app.addEventListener('click',async event=>{
       if(!name)break;
       if(habits.length>=30){toast('Máximo 30 hábitos.',true);break;}
       if(habits.some(h=>h.name.toLowerCase()===name.toLowerCase())){toast('Ya está en tu lista.',true);break;}
-      habits=saveHabit({name});
+      const added=tryWrite('los hábitos',()=>{habits=saveHabit({name});});
+      if(!added.ok)break;
       render();
       toast(`«${name}» añadido a tu rutina`);
       break;
@@ -2950,15 +3373,18 @@ app.addEventListener('click',async event=>{
       break;
     }
     case 'add-goal-routine':{
+      /* La fila nueva se pinta directamente: si hubiera una escritura en camino
+         (por ejemplo el debounce de la intención), un viaje de ida y vuelta al
+         almacén podía dejar el botón «Añadir tarea» como si no hiciera nada. */
       commitTomorrowFromDom();
-      const list=currentGoalsRaw().filter(Boolean);
-      list.push('');
-      try{
-        patchDay(selected,{goals:list});
-        render();
-        const inputs=document.querySelectorAll('#routine-goals .task-input');
-        inputs[inputs.length-1]?.focus();
-      }catch(err){toast(err.message||'No se pudo añadir la tarea.',true);}
+      const list=document.querySelector('#routine-goals');
+      if(!list)break;
+      list.querySelector('.habit-empty')?.remove();
+      const rows=list.querySelectorAll('.task-input').length;
+      list.insertAdjacentHTML('beforeend',tomorrowTaskRow(rows,''));
+      const inputs=list.querySelectorAll('.task-input');
+      const last=inputs[inputs.length-1];
+      last?.focus();
       break;
     }
     case 'remove-goal-routine':{
@@ -2972,7 +3398,8 @@ app.addEventListener('click',async event=>{
     }
     case 'open-bottle':openBottle(id);break;
     case 'recast-bottle':{
-      thoughts=recastThought(id);
+      const sent=tryWrite('el pensamiento',()=>{thoughts=recastThought(id);});
+      if(!sent.ok)break;
       render();
       toast('Botella enviada de nuevo.');
       break;
@@ -3028,7 +3455,8 @@ app.addEventListener('click',async event=>{
     case 'cycle-theme':{
       const idx=THEMES.findIndex(t=>t.id===setup.theme);
       const nextTheme=THEMES[(idx+1)%THEMES.length];
-      setup=saveSetup({theme:nextTheme.id});
+      const saved=tryWrite('el tema',()=>{setup=saveSetup({theme:nextTheme.id});});
+      if(!saved.ok)break;
       applyTheme(setup.theme,setup);
       const pillSpan=document.querySelector('.theme-pill > span:last-child');
       const miniFav=document.querySelector('.topbar-favicon-mini');
@@ -3062,7 +3490,8 @@ app.addEventListener('click',async event=>{
       const list=setup.savedQuotes||[];
       const exists=list.includes(quote);
       const nextQuotes=exists?list.filter(q=>q!==quote):[quote,...list];
-      setup=saveSetup({savedQuotes:nextQuotes});
+      const saved=tryWrite('las frases',()=>{setup=saveSetup({savedQuotes:nextQuotes});});
+      if(!saved.ok)break;
       refreshQuoteSlot();
       toast(exists?'Frase quitada de tus guardadas':'Frase guardada en tu perfil');
       break;
@@ -3071,7 +3500,8 @@ app.addEventListener('click',async event=>{
       const input=document.querySelector('#new-custom-quote');
       const v=input?.value.trim();
       if(!v){toast('Escribe una frase primero.',true);break;}
-      setup=saveSetup({savedQuotes:[v,...(setup.savedQuotes||[])]});
+      const saved=tryWrite('las frases',()=>{setup=saveSetup({savedQuotes:[v,...(setup.savedQuotes||[])]});});
+      if(!saved.ok)break;
       render();
       toast('Frase añadida');
       break;
@@ -3079,7 +3509,8 @@ app.addEventListener('click',async event=>{
     case 'remove-saved-quote':{
       const idx=parseInt(index,10);
       const next=(setup.savedQuotes||[]).filter((_,i)=>i!==idx);
-      setup=saveSetup({savedQuotes:next});
+      const saved=tryWrite('las frases',()=>{setup=saveSetup({savedQuotes:next});});
+      if(!saved.ok)break;
       render();
       toast('Frase eliminada');
       break;
@@ -3168,7 +3599,8 @@ app.addEventListener('click',async event=>{
       if(!habitName){toast('Escribe un nombre para el hábito.',true);break;}
       if(habits.length>=30){toast('Máximo 30 hábitos.',true);break;}
       if(habits.some(h=>h.name.toLowerCase()===habitName.toLowerCase())){toast('Ya existe un hábito con ese nombre.',true);break;}
-      habits=saveHabit({name:habitName});
+      const added=tryWrite('los hábitos',()=>{habits=saveHabit({name:habitName});});
+      if(!added.ok)break;
       render();
       document.querySelector('#new-habit')?.focus();
       toast(`Hábito «${habitName}» añadido`);
@@ -3180,7 +3612,9 @@ app.addEventListener('click',async event=>{
         text:`Se quitará «${name}» de tu lista actual.`,
         confirmLabel:'Eliminar',danger:true
       })){
-        habits=deleteHabit(habit);render();toast('Hábito eliminado');
+        const removed=tryWrite('los hábitos',()=>{habits=deleteHabit(habit);});
+        if(!removed.ok)break;
+        render();toast('Hábito eliminado');
       }
       break;
     }
@@ -3189,8 +3623,23 @@ app.addEventListener('click',async event=>{
     case 'period-prev':if(monthly==='1')month=monthMove(month,-1);else selected=addDays(selected,-7);render();break;
     case 'period-next':if(monthly==='1')month=monthMove(month,1);else selected=addDays(selected,7);render();break;
     case 'range':period=+range;render();break;
+    case 'retry-save':{
+      if(!hasPendingWrites()){toast('No hay nada pendiente: todo está guardado.');syncSaveHealth();break;}
+      const result=retryPending();
+      syncSaveHealth();
+      toast(result.ok?'Guardado. Ya está todo en su sitio.':'Sigo sin poder guardar. Descarga una copia para no perderlo.',!result.ok);
+      break;
+    }
+    case 'open-draft':openDraft(actionButton.dataset.scope||'');break;
+    case 'discard-draft':{
+      const scope=actionButton.dataset.scope||'';
+      clearDraft(scope);
+      render();
+      toast('Borrador descartado.');
+      break;
+    }
     case 'export':case 'backup':
-      download(`diario-${dateKey()}.json`,exportData(entries,habits,setup));
+      download(`diario-${dateKey()}.json`,exportData(entries,habits,setup,thoughts));
       toast('Copia descargada');break;
     case 'import':document.querySelector('#import-file').click();break;
     case 'clear':
@@ -3234,9 +3683,10 @@ app.addEventListener('change',event=>{
     reader.onload=()=>{
       try{
         pendingImport=parseImport(reader.result);
+        const draftCount=pendingImport.drafts?Object.keys(pendingImport.drafts).length:0;
         const modal=showModal(`<div class="modal-card">
           <h2>Importar copia</h2>
-          <p>El archivo contiene <strong>${pendingImport.entries.length}</strong> ${pendingImport.entries.length===1?'entrada':'entradas'} y <strong>${pendingImport.habits.length}</strong> ${pendingImport.habits.length===1?'hábito':'hábitos'}.</p>
+          <p>El archivo contiene <strong>${pendingImport.entries.length}</strong> ${pendingImport.entries.length===1?'entrada':'entradas'} y <strong>${pendingImport.habits.length}</strong> ${pendingImport.habits.length===1?'hábito':'hábitos'}${draftCount?` y <strong>${draftCount}</strong> ${draftCount===1?'texto a medias':'textos a medias'}`:''}.</p>
           <div class="modal-actions">
             <button class="button outline" data-modal="cancel">Cancelar</button>
             <button class="button solid" data-modal="confirm">Importar</button>
@@ -3279,16 +3729,40 @@ window.addEventListener('keydown',event=>{
   }
 });
 
-window.addEventListener('beforeunload',flushAllDrafts);
-/* Otra pestaña toca el cuaderno: se refresca sin alterar el texto en curso. */
+/* Al cerrar la pestaña: lo último se guarda y, si algo se quedó sin escribir,
+   el navegador pregunta antes de irse. */
+window.addEventListener('beforeunload',event=>{
+  flushAllDrafts();
+  if(!hasPendingWrites())return;
+  event.preventDefault();
+  event.returnValue='';
+});
+/* Otra pestaña toca el cuaderno. Los borradores que escribe la otra pestaña no
+   tocan repintar nada; para el resto, lo primero es guardar lo mío —así el
+   borrador local es más reciente y sobrevive al refresco— y solo después se
+   actualizan los datos. */
 window.addEventListener('storage',event=>{
-  if(!event.key||!String(event.key).startsWith('diario.'))return;
+  const key=String(event.key||'');
+  if(!key.startsWith('diario.'))return;
+  if(key===DRAFTS_KEY){
+    if(view==='setup'&&profileTab==='data')render();
+    return;
+  }
   try{
+    flushAllDrafts();
     refresh();
     render();
     toast('Otra pestaña cambió el cuaderno: lo he actualizado');
   }catch(err){toast('No pude refrescar los datos: '+err.message,true);}
 });
+
+/* Red de seguridad: cada pocos segundos se vacía la cola de escrituras que el
+   navegador rechazó y se vuelca lo que siga a medias. */
+setInterval(()=>{
+  if(hasPendingWrites())retryPendingNow();
+  if(document.querySelector('#diary-form')&&saveState==='draft')flushAllDrafts();
+},15000);
+onSaveChange(()=>syncSaveHealth());
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
@@ -3310,6 +3784,11 @@ window.addEventListener('popstate',()=>{
 
 render();
 setSaveState('idle');
+
+/* Si la sesión anterior dejó algo sin guardar (la copia de `diario.pendiente.v1`),
+   se intenta meter en su sitio ya, antes de que el usuario haga nada. */
+if(hasPendingWrites())retryPendingNow();
+syncSaveHealth();
 
 /* Al abrir el cuaderno: si el mar trajo botellas que aún no has abierto, te lo
    dice y las varadas entran despacio, saliendo del agua. */

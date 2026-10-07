@@ -4,24 +4,34 @@
    Nadie debería perder un párrafo por cerrar la pestaña. Cada campo
    libre que se está escribiendo se guarda en `diario.drafts.v1` con su
    marca de tiempo, y al volver el cuaderno lo recupera solo.
-   Este módulo es puro y no lanza nunca: si el almacenamiento falla,
-   se limita a no guardar (y avisa por su lado).
+
+   Reglas del contrato:
+   - `setDraft` NUNCA lanza. Devuelve `{savedAt, ok, reason}`; si el
+     navegador no puede escribir, `ok` es false y `persist.js` deja la
+     escritura en cola para reintentarla.
+   - Si el almacén está lleno se sacrifican los borradores más viejos,
+     pero **jamás el último**: lo que acabas de escribir es lo que más
+     importa.
+   - Un JSON corrupto equivale a «no hay borradores», nunca a un error.
    ============================================================ */
+import {longDate} from './dates.js';
+import {writeRaw,safeRead} from './persist.js';
 
 export const DRAFTS_KEY='diario.drafts.v1';
 
-/* Cuánto texto admisible guardamos por borrador y en total. */
+/* Cuánto texto admisible guardamos por borrador y cuántos ámbitos a la vez. */
 const MAX_FIELD=6000;
-const MAX_SCOPES=40;
+export const MAX_SCOPES=60;
 
 /* Ámbitos conocidos: el diario por día, la botella, la respuesta a una
-   botella, la lista de mañana y el perfil. */
+   botella, la lista de mañana, el perfil y el asistente de bienvenida. */
 export const DRAFT_SCOPES={
   entry:date=>`entrada:${date}`,
   bottle:()=>'botella',
   reply:id=>`respuesta:${id}`,
   tomorrow:()=>`manana`,
-  setup:()=>'perfil'
+  setup:()=>'perfil',
+  wizard:()=>'asistente'
 };
 
 function isPlainObject(value){
@@ -35,8 +45,7 @@ export function cutText(value,max=MAX_FIELD){
 
 /* Lee los borradores sin lanzar nunca: un JSON roto equivale a «no hay borradores». */
 export function loadDrafts(){
-  let raw=null;
-  try{raw=localStorage.getItem(DRAFTS_KEY);}catch{return {};}
+  const raw=safeRead(DRAFTS_KEY);
   if(!raw)return {};
   try{
     const data=JSON.parse(raw);
@@ -44,29 +53,51 @@ export function loadDrafts(){
   }catch{return {};}
 }
 
-function persistAll(map){
+/* Los ámbitos más recientes primero. `mustKeep` (el que se acaba de escribir)
+   nunca se sacrifica, ni siquiera si comparte milisegundo con otro. */
+function trimTo(map,keep,mustKeep=null){
   const keys=Object.keys(map);
-  if(!keys.length){
-    try{localStorage.removeItem(DRAFTS_KEY);}catch{}
-    return true;
-  }
-  /* Si hay más de la cuenta, nos quedamos con los más recientes. */
-  let out=map;
-  if(keys.length>MAX_SCOPES){
-    out=Object.fromEntries(keys
-      .sort((a,b)=>String(map[b]?.savedAt||'').localeCompare(String(map[a]?.savedAt||'')))
-      .slice(0,MAX_SCOPES)
-      .map(k=>[k,map[k]]));
-  }
-  try{
-    localStorage.setItem(DRAFTS_KEY,JSON.stringify(out));
-    return true;
-  }catch{
-    return false;
-  }
+  if(keys.length<=keep)return map;
+  const sorted=keys
+    .filter(key=>key!==mustKeep)
+    .sort((a,b)=>String(map[b]?.savedAt||'').localeCompare(String(map[a]?.savedAt||'')));
+  /* El que se acaba de escribir ocupa su sitio; el resto, lo que quepa. */
+  const room=Math.max(0,keep-(mustKeep&&mustKeep in map?1:0));
+  const out=Object.fromEntries(sorted.slice(0,room).map(key=>[key,map[key]]));
+  if(mustKeep&&mustKeep in map)out[mustKeep]=map[mustKeep];
+  return out;
 }
 
-/* Guarda el contenido de un ámbito. Devuelve el meta ({savedAt,ok}) o null si no hay nada que guardar. */
+/* Devuelve `{ok, map}`: el mapa que de verdad quedó escrito (puede ser más
+   pequeño que el recibido si hubo que hacer sitio). Cuando el almacén está
+   lleno se van cayendo los más viejos —mitad, cuarto…— pero el último borrador
+   sobrevive siempre. */
+function persistAll(map,mustKeep=null){
+  const keys=Object.keys(map);
+  if(!keys.length){
+    const result=writeRaw(DRAFTS_KEY,null,{label:'Los borradores'});
+    return {ok:result.ok,map:{},reason:result.reason};
+  }
+  const attempts=[];
+  for(const fraction of [1,2,4,8])attempts.push(Math.max(1,Math.ceil(keys.length/fraction)));
+  attempts.push(1);
+  let tried=Infinity;
+  let out=map;
+  let result={ok:false,reason:'unknown'};
+  for(const keep of attempts){
+    const size=Math.min(keep,keys.length);
+    if(size>=tried)continue;
+    tried=size;
+    out=trimTo(map,Math.min(size,MAX_SCOPES),mustKeep);
+    result=writeRaw(DRAFTS_KEY,JSON.stringify(out),{label:'Los borradores'});
+    if(result.ok)return {ok:true,map:out};
+    if(size===1)break;
+  }
+  return {ok:false,map:out,reason:result.reason};
+}
+
+/* Guarda el contenido de un ámbito. Devuelve el meta ({savedAt,ok,reason}) o
+   null si no hay nada que guardar. */
 export function setDraft(scope,content){
   if(!scope)return null;
   const data={};
@@ -100,7 +131,8 @@ export function setDraft(scope,content){
   const all=loadDrafts();
   const savedAt=new Date().toISOString();
   all[scope]={data,savedAt};
-  return {savedAt,ok:persistAll(all)};
+  const result=persistAll(all,scope);
+  return {savedAt,ok:result.ok,reason:result.reason};
 }
 
 export function getDraft(scope){
@@ -162,6 +194,20 @@ export function draftSummary(scope,now=Date.now()){
   return {words,when,minutes};
 }
 
+/* Nombre legible de un ámbito, para poder rescatar lo que quedó a medias. */
+export function draftTitle(scope){
+  if(scope==='botella')return 'Una botella sin soltar';
+  if(scope==='perfil')return 'Tu perfil, a medio editar';
+  if(scope==='asistente')return 'La bienvenida, a medio rellenar';
+  if(scope==='manana')return 'La lista de mañana';
+  if(scope.startsWith('respuesta:'))return 'Una respuesta a una botella';
+  if(scope.startsWith('entrada:')){
+    const date=scope.slice('entrada:'.length);
+    return /^\d{4}-\d{2}-\d{2}$/.test(date)?`La entrada de ${longDate(date)}`:'Una entrada sin terminar';
+  }
+  return 'Un texto a medias';
+}
+
 /* Cuántos borradores hay pendientes y de qué tipo (para el indicador global). */
 export function pendingDrafts(){
   const list=listDrafts();
@@ -173,8 +219,41 @@ export function pendingDrafts(){
   };
 }
 
+/* ----- copia de seguridad ----- */
+/* El mapa tal cual, para meterlo en el JSON de exportación. */
+export function draftsSnapshot(){
+  const all=loadDrafts();
+  return Object.fromEntries(Object.entries(all).filter(([,v])=>isPlainObject(v)&&isPlainObject(v.data)));
+}
+
+/* Al importar, los borradores de la copia se suman a los de aquí: gana el más
+   reciente de cada ámbito. */
+export function mergeDrafts(raw){
+  const incoming=isPlainObject(raw)?raw:{};
+  const current=loadDrafts();
+  let changed=false;
+  for(const [scope,value] of Object.entries(incoming)){
+    if(!isPlainObject(value)||!isPlainObject(value.data))continue;
+    const savedAt=typeof value.savedAt==='string'?value.savedAt:'';
+    if(!savedAt)continue;
+    const had=current[scope];
+    if(had&&String(had.savedAt||'')>=savedAt)continue;
+    const data={};
+    for(const [key,item] of Object.entries(value.data)){
+      if(typeof item==='string'){const text=cutText(item);if(text.trim())data[key]=text;}
+      else if(typeof item==='number'||typeof item==='boolean')data[key]=item;
+    }
+    if(!Object.keys(data).length)continue;
+    current[scope]={data,savedAt};
+    changed=true;
+  }
+  if(!changed)return {ok:true,map:current,merged:0};
+  const result=persistAll(current);
+  return {ok:result.ok,map:result.map,merged:Object.keys(incoming).length};
+}
+
 /* Al borrar el cuaderno entero desaparecen también los borradores. */
 export function clearAllDrafts(){
-  try{localStorage.removeItem(DRAFTS_KEY);}catch{}
+  writeRaw(DRAFTS_KEY,null,{label:'Los borradores'});
   return true;
 }

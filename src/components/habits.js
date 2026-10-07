@@ -155,6 +155,18 @@ export function countersBoard(entry={},setup={},visible=[],counters=null){
 }
 
 /* ---------- lista de tareas para mañana ---------- */
+/* Una fila de tarea de mañana. Se usa al pintar la lista y al añadir una nueva
+   sin pasar por el almacén: así el hueco aparece aunque haya una escritura en
+   camino que todavía no ha llegado al disco. */
+export function tomorrowTaskRow(index=0,value=''){
+  const number=Number(index)||0;
+  return `<div class="task-row">
+    <span class="task-index">${String(number+1).padStart(2,'0')}</span>
+    <input class="task-input" data-index="${number}" value="${esc(value||'')}" maxlength="200" aria-label="Tarea ${number+1}">
+    <button type="button" class="icon-button ghost delete-button" data-action="remove-goal-routine" data-index="${number}" aria-label="Quitar tarea">${icon('close')}</button>
+  </div>`;
+}
+
 export function tomorrowBoard(entry={},date=dateKey()){
   const goals=entry?.goals||[];
   return `<section class="card tomorrow-board">
@@ -166,11 +178,7 @@ export function tomorrowBoard(entry={},date=dateKey()){
     <textarea id="routine-tomorrow" class="tomorrow-intent" name="tomorrow" maxlength="600" rows="2"
       placeholder="Mañana quiero…">${esc(entry?.tomorrow||'')}</textarea>
     <div class="task-list" id="routine-goals">
-      ${goals.length?goals.map((g,i)=>`<div class="task-row">
-        <span class="task-index">${String(i+1).padStart(2,'0')}</span>
-        <input class="task-input" data-index="${i}" value="${esc(g)}" maxlength="200" aria-label="Tarea ${i+1}">
-        <button type="button" class="icon-button ghost delete-button" data-action="remove-goal-routine" data-index="${i}" aria-label="Quitar tarea">${icon('close')}</button>
-      </div>`).join(''):`<p class="habit-empty">Sin tareas para mañana.</p>`}
+      ${goals.length?goals.map((g,i)=>tomorrowTaskRow(i,g)).join(''):`<p class="habit-empty">Sin tareas para mañana.</p>`}
     </div>
   </section>`;
 }
