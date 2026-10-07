@@ -34,6 +34,10 @@ import {saveIssue,onSaveChange,retryPending,hasPendingWrites,pendingWriteCount} 
 import {groupBottles,shoreQueue,canOpenBottle,sunPosition,oceanStats,voyageLine} from './utils/ocean.js';
 import {seaPanel,bottleComposer,bottleCard,bottleModal,bottleCountOnly,castSplash,wavesSvg,islandSceneSvg,castSplashPoint,oceanFigures} from './components/ocean.js';
 import {DRAFT_SCOPES,setDraft,draftData,clearDraft,draftIsNewer,clearAllDrafts,listDrafts,draftTitle,draftSummary,DRAFTS_KEY} from './utils/drafts.js';
+import {
+  PENDING_DAY_KEY,dayPatch,setDayPatch,clearDayPatch,clearAllDayPatches,pendingDayDates,
+  patchIsRedundant,mergeDay
+} from './utils/pendingDay.js';
 import {habitBoard,momentumGrid,habitStatsList,habitComposer,countersBoard,tomorrowBoard,tomorrowTaskRow,routineTeaser,progressRing} from './components/habits.js';
 import {
   detectCrisisRisk,getWritingPrompt,calculateEntryCompletion,getGreeting,getAgeProfile,
@@ -57,6 +61,9 @@ let entries=[],habits=[],thoughts=[],setup={...DEFAULT_SETUP},storageError='',vi
     oceanFilter='',lastView='',saveState='idle',shellMounted=false,motionOn=true,panelEnter=true,
     thoughtClockTimer=null,thoughtsDrawerOpen=false,mandatorySetupOpen=false,castSplashClassTimer=null,
     saveHealthSignature='',draftNoticeShown=false;
+/* A qué día pertenece el formulario del diario que hay pintado. Sin esto, al
+   cambiar de fecha se guardaba lo de un día en el borrador de otro. */
+let openFormDay=null;
 const thoughtsEntryWaveGuard=createTransitionGuard();
 /* Movimiento: respetamos tanto el sistema como la preferencia del cuaderno. */
 let motionQuery=null;
@@ -346,10 +353,13 @@ function syncShell(){
 let insideRender=false;
 function render(opts={}){
   /* Un repintado destruye el formulario: lo primero es dejar a salvo lo que
-     hubiera escrito (borrador + autoguardado). */
+     hubiera escrito (borradores y cambios del día pendientes). */
   if(insideRender)return;
   insideRender=true;
   try{
+    /* Los contadores de Rutina tienen su propio temporizador: si se cambia de
+       página justo después de teclear una cifra, se apunta antes de repintar. */
+    if(routineCounterTimer){clearTimeout(routineCounterTimer);routineCounterTimer=null;saveRoutineCounters();}
     flushAllDrafts();
     applyTheme(setup.theme,setup);
     if(!shellMounted){
@@ -360,6 +370,7 @@ function render(opts={}){
     renderPage(opts);
     syncShell();
     syncSaveHealth();
+    syncSaveStatus();
     if(!setup.completed&&!mandatorySetupOpen){
       mandatorySetupOpen=true;
       openSetupWizard(1,{mandatory:true});
@@ -372,10 +383,11 @@ function render(opts={}){
 /* ============================================================
    SI NO SE PUEDE GUARDAR, SE DICE
    ------------------------------------------------------------
-   El cuaderno no da la lata con avisos de autoguardado, pero cuando el
-   navegador rechaza una escritura hay que enterarse: aparece una píldora
-   con el motivo y dos salidas (reintentar o descargar una copia), y se
-   avisa antes de cerrar la pestaña si algo sigue sin escribirse.
+   El cuaderno no da la lata con avisos de guardado (solo la línea discreta
+   junto al botón), pero cuando el navegador rechaza una escritura hay que
+   enterarse: aparece una píldora con el motivo y dos salidas (reintentar o
+   descargar una copia), y se avisa antes de cerrar la pestaña si algo sigue
+   sin escribirse.
    ============================================================ */
 function saveHealthLabel(issue){
   if(!issue)return '';
@@ -404,6 +416,39 @@ function syncSaveHealth(){
     }
   }
   return issue;
+}
+
+/* El estado del día, en una línea y sin ruido: qué hay guardado y qué no.
+   El cuaderno no guarda solo; conviene saberlo de un vistazo. */
+function savedAtLabel(iso){
+  const when=new Date(iso||'');
+  if(Number.isNaN(when.getTime()))return '';
+  try{return when.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});}catch{return '';}
+}
+function saveStatus(){
+  if(storageError)return {tone:'error',text:'Los datos guardados no se pueden leer.'};
+  if(saveIssue())return {tone:'error',text:'Hay algo sin guardar en el navegador.'};
+  const day=savedDay(selected);
+  if(dayIsDirty(selected)){
+    return day
+      ?{tone:'pending',text:'Cambios sin guardar'}
+      :{tone:'pending',text:'Este día aún no está en el cuaderno'};
+  }
+  if(day){
+    const at=savedAtLabel(day.updatedAt);
+    return {tone:'saved',text:at?`Guardado a las ${at}`:'Guardado'};
+  }
+  return {tone:'idle',text:'Nada escrito todavía'};
+}
+function syncSaveStatus(){
+  const el=document.querySelector('#save-status');
+  if(!el)return;
+  const state=saveStatus();
+  const signature=`${state.tone}|${state.text}`;
+  if(el.dataset.state===signature)return;
+  el.dataset.state=signature;
+  el.className=`save-status is-${state.tone}`;
+  el.textContent=state.text;
 }
 
 function cancelThoughtsEntryWave(){
@@ -503,6 +548,7 @@ function renderPage(opts={}){
   const animate=motionOn&&!opts.instant&&!enteringThoughts&&(Boolean(opts.transition)||viewChanged||panelEnter);
   panelEnter=false;
   const keepScroll=window.scrollY;
+  openFormDay=view==='diary'?selected:null;
   main.innerHTML=`
     ${storageError?`<div class="error-banner" role="alert">${esc(storageError)}</div>`:''}
     ${page()}`;
@@ -672,7 +718,10 @@ function hasExtraDetails(e){
 }
 
 function diaryPage(){
-  const e=entries.find(x=>x.date===selected);
+  /* El formulario enseña el día completo (guardado + pendiente); la hoja del
+     cuaderno, solo lo que de verdad está guardado. */
+  const e=dayFor(selected);
+  const saved=savedDay(selected);
   const profile=getAgeProfile(setup);
   const risk=!crisisBannerDismissed ? detectCrisisRisk(e||{}) : {triggered:false};
   const activePrompt=getWritingPrompt(selected,promptOffset);
@@ -806,10 +855,11 @@ function diaryPage(){
         </div>
 
         <div class="save-area">
+          <p class="save-status is-idle" id="save-status" role="status" aria-live="polite"></p>
           <button class="button solid save-button" type="submit" ${storageError?'disabled':''}>${icon('stamp')} Guardar día</button>
         </div>
       </form>
-      ${savedNotebookSheet(e,profile)}
+      ${savedNotebookSheet(saved,profile)}
     </div>
 
     <aside class="diary-aside">
@@ -935,7 +985,10 @@ function oceanEmptyFor(tab){
 
 /* ================= RUTINA: HÁBITOS, CONTADORES Y MAÑANA ================= */
 function routinePage(){
-  const e=entries.find(x=>x.date===selected);
+  const e=dayFor(selected);
+  /* Para las rejillas y las rachas de hábitos valen también los días que solo
+     tienen cambios pendientes: una marca recién puesta tiene que verse. */
+  const days=daysWithPending();
   const tabs=[
     ['hoy','listChecks','Hoy'],
     ['week','grid','Semana'],
@@ -950,9 +1003,9 @@ function routinePage(){
   <div class="routine-layout">
     <div class="routine-main tab-panel-enter">
       ${routineHero(e)}
-      <div id="routine-body">${routineBody(e)}</div>
+      <div id="routine-body">${routineBody(e,days)}</div>
     </div>
-    <aside class="routine-aside">${routineStatsAside(e)}</aside>
+    <aside class="routine-aside">${routineStatsAside(e,days)}</aside>
   </div>`;
 }
 
@@ -971,30 +1024,33 @@ function routineHero(e){
   const note=pct>=100?'Lista completa.'
     :pct>0?'Buen ritmo.'
     :'Un paso basta.';
+  const pending=Boolean(dayPendingPatch(selected));
   return `<section class="card routine-hero">
     <div class="routine-hero-copy">
       <p class="eyebrow">${icon('sun')} ${esc(longDate(selected,{weekday:'long',day:'numeric',month:'long'}))}</p>
       <h2>${esc(headline)}</h2>
       <p class="routine-hero-note">${esc(note)}</p>
       ${dayNavInPlace()}
+      ${pending?`<p class="routine-hero-pending">${icon('pen')} Estos cambios aún no están en el cuaderno.
+        <button type="button" class="text-button" data-action="open-day" data-date="${selected}">Guardar el día en Hoy ${icon('arrow')}</button></p>`:''}
     </div>
     ${progressRing(pct,habits.length?`${pct}%`:'—','de hoy')}
   </section>`;
 }
 
-function routineBody(e){
+function routineBody(e,days=daysWithPending()){
   const profile=getAgeProfile(setup);
   const today=dateKey();
   if(routineTab==='week'){
-    return `${momentumGrid(entries,habits,{days:35,end:today,today,title:'Tus últimas cinco semanas'})}${weekHabitSummary()}`;
+    return `${momentumGrid(days,habits,{days:35,end:today,today,title:'Tus últimas cinco semanas'})}${weekHabitSummary(days)}`;
   }
   if(routineTab==='counters'){
-    const recent=inRange(entries,addDays(today,-27),today);
+    const recent=inRange(days,addDays(today,-27),today);
     return `${countersBoard(e,setup,[])||''}${personalGoalsPanel(recent,setup)}`;
   }
   if(routineTab==='streaks'){
     return habits.length
-      ? `${habitStatsList(habits,entries,today)}${streakBoard()}`
+      ? `${habitStatsList(habits,days,today)}${streakBoard(days)}`
       : emptyState('Sin hábitos','Añade uno.',`<button type="button" class="button outline" data-action="routine-tab" data-tab="hoy">${icon('plus')} Añadir</button>`);
   }
   return `${habits.length?`<section class="card habit-board-card">
@@ -1002,28 +1058,31 @@ function routineBody(e){
       <div><p class="eyebrow">${icon('listChecks')} Hoy</p><h2>Hábitos</h2></div>
       <span class="field-caption">${habits.filter(h=>e?.habits?.[h.id]).length}/${habits.length}</span>
     </div>
-    ${habitBoard(habits,e,entries,selected,today)}
+    ${habitBoard(habits,e,days,selected,today)}
   </section>`:emptyState('Sin hábitos','Añade uno.',`<button type="button" class="button outline" data-action="routine-tab" data-tab="streaks">${icon('flame')} Rachas</button>`)}
   ${tomorrowBoard(e,selected)}
   ${habitComposer(profile,habits)}`;
 }
 
-function weekHabitSummary(){
+function weekHabitSummary(days=daysWithPending()){
   const start=weekStart(selected),end=addDays(start,6);
-  const weekly=inRange(entries,start,end);
+  /* Los hábitos se cuentan también en días con cambios pendientes; los «días
+     con entrada» solo son los que de verdad están en el cuaderno. */
+  const weekly=inRange(days,start,end);
+  const withEntry=inRange(entries,start,end).length;
   const rows=habits.map(h=>{
     const done=weekly.filter(e=>e.habits?.[h.id]).length;
     return {label:h.name,count:done,total:7,color:done>=5?'var(--green)':done>=3?'var(--ochre)':'var(--red)'};
   });
   return `<section class="card">
     <div class="section-heading"><div><p class="eyebrow">${icon('week')}Esta semana</p><h2>${esc(longDate(start,{day:'numeric',month:'short'}))} → ${esc(longDate(end,{day:'numeric',month:'short'}))}</h2></div>
-      <span class="tag">${weekly.length}/7 días con entrada</span></div>
+      <span class="tag">${withEntry}/7 días con entrada</span></div>
     ${habits.length?meterRows(rows):'<p class="habit-empty">Añade hábitos para ver su semana.</p>'}
   </section>`;
 }
 
-function streakBoard(){
-  const best=habits.map(h=>({h,best:bestHabitStreak(entries,h.id),live:liveHabitStreak(entries,h.id)})).filter(x=>x.best>0).sort((a,b)=>b.best-a.best).slice(0,6);
+function streakBoard(days=daysWithPending()){
+  const best=habits.map(h=>({h,best:bestHabitStreak(days,h.id),live:liveHabitStreak(days,h.id)})).filter(x=>x.best>0).sort((a,b)=>b.best-a.best).slice(0,6);
   if(!best.length)return '';
   const top=best[0].best||1;
   return `<section class="card streak-board">
@@ -1039,15 +1098,15 @@ function streakBoard(){
   </section>`;
 }
 
-function fullRoutineDays(){
+function fullRoutineDays(days=daysWithPending()){
   if(!habits.length)return 0;
-  return entries.filter(e=>habits.every(h=>e.habits?.[h.id])).length;
+  return days.filter(e=>habits.every(h=>e.habits?.[h.id])).length;
 }
 
-function routineStatsAside(e){
+function routineStatsAside(e,days=daysWithPending()){
   const today=dateKey();
   const recent=inRange(entries,addDays(today,-27),today);
-  const sleepPct=e?Math.min(100,Math.round((e.sleepHours/(setup.sleepGoal||7.5))*100)):0;
+  const sleepPct=e?Math.min(100,Math.round(((e.sleepHours||0)/(setup.sleepGoal||7.5))*100)):0;
   return `
   <section class="card routine-day-card">
     <div class="section-heading"><h2>El día en cifras</h2><span class="tag">${esc(longDate(selected,{day:'numeric',month:'short'}))}</span></div>
@@ -1065,7 +1124,7 @@ function routineStatsAside(e){
     <div class="streak-lines">
       <div><span>${icon('flame')} Días seguidos escribiendo</span><strong>${currentStreak(entries)}</strong></div>
       <div><span>${icon('seal')} Mejor racha histórica</span><strong>${maxStreak(entries)}</strong></div>
-      <div><span>${icon('check')} Días con toda la rutina</span><strong>${fullRoutineDays()}</strong></div>
+      <div><span>${icon('check')} Días con toda la rutina</span><strong>${fullRoutineDays(days)}</strong></div>
       <div><span>${icon('moon')} Sueño medio</span><strong>${recent.length?f(calculateStats(recent).sleep):'—'} h</strong></div>
     </div>
   </section>
@@ -1302,12 +1361,13 @@ function setupUnifiedPage(){
     </div>`;
 }
 
-function saveCustomization(patch,msg='Guardado.'){
+function saveCustomization(patch,msg='Guardado.',{rerender=true}={}){
   try{
     setup=saveSetup(patch);
-  }catch(err){toast(err.message||'No se pudo guardar.',true);return;}
-  render();
+  }catch(err){toast(err.message||'No se pudo guardar.',true);return false;}
+  if(rerender)render();
   if(msg)toast(msg);
+  return true;
 }
 function flashRow(kind,id){
   if(!motionOn)return;
@@ -1348,27 +1408,57 @@ function addCounter(){
   }]},'Contador añadido.');
   focusCustom('counter',key);
 }
+/* El valor tal y como quedó guardado, para poder enseñar lo que de verdad
+   hay (si el validador recorta, se ve el recorte; si era basura, se deshace). */
+function storedCustomValue(kind,id,field){
+  if(kind==='part'){
+    const def=partDefs(setup).find(p=>p.key===id);
+    return def?def[field]:null;
+  }
+  const def=counterDefs(setup).find(c=>c.key===id);
+  if(!def)return null;
+  if(field==='goal')return counterGoal(def,setup)||'';
+  return def[field]??'';
+}
+function syncCustomInput(el,kind,id,field){
+  const stored=storedCustomValue(kind,id,field);
+  if(stored===null)return;
+  const value=String(stored);
+  if(String(el.value)!==value)el.value=value;
+}
+/* Editar un campo no vuelve a pintar la página: así no se pierde lo que
+   estuvieras escribiendo en otro hueco de la misma tarjeta. */
 function applyCustomEdit(el){
   const kind=el.dataset.edit,id=el.dataset.key,field=el.dataset.field;
   if(kind==='part'){
     if(field==='label'&&!String(el.value).trim()){
       toast('Sin título no puede estar: escribe uno o quítala.',true);
-      render();
+      syncCustomInput(el,'part',id,field);
       return;
     }
-    saveCustomization({parts:partDefs(setup).map(p=>p.key===id?{...p,[field]:el.value}:p)},'');
+    const list=partDefs(setup).map(p=>p.key===id?{...p,[field]:el.value}:p);
+    if(!saveCustomization({parts:list},'',{rerender:false}))return;
+    syncCustomInput(el,'part',id,field);
     focusCustom('part',id,field);
     return;
   }
   if(kind==='counter'){
+    const goal=Number.parseFloat(el.value);
     const list=counterDefs(setup).map(c=>{
       if(c.key!==id)return c;
-      if(field==='goal')return c.key==='water'?c:{...c,goal:parseFloat(el.value)||0};
+      if(field==='goal'){
+        if(c.key==='water')return c;
+        const value=Number.isFinite(goal)?Math.max(0,goal):0;
+        return {...c,goal:value,max:Math.max(c.max,value,20)};
+      }
       return {...c,[field]:el.value};
     });
     const patch={counters:list};
-    if(field==='goal'&&id==='water')patch.waterGoal=Math.min(25,Math.max(0,parseFloat(el.value)||0))||8;
-    saveCustomization(patch,'');
+    if(field==='goal'&&id==='water'&&Number.isFinite(goal)&&goal>0){
+      patch.waterGoal=Math.min(25,Math.max(1,Math.round(goal*10)/10));
+    }
+    if(!saveCustomization(patch,'',{rerender:false}))return;
+    syncCustomInput(el,'counter',id,field);
     focusCustom('counter',id,field);
   }
 }
@@ -1619,17 +1709,57 @@ function appearanceFormBody(){
   </form>`;
 }
 
-/* Los textos a medias también se pueden rescatar a mano: si algo no volvió
-   solo a su sitio, aquí está, con su día y su hora. */
+/* Los textos a medias y los días sin guardar también se pueden rescatar a
+   mano: si algo no volvió solo a su sitio, aquí está, con su día y su hora. */
+/* Los días que aún no están en el cuaderno, para poder terminarlos o
+   descartarlos sin tener que buscarlos en el calendario. */
+function pendingDayList(){
+  return pendingDayDates()
+    .map(date=>({date,patch:dayPendingPatch(date)}))
+    .filter(item=>Boolean(item.patch))
+    .sort((a,b)=>b.date.localeCompare(a.date));
+}
+function pendingDaySummary(date){
+  const patch=dayPatch(date)||{};
+  const parts=[];
+  const habitsDone=Object.values(patch.habits||{}).filter(Boolean).length;
+  if(habitsDone)parts.push(`${habitsDone} ${habitsDone===1?'hábito':'hábitos'}`);
+  const counters=Object.values(patch.counters||{}).filter(v=>Number(v)>0).length;
+  if(counters)parts.push(`${counters} ${counters===1?'contador':'contadores'}`);
+  if((patch.goals||[]).length)parts.push(`${patch.goals.length} ${patch.goals.length===1?'tarea':'tareas'}`);
+  if(String(patch.tomorrow||'').trim())parts.push('la lista de mañana');
+  if(String(patch.generalDay||'').trim()||String(patch.capsule||'').trim())parts.push('texto escrito');
+  return parts.length?`Sin guardar: ${parts.join(' · ')}`:'Cambios sin guardar';
+}
 function draftsRecoveryBody(){
   const list=listDrafts().filter(d=>d.data&&Object.keys(d.data).length);
-  if(!list.length)return '';
-  return `<section class="card drafts-card">
+  const days=pendingDayList();
+  if(!list.length&&!days.length)return '';
+  return `${days.length?`<section class="card drafts-card">
+    <div class="section-heading">
+      <div><p class="eyebrow">${icon('stamp')} Sin guardar</p><h2>Días a medias</h2></div>
+      <span class="field-caption">${days.length} ${days.length===1?'día':'días'}</span>
+    </div>
+    <p class="drafts-lead">Tienen cambios apuntados (hábitos, contadores, tareas…) que todavía no están en el cuaderno. Se guardan cuando pulsas «Guardar día».</p>
+    <ul class="drafts-list">
+      ${days.map(({date})=>`<li class="drafts-row" data-pending-day="${date}">
+        <div class="drafts-row-info">
+          <strong>${esc(longDate(date))}</strong>
+          <small>${esc(pendingDaySummary(date))}</small>
+        </div>
+        <div class="drafts-row-actions">
+          <button type="button" class="button outline small" data-action="open-day" data-date="${date}">Terminar el día</button>
+          <button type="button" class="icon-button ghost" data-action="discard-day-patch" data-date="${date}" aria-label="Descartar los cambios de ${esc(longDate(date))}">${icon('close')}</button>
+        </div>
+      </li>`).join('')}
+    </ul>
+  </section>`:''}
+  ${list.length?`<section class="card drafts-card">
     <div class="section-heading">
       <div><p class="eyebrow">${icon('pen')} Sin terminar</p><h2>Textos a medias</h2></div>
       <span class="field-caption">${list.length} ${list.length===1?'borrador':'borradores'}</span>
     </div>
-    <p class="drafts-lead">Se guardan solos mientras escribes. Puedes volver a ellos cuando quieras o descartarlos.</p>
+    <p class="drafts-lead">Se guardan solos mientras escribes, pero el día no entra en el cuaderno hasta que pulsas «Guardar día».</p>
     <ul class="drafts-list">
       ${list.map(d=>{
         const summary=draftSummary(d.scope);
@@ -1646,7 +1776,7 @@ function draftsRecoveryBody(){
         </li>`;
       }).join('')}
     </ul>
-  </section>`;
+  </section>`:''}`;
 }
 
 /* Lleva al sitio donde vive un borrador y lo deja listo para seguir. */
@@ -1685,7 +1815,7 @@ function dataAndPrivacyBody(){
   <div class="two-columns">
     <section class="card">
       <h2>Exportar copia</h2>
-      <p style="margin:8px 0 16px;color:var(--ink-soft)">Entradas, hábitos y perfil en un JSON.</p>
+      <p style="margin:8px 0 16px;color:var(--ink-soft)">Entradas, hábitos, perfil y lo que tengas a medias en un JSON.</p>
       <button class="button solid" data-action="export">${icon('download')} Descargar JSON</button>
     </section>
     <section class="card">
@@ -1712,26 +1842,53 @@ function dataAndPrivacyBody(){
   </section>`;
 }
 
-/* ================= GUARDADO RÁPIDO DESDE RUTINA Y MAR ================= */
-function entryDraftFor(date){
-  const current=entries.find(x=>x.date===date);
-  const profile=getAgeProfile(setup);
-  if(current)return {...current};
-  return {
-    date,
-    mood:3,
-    sleepHours:setup.sleepGoal||profile.sleepRecommended||7.5,
-    studyHours:0,
-    energy:null,stress:null,
-    bestOfDay:'',differentToday:'',
-    generalDay:'Registro rápido desde la rutina.',
-    wordOfDay:'',capsule:'',
-    gratitude:['','',''],tomorrow:'',goals:[],tags:[],counters:{},habits:{}
-  };
-}
+/* ================= GUARDADO RÁPIDO DESDE RUTINA Y MAR =================
+   Ojo: esto **no** escribe una entrada del cuaderno. Marcar un hábito, sumar
+   agua o apuntar la lista de mañana deja un cambio pendiente que se funde con
+   la entrada la primera vez que pulsas «Guardar día». Así el cuaderno no
+   inventa días que nadie escribió y, aun así, nada se pierde al cambiar de
+   página. */
 function patchDay(date,patch){
   if(date>dateKey())throw new Error('Ese día todavía no ha llegado.');
-  return tryWrite('el día',()=>{entries=saveEntry({...entryDraftFor(date),...patch});return entries;}).value;
+  const result=setDayPatch(date,patch);
+  if(!result||!result.ok)throw new SaveError('Los cambios del día',{key:PENDING_DAY_KEY,reason:result?.reason||'unknown'});
+  return result.patch;
+}
+
+/* ---------- el día: lo guardado y lo que falta por guardar ---------- */
+function savedDay(date=selected){return entries.find(e=>e.date===date)||null;}
+/* Lo que se ve en pantalla: la entrada guardada —si la hay— con los cambios
+   pendientes por encima. */
+function dayFor(date=selected){return mergeDay(date,savedDay(date),dayPatch(date));}
+/* Todos los días con algo que enseñar, incluidos los que solo tienen cambios
+   pendientes: así una marca de hábito no desaparece de la rejilla aunque el
+   día todavía no se haya guardado. */
+function daysWithPending(){
+  const byDate=new Map(entries.map(e=>[e.date,e]));
+  for(const date of pendingDayDates()){
+    const merged=mergeDay(date,byDate.get(date)||null,dayPatch(date));
+    if(merged)byDate.set(date,merged);
+  }
+  return [...byDate.values()].sort((a,b)=>a.date.localeCompare(b.date));
+}
+function dayDefaults(day=dayFor()){
+  const profile=getAgeProfile(setup);
+  return {
+    sleepHours:day?.sleepHours??setup.sleepGoal??profile.sleepRecommended??7.5,
+    studyHours:day?.studyHours??0
+  };
+}
+/* El parche del día, si es que cambia algo de lo guardado (un parche que solo
+   repite lo que ya hay no cuenta como cambio pendiente). */
+function dayPendingPatch(date=selected){
+  const patch=dayPatch(date);
+  if(!patchIsRedundant(savedDay(date),patch))return patch;
+  return null;
+}
+/* Un día está «a medias» cuando hay texto en el borrador o cambios de Rutina
+   esperando. Es lo único que enciende el aviso de «sin guardar». */
+function dayIsDirty(date=selected){
+  return Boolean(draftData(DRAFT_SCOPES.entry(date))||dayPendingPatch(date));
 }
 
 function currentGoalsRaw(){
@@ -1740,8 +1897,13 @@ function currentGoalsRaw(){
 function commitTomorrowFromDom(){
   const textarea=document.querySelector('#routine-tomorrow');
   if(!textarea)return;
+  const tomorrow=textarea.value.trim();
   const goals=currentGoalsRaw().filter(Boolean);
-  try{patchDay(selected,{tomorrow:textarea.value.trim(),goals});}
+  const day=dayFor(selected)||{};
+  /* Solo se toca el almacén si de verdad ha cambiado algo: antes, rozar un
+     campo vacío ya escribía un día entero en el cuaderno. */
+  if((day.tomorrow||'')===tomorrow&&(day.goals||[]).join('\u0000')===goals.join('\u0000'))return;
+  try{patchDay(selected,{tomorrow,goals});}
   catch(err){toast(err.message||'No se pudo guardar la lista.',true);}
 }
 
@@ -1783,6 +1945,16 @@ function bindRoutineForm(){
 }
 
 let routineCounterTimer=null;
+/* Un contador nunca se sale de su escala: si alguien escribe 500 vasos de
+   agua, lo que se guarda es el máximo de verdad (y no un día que no se puede
+   guardar por una cifra imposible). */
+function clampCounterValue(def,value){
+  const n=Number(value);
+  const safe=Number.isFinite(n)?n:0;
+  const min=Number.isFinite(def?.min)?def.min:0;
+  const max=Number.isFinite(def?.max)?def.max:99999;
+  return Math.min(max,Math.max(min,Math.round(safe*10)/10));
+}
 function updateCounterRow(input,key,value){
   const row=input.closest('.counter-row');
   const def=counterDefs(setup).find(c=>c.key===key)||{key,label:key};
@@ -1800,12 +1972,15 @@ function updateCounterRow(input,key,value){
   }
 }
 function saveRoutineCounters(){
-  const stored=entries.find(x=>x.date===selected);
-  const patch={...(stored?.counters||{})};
+  const day=dayFor(selected)||{};
+  const stored=day.counters||{};
+  const patch={...stored};
   for(const c of counterDefs(setup)){
     const input=document.querySelector(`[name="counter_${c.key}"]`);
-    if(input||c.key in patch)patch[c.key]=input?(parseFloat(input.value)||0):(Number(stored?.counters?.[c.key])||0);
+    if(input||c.key in patch)patch[c.key]=input?clampCounterValue(c,input.value):(Number(stored[c.key])||0);
   }
+  const unchanged=Object.keys(patch).every(key=>Number(patch[key])===Number(stored[key]||0));
+  if(unchanged)return;   // sin cambios no hay nada que apuntar
   try{patchDay(selected,{counters:patch});}
   catch(err){toast(err.message||'No se pudo guardar el contador.',true);}
 }
@@ -1897,9 +2072,8 @@ function openBottle(id){
     }
     if(act==='to-entry'){
       try{
-        bottleToEntry(bottle);
+        if(bottleToEntry(bottle))toast('Añadido a la entrada de hoy. Pulsa «Guardar día» para conservarlo.');
         again();
-        toast('Copiado a la entrada de hoy.');
       }catch(err){toast(err.message||'No se pudo copiar.',true);}
       return;
     }
@@ -1913,23 +2087,27 @@ function openBottle(id){
   };
 }
 
+/* Copiar la botella a la entrada de hoy es una decisión tuya, pero tampoco
+   inventa una entrada: deja el texto apuntado en el día y el día espera a
+   «Guardar día». */
 function bottleToEntry(bottle){
   const today=dateKey();
-  const entry=entries.find(x=>x.date===today);
+  const day=dayFor(today);
+  const draft=draftData(DRAFT_SCOPES.entry(today))||{};
+  const currentText=(typeof draft.generalDay==='string'&&draft.generalDay.trim())?draft.generalDay:(day?.generalDay||'');
   const line=`Del mar · botella del ${longDate(bottle.castAt,{day:'numeric',month:'long'})}: «${bottle.text}»`;
-  const generalDay=[entry?.generalDay,line].filter(Boolean).join('\n\n');
-  const saved=tryWrite('el pensamiento',()=>{
-    patchDay(today,{
-      generalDay,
-      capsule:entry?.capsule||String(bottle.text).slice(0,240),
-      tags:[...new Set([...(entry?.tags||[]),'Pensamiento'])].slice(0,20)
-    });
-    thoughts=updateThought(bottle.id,{kept:true,keptOn:today,seen:true});
+  const generalDay=[currentText,line].filter(Boolean).join('\n\n');
+  patchDay(today,{
+    generalDay,
+    capsule:day?.capsule||draft.capsule||String(bottle.text).slice(0,240),
+    tags:[...new Set([...(day?.tags||[]),...(draft.tags||[]),'Pensamiento'])].slice(0,20)
   });
-  if(!saved.ok)return;
+  const saved=tryWrite('el pensamiento',()=>{thoughts=updateThought(bottle.id,{kept:true,keptOn:today,seen:true});});
+  if(!saved.ok)return false;
   selected=today;
   view='diary';
   updateRouteUrl();
+  return true;
 }
 
 /* El momento del chapuzón: arco, golpe de agua, ondas y la superficie agitándose. */
@@ -2056,44 +2234,25 @@ function requestDeleteBottle(id){
 /* ============================================================
    EL GUARDADO — que nada se quede a medias
    ------------------------------------------------------------
-   Dos capas:
+   Dos capas, ninguna de ellas escribe la entrada sola:
    1. Borrador local (diario.drafts.v1): cada tecla guarda lo escrito,
       con su hora. Si cierras la pestaña, al volver sigue ahí.
-   2. Autoguardado de la entrada: tras un rato sin teclear, el día se
-      escribe solo en el cuaderno (nunca si está vacío).
+   2. Cambios del día (diario.pendiente-dia.v1): lo que marcas en Rutina y
+      en el mar, que se funde con la entrada al guardar el día.
+   La entrada solo se escribe al pulsar «Guardar día».
    ============================================================ */
 const ENTRY_TEXT_FIELDS=['generalDay','bestOfDay','differentToday','capsule','wordOfDay','tomorrow','gratitude0','gratitude1','gratitude2','tagCustom'];
-/* Cada parte propia es un campo más del diario: borrador, autoguardado y
+/* Cada parte propia es un campo más del diario: borrador, guardado y
    recuperación lo tratan igual que a los de siempre. */
 function entryTextFields(){
   return [...ENTRY_TEXT_FIELDS,...partDefs(setup).map(p=>`part_${p.key}`)];
 }
 const draftTimers=new Map();
-let autosavePending=false;
-/* El autoguardado espera un poco a que dejes de teclear, pero nunca más de
-   `AUTOSAVE_MAX`: así una sesión larga sin pausas también queda escrita. */
-const AUTOSAVE_IDLE=1200;
-const AUTOSAVE_MAX=12000;
-let autosaveIdleTimer=null,autosaveMaxTimer=null;
-function cancelAutosaveTimers(){
-  if(autosaveIdleTimer){clearTimeout(autosaveIdleTimer);autosaveIdleTimer=null;}
-  if(autosaveMaxTimer){clearTimeout(autosaveMaxTimer);autosaveMaxTimer=null;}
-}
-function scheduleAutosave(){
-  if(autosaveIdleTimer)clearTimeout(autosaveIdleTimer);
-  autosaveIdleTimer=setTimeout(()=>{
-    autosaveIdleTimer=null;
-    cancelAutosaveTimers();
-    commitEntry({silent:true});
-  },AUTOSAVE_IDLE);
-  if(!autosaveMaxTimer){
-    autosaveMaxTimer=setTimeout(()=>{
-      autosaveMaxTimer=null;
-      if(autosaveIdleTimer){clearTimeout(autosaveIdleTimer);autosaveIdleTimer=null;}
-      commitEntry({silent:true});
-    },AUTOSAVE_MAX);
-  }
-}
+/* No hay autoguardado de la entrada: el cuaderno escribe un día solo cuando
+   pulsas «Guardar día». Mientras tanto, lo escrito vive en el borrador local
+   (diario.drafts.v1) y los toques de Rutina en los cambios del día
+   (diario.pendiente-dia.v1). Cerrar la pestaña no pierde nada, pero tampoco
+   aparecen días que nadie guardó. */
 
 function draftCancel(key){
   const timer=draftTimers.get(key);
@@ -2114,7 +2273,9 @@ function draftCaptureNow(key,fn){
   if(timer){clearTimeout(timer);draftTimers.delete(key);}
   fn();
 }
-function entryScope(){return DRAFT_SCOPES.entry(selected);}
+/* El día del formulario abierto, no el que esté seleccionado ahora mismo:
+   al cambiar de fecha, lo que hay pintado sigue siendo el día anterior. */
+function formDay(){return openFormDay||selected;}
 
 function rawFormValues(form){
   const out={};
@@ -2144,50 +2305,70 @@ function rawFormValues(form){
   return out;
 }
 
-/* ¿El formulario dice hoy lo mismo que el cuaderno? Entonces no hay borrador. */
-function entryMatchesStored(values){
-  const stored=entries.find(x=>x.date===selected);
-  if(!stored)return !Object.keys(values).length;
+/* ¿El formulario dice hoy lo mismo que el día? Los valores de partida (las
+   horas que se proponen, ningún ánimo elegido) no cuentan como cambios: abrir
+   un día vacío y no escribir nada no deja borrador fantasma. */
+function formMatchesDay(values,day,defaults){
+  const dayValue=key=>{
+    if(key.startsWith('gratitude'))return (day?.gratitude||[])[+key.slice(9)]||'';
+    if(key.startsWith('part_'))return (day?.parts||{})[key.slice('part_'.length)]||'';
+    if(key==='tagCustom')return '';
+    return day?.[key]??'';
+  };
   for(const key of entryTextFields()){
-    if(!(key in values))continue;
-    let had='';
-    if(key.startsWith('gratitude'))had=(stored.gratitude||[])[+key.slice(9)]||'';
-    else if(key==='tagCustom')continue;
-    else had=stored[key]??'';
-    if(String(values[key]??'').trim()!==String(had).trim())return false;
+    if(!(key in values)||key==='tagCustom')continue;
+    if(String(values[key]??'').trim()!==String(dayValue(key)).trim())return false;
   }
-  for(const key of ['mood','energy','stress','sleepHours','studyHours']){
+  for(const key of ['mood','energy','stress']){
     if(values[key]===undefined)continue;
-    const storedVal=stored[key];
-    if(storedVal===null||storedVal===undefined){if(Number(values[key])!==0&&values[key]!==3)return false;continue;}
-    if(Number(values[key])!==Number(storedVal))return false;
+    const had=day?.[key];
+    if(had===null||had===undefined)return false;   // has elegido algo que el día no tenía
+    if(Number(values[key])!==Number(had))return false;
   }
-  const storedCounters=stored.counters||{};
-  for(const [k,v] of Object.entries(values.counters||{})){
-    if(Number(v)!==Number(storedCounters[k]||0))return false;
+  for(const key of ['sleepHours','studyHours']){
+    if(values[key]===undefined||values[key]===null)continue;
+    const had=day?.[key];
+    const target=had===null||had===undefined?defaults[key]:had;
+    if(Number(values[key])!==Number(target))return false;
   }
-  const storedHabits=stored.habits||{};
-  for(const [k,v] of Object.entries(values.habits||{})){
-    if(Boolean(v)!==Boolean(storedHabits[k]))return false;
-  }
-  if((stored.tags||[]).slice().sort().join('|')!==(values.tags||[]).slice().sort().join('|'))return false;
-  if((stored.goals||[]).join('|')!==(values.goals||[]).join('|'))return false;
+  const tags=(values.tags||[]).slice().sort().join('|');
+  if(tags&&tags!==(day?.tags||[]).slice().sort().join('|'))return false;
+  const goals=(values.goals||[]).join('|');
+  if(goals&&goals!==(day?.goals||[]).join('|'))return false;
   return true;
+}
+
+/* ¿Hay algo digno de guardar? Un día en blanco no se guarda: el cuaderno no
+   inventa notas que nadie escribió. Las horas solo cuentan si las has movido
+   de su valor de partida. */
+function dayHasSubstance(values,defaults={}){
+  if(entryTextFields().some(key=>String(values[key]??'').trim()))return true;
+  if(['mood','energy','stress'].some(key=>values[key]!==undefined&&values[key]!==null))return true;
+  if(Object.values(values.counters||{}).some(v=>Number(v)>0))return true;
+  if(Object.values(values.habits||{}).some(Boolean))return true;
+  if((values.tags||[]).length||(values.goals||[]).length)return true;
+  if(['sleepHours','studyHours'].some(key=>values[key]!==undefined&&values[key]!==null&&Number(values[key])!==Number(defaults?.[key])))return true;
+  return false;
 }
 
 function captureEntryDraft(){
   const form=document.querySelector('#diary-form');
   if(!form)return;
+  const date=formDay();
   const values=rawFormValues(form);
-  if(entryMatchesStored(values)){
-    const had=clearDraft(entryScope());
-    if(had)setSaveState('saved');
-    else setSaveState(saveState==='typing'?'saved':saveState);
+  const day=dayFor(date);
+  if(formMatchesDay(values,day,dayDefaults(day))){
+    if(clearDraft(DRAFT_SCOPES.entry(date))&&saveState!=='error')setSaveState('saved');
+    syncSaveStatus();
     return;
   }
-  const meta=setDraft(entryScope(),values);
+  const scope=DRAFT_SCOPES.entry(date);
+  const hadDraft=Boolean(draftData(scope));
+  if(!hadDraft&&!dayHasSubstance(values,dayDefaults(day))){syncSaveStatus();return;}
+  const meta=setDraft(scope,values);
   if(meta&&!meta.ok)setSaveState('error');
   else if(meta)setSaveState('draft');
+  syncSaveStatus();
 }
 
 function captureBottleDraft(){
@@ -2210,7 +2391,7 @@ function captureReplyDraft(id,el){
 function onEntryEdit(){
   setSaveState('typing');
   draftDebounce('entrada',captureEntryDraft,420);
-  scheduleAutosave();
+  syncSaveStatus();
 }
 function onBottleEdit(){
   const form=document.querySelector('#bottle-form');
@@ -2316,8 +2497,8 @@ function bindDraftListeners(){
     if(el.closest('#diary-form'))onEntryEdit();
     if(el.closest('#bottle-form'))onBottleEdit();
   });
-  /* Cambiar de campo o salir del formulario también cierra el ciclo: no hay
-     que esperar a que pasen los segundos del autoguardado. */
+  /* Cambiar de campo o salir del formulario también cierra el ciclo: el
+     borrador se escribe sin esperar a que pase el debounce. */
   app.addEventListener('focusout',event=>{
     const from=event.target;
     if(!from||!from.closest)return;
@@ -2346,17 +2527,16 @@ function flushReplyDrafts(){
     draftFlushNow(key,()=>captureReplyDraft(id,el));
   }
 }
+/* Deja a salvo lo que esté a medio escribir: borradores y cambios del día.
+   Nunca escribe una entrada: eso solo pasa con «Guardar día». */
 function flushAllDrafts(){
   draftCaptureNow('entrada',captureEntryDraft);
   draftCaptureNow('botella',captureBottleDraft);
   draftCaptureNow('perfil',captureSetupDraft);
   draftCaptureNow('asistente',captureWizardDraft);
-  /* La lista de mañana se guarda de verdad en el cuaderno: solo cuando toca. */
   draftFlushNow('manana',commitTomorrowFromDom);
   draftFlushNow('manana-tarea',commitTomorrowFromDom);
   flushReplyDrafts();
-  cancelAutosaveTimers();
-  if(document.querySelector('#diary-form')&&!autosavePending&&saveState==='draft')commitEntry({silent:true,final:true});
   retryPendingNow();
 }
 function retryPendingNow(){
@@ -2403,9 +2583,12 @@ function applyToField(form,name,value){
 function restoreEntryDraft(){
   const form=document.querySelector('#diary-form');
   if(!form)return;
-  const stored=entries.find(x=>x.date===selected);
-  if(!draftIsNewer(entryScope(),stored?.updatedAt))return;
-  const data=draftData(entryScope());
+  /* El borrador es del día que se está pintando: nunca de otro. */
+  const date=formDay();
+  if(date!==selected)return;
+  const stored=savedDay(date);
+  if(!draftIsNewer(DRAFT_SCOPES.entry(date),stored?.updatedAt))return;
+  const data=draftData(DRAFT_SCOPES.entry(date));
   if(!data)return;
   for(const key of entryTextFields())applyToField(form,key,data[key]);
   for(const key of ['mood','energy','stress','sleepHours','studyHours']){
@@ -2432,6 +2615,7 @@ function restoreEntryDraft(){
   }
   form.dispatchEvent(new Event('input',{bubbles:true}));
   setSaveState('draft');
+  syncSaveStatus();
 }
 function primeBottleDraft(){
   if(bottleDraft.text)return;
@@ -2440,59 +2624,40 @@ function primeBottleDraft(){
   bottleDraft={text:String(data.text||''),mood:data.mood||null,sea:data.sea||'breeze',force:Number(data.force)||3};
 }
 
-/* ---------- el autoguardado ---------- */
-function entryHasSubstance(values){
-  const words=entryTextFields()
-    .map(k=>String(values[k]||''))
-    .filter(text=>text.trim())
-    .join(' ')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean).length;
-  /* «Hoy bien» ya es un día: antes hacían falta más de tres palabras y una
-     frase corta se quedaba fuera del cuaderno para siempre. */
-  if(words>=2)return true;
-  if(Object.values(values.counters||{}).some(v=>Number(v)>0))return true;
-  if(Object.values(values.habits||{}).some(Boolean))return true;
-  if((values.tags||[]).length)return true;
-  if((values.gratitude0||'').trim()||(values.gratitude1||'').trim()||(values.gratitude2||'').trim())return true;
-  return false;
-}
-function commitEntry({silent=false,final=false}={}){
+/* ---------- guardar el día ---------- */
+/* Guardar el día. Esta es la única puerta por la que una entrada llega al
+   cuaderno: ni temporizadores, ni cambios de página, ni cierres de pestaña
+   escriben por su cuenta. */
+function commitEntry(){
   const form=document.querySelector('#diary-form');
   if(!form||storageError)return false;
+  const date=formDay();
   const values=rawFormValues(form);
-  if(silent&&!entryHasSubstance(values))return false;
-  autosavePending=true;
+  const day=dayFor(date);
+  if(!dayHasSubstance(values,dayDefaults(day))&&!dayPendingPatch(date)){
+    toast('Todavía no hay nada que guardar en este día.',true);
+    return false;
+  }
   /* lo que había en el tintero del debounce ya no hace falta: se guarda ahora */
   draftCancel('entrada');
-  cancelAutosaveTimers();
   try{
-    const entry=validateForForm(collectForm(form));
+    const entry=validateForForm(collectForm(form,date));
     entries=saveEntry(entry);
-    clearDraft(entryScope());
-    setSaveState(silent?'autosaved':'saved');
-    if(!silent){
-      render();
-      showStamp();
-      toast('Día guardado');
-      document.querySelector('.daily-summary')?.classList.add('reveal');
-      const risk=detectCrisisRisk(entry);
-      if(risk.triggered&&risk.level==='high')setTimeout(()=>openCrisisModal('help'),550);
-    }else if(final){
-      /* La pestaña se cierra: el write sí o sí tiene que entrar. */
-      try{localStorage.setItem('diario.lastflush.v1',JSON.stringify({at:new Date().toISOString(),date:selected}));}catch{}
-    }
+    clearDraft(DRAFT_SCOPES.entry(date));
+    clearDayPatch(date);
+    setSaveState('saved');
+    render();
+    showStamp();
+    toast('Día guardado');
+    document.querySelector('.daily-summary')?.classList.add('reveal');
+    const risk=detectCrisisRisk(entry);
+    if(risk.triggered&&risk.level==='high')setTimeout(()=>openCrisisModal('help'),550);
     return true;
   }catch(err){
     setSaveState('error');
-    /* Aunque el guardado fuera de fondo, el usuario tiene que enterarse: si no,
-       cerraría la pestaña creyendo que su texto está a salvo. */
     toast(err.message||'No se ha podido guardar.',true);
     syncSaveHealth();
     return false;
-  }finally{
-    autosavePending=false;
   }
 }
 function setSaveState(next){
@@ -2502,20 +2667,22 @@ function setSaveState(next){
 /* ================= INTERACCIÓN ================= */
 function countWords(text){const t=String(text||'').trim();return t?t.split(/\s+/).length:0;}
 
-function collectForm(form){
+function collectForm(form,date=selected){
   const data=new FormData(form);
-  const current=entries.find(x=>x.date===selected);
+  /* Se parte del día tal y como se ve (entrada guardada + cambios pendientes)
+     y solo se pisan las claves que hay en el formulario: lo anotado en Rutina
+     no se pierde al guardar la página de Hoy, y quitar un contador o una parte
+     tampoco borra lo que ya había en sus días. */
+  const day=dayFor(date)||{};
   const profile=getAgeProfile(setup);
   const customTag=(data.get('tagCustom')||'').toString().trim();
   const tags=[...new Set([...data.getAll('tags').map(t=>t.toString().trim()),customTag].filter(Boolean))];
-  /* Se parte de lo ya guardado y sólo se pisan las claves que hay en el
-     formulario: si quitaste un contador o una parte, lo anotado con él se queda. */
-  const counters={...(current?.counters||{})};
+  const counters={...(day.counters||{})};
   for(const c of counterDefs(setup)){
     const input=form.querySelector(`[name="counter_${c.key}"]`);
-    counters[c.key]=input?(parseFloat(input.value)||0):(Number(current?.counters?.[c.key])||0);
+    if(input)counters[c.key]=clampCounterValue(c,input.value);
   }
-  const parts={...(current?.parts||{})};
+  const parts={...(day.parts||{})};
   for(const p of partDefs(setup)){
     const input=form.querySelector(`[name="part_${p.key}"]`);
     if(!input)continue;
@@ -2523,49 +2690,49 @@ function collectForm(form){
     if(text)parts[p.key]=text;else delete parts[p.key];
   }
   // Hábitos, contadores y tareas de mañana pueden estar en la pestaña Rutina:
-  // si hoy no hay campos en el DOM, se conservan los valores guardados.
+  // si hoy no hay campos en el DOM, se conserva lo que ya había en el día.
   const habitMap={};
   const habitInputs=[...form.querySelectorAll('[name^="habit_"]')];
   for(const h of habits){
-    habitMap[h.id]=habitInputs.length?Boolean(form.querySelector(`[name="habit_${h.id}"]`)?.checked):Boolean(current?.habits?.[h.id]);
+    habitMap[h.id]=habitInputs.length?Boolean(form.querySelector(`[name="habit_${h.id}"]`)?.checked):Boolean(day.habits?.[h.id]);
   }
 
-  const rawMood=+data.get('mood') || current?.mood || 3;
+  const rawMood=+data.get('mood') || day.mood || 3;
   const rawSleep=data.get('sleepHours');
-  const sleepHours=rawSleep!==null&&rawSleep!==''?parseFloat(rawSleep):(setup.sleepGoal||profile.sleepRecommended||7.5);
+  const sleepHours=rawSleep!==null&&rawSleep!==''?parseFloat(rawSleep):(day.sleepHours??setup.sleepGoal??profile.sleepRecommended??7.5);
   const rawStudy=data.get('studyHours');
-  const studyHours=rawStudy!==null&&rawStudy!==''?parseFloat(rawStudy):0;
+  const studyHours=rawStudy!==null&&rawStudy!==''?parseFloat(rawStudy):(day.studyHours??0);
 
   const bestOfDay=(data.get('bestOfDay')||'').toString().trim();
   const differentToday=(data.get('differentToday')||'').toString().trim();
   const capsule=(data.get('capsule')||'').toString().trim();
   const wordOfDay=(data.get('wordOfDay')||'').toString().trim();
-  let generalDay=(data.get('generalDay')||'').toString().trim();
-
-  // Sin campos obligatorios pesados: si el usuario guarda rápido sin escribir párrafo largo, generamos una nota limpia
-  if(!generalDay){
-    generalDay = bestOfDay || capsule || (wordOfDay ? `Palabra del día: ${wordOfDay}.` : `Día ${MOODS[rawMood-1].label.toLowerCase()}.`);
-  }
+  /* Nada de texto inventado: si no has escrito, la entrada se guarda sin
+     notas. El cuaderno solo apunta lo que has puesto tú. */
+  const generalDay=(data.get('generalDay')||'').toString().trim();
 
   return {
-    id:current?.id,date:selected,
+    id:day.id,date,
     mood:rawMood,
     sleepHours,
     studyHours,
-    energy:data.get('energy')?+data.get('energy'):null,
-    stress:data.get('stress')?+data.get('stress'):null,
+    energy:data.get('energy')?+data.get('energy'):(day.energy??null),
+    stress:data.get('stress')?+data.get('stress'):(day.stress??null),
     bestOfDay,
     differentToday,
     generalDay,
     wordOfDay,
     capsule,
-    gratitude:[0,1,2].map(i=>(data.get(`gratitude${i}`)||'').toString().trim()),
-    tomorrow:data.has('tomorrow')?(data.get('tomorrow')||'').toString().trim():(current?.tomorrow||''),
+    gratitude:[0,1,2].map(i=>{
+      const raw=data.get(`gratitude${i}`);
+      return raw===null||raw===undefined?((day.gratitude||[])[i]||''):raw.toString().trim();
+    }),
+    tomorrow:data.has('tomorrow')?(data.get('tomorrow')||'').toString().trim():(day.tomorrow||''),
     goals:form.querySelector('[name="goal"]')
       ?data.getAll('goal').map(g=>g.toString().trim()).filter(Boolean)
-      :(current?.goals||[]),
+      :(day.goals||[]),
     tags,counters,parts,habits:habitMap,
-    createdAt:current?.createdAt
+    createdAt:day.createdAt
   };
 }
 
@@ -2858,7 +3025,7 @@ function refreshInspirationSlot(targetCardSelector=''){
   const slot=document.querySelector('#inspiration-slot');
   if(!slot)return;
   const form=document.querySelector('#diary-form');
-  const draft=form?collectForm(form):entries.find(x=>x.date===selected);
+  const draft=form?collectForm(form):dayFor(selected);
   slot.innerHTML=dailyInspirationSection(selected,wordOffset,tipOffset,setup,draft,draft?.wordOfDay||'');
   if(targetCardSelector){
     const card=slot.querySelector(targetCardSelector);
@@ -3189,15 +3356,9 @@ function openDay(date){
 /* Antes de mudar de página o de día: se guarda lo escrito (y se autocommite si hay materia). */
 /* Se llama antes de cambiar de página, de día o de foco: deja a salvo todo lo
    que estuviera a medio escribir, incluido el perfil y las respuestas. */
-function savePendingText(){
-  draftCaptureNow('entrada',captureEntryDraft);
-  draftCaptureNow('botella',captureBottleDraft);
-  draftCaptureNow('perfil',captureSetupDraft);
-  draftCaptureNow('asistente',captureWizardDraft);
-  flushReplyDrafts();
-  if(document.querySelector('#diary-form')&&saveState==='draft')commitEntry({silent:true});
-  retryPendingNow();
-}
+/* Antes de mudar de página o de día: se guarda lo escrito en borradores y
+   cambios pendientes. La entrada sigue esperando a «Guardar día». */
+const savePendingText=flushAllDrafts;
 
 function toggleSidebar(){
   if(window.innerWidth<=980){
@@ -3232,6 +3393,11 @@ async function requestDelete(date){
   })){
     const removed=tryWrite('la entrada',()=>{entries=deleteEntry(date);});
     if(!removed.ok)return;
+    /* Lo que quedara a medias de ese día también se va: si no, el cuaderno lo
+       «recuperaría» y la entrada borrada volvería a aparecer. */
+    draftCancel('entrada');
+    clearDraft(DRAFT_SCOPES.entry(date));
+    clearDayPatch(date);
     render();toast('Entrada eliminada.');
   }
 }
@@ -3316,20 +3482,18 @@ app.addEventListener('click',async event=>{
     case 'toggle-habit':{
       const day=date||selected;
       if(day>dateKey()){toast('Ese día todavía no ha llegado.',true);break;}
-      const stored=entries.find(x=>x.date===day);
-      const map={...(stored?.habits||{})};
+      const target=dayFor(day);
+      const map={...(target?.habits||{})};
       const next=!map[habit];
       map[habit]=next;
       try{
         patchDay(day,{habits:map});
-        const created=!stored;
         render();
         flashHabit(habit);
         const label=habits.find(h=>h.id===habit)?.name||'Hábito';
         const total=habits.length;
         const done=habits.filter(h=>map[h.id]).length;
         if(next&&day===dateKey()&&total&&done===total)toast('Rutina de hoy completada');
-        else if(created&&next)toast(`«${label}» marcado · creé una entrada mínima para ese día`);
         else toast(next?`«${label}» marcado`:`«${label}» desmarcado`);
       }catch(err){toast(err.message||'No se pudo guardar el hábito.',true);}
       break;
@@ -3389,9 +3553,9 @@ app.addEventListener('click',async event=>{
     }
     case 'remove-goal-routine':{
       const list=currentGoalsRaw().filter((_,i)=>i!==+index);
-      const entry=entries.find(x=>x.date===selected);
+      const day=dayFor(selected)||{};
       try{
-        patchDay(selected,{goals:list.filter(Boolean),tomorrow:document.querySelector('#routine-tomorrow')?.value.trim()??(entry?.tomorrow||'')});
+        patchDay(selected,{goals:list.filter(Boolean),tomorrow:document.querySelector('#routine-tomorrow')?.value.trim()??(day.tomorrow||'')});
         render();
       }catch(err){toast(err.message||'No se pudo quitar la tarea.',true);}
       break;
@@ -3638,6 +3802,12 @@ app.addEventListener('click',async event=>{
       toast('Borrador descartado.');
       break;
     }
+    case 'discard-day-patch':{
+      if(!date||!clearDayPatch(date))break;
+      render();
+      toast('Cambios descartados.');
+      break;
+    }
     case 'export':case 'backup':
       download(`diario-${dateKey()}.json`,exportData(entries,habits,setup,thoughts));
       toast('Copia descargada');break;
@@ -3651,6 +3821,7 @@ app.addEventListener('click',async event=>{
         try{
           clearEntries();
           clearAllDrafts();
+          clearAllDayPatches();
           refresh();selected=dateKey();view='diary';updateRouteUrl();render();
           toast('Datos eliminados');
         }catch(err){toast(err.message||'No se han podido eliminar los datos.',true);}
@@ -3760,7 +3931,6 @@ window.addEventListener('storage',event=>{
    navegador rechazó y se vuelca lo que siga a medias. */
 setInterval(()=>{
   if(hasPendingWrites())retryPendingNow();
-  if(document.querySelector('#diary-form')&&saveState==='draft')flushAllDrafts();
 },15000);
 onSaveChange(()=>syncSaveHealth());
 

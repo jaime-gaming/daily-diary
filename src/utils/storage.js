@@ -3,6 +3,7 @@ import {COUNTERS,TEXT_FIELDS,THEMES,SETUP_PURPOSES,AGE_GROUPS,INTEREST_OPTIONS,W
 import {SEAS,GLASS_TINTS,WEATHERS,planVoyage,resolveBottle,normalizeThrowForce} from './ocean.js';
 import {writeRaw,safeRead,describeReason,clearPendingWrites,dropPendingWrite} from './persist.js';
 import {DRAFTS_KEY,draftsSnapshot,mergeDrafts} from './drafts.js';
+import {PENDING_DAY_KEY,pendingDaysSnapshot,mergePendingDays} from './pendingDay.js';
 const KEY='diario.entries.v1';
 const HABITS_KEY='diario.habits.v1';
 const SETUP_KEY='diario.setup.v1';
@@ -133,7 +134,8 @@ export function validateEntry(e){
     if(typeof n!=='number'||!Number.isFinite(n)||n<0||n>24)throw new Error('Las horas deben estar entre 0 y 24.');
   }
   const text=Object.fromEntries(TEXT_FIELDS.map(f=>[f,cleanText(e[f]??'',f)]));
-  if(!text.generalDay.trim())throw new Error('Escribe cómo ha ido tu día en general.');
+  /* Las notas del día pueden ir vacías: hay días que solo se apuntan con un
+     ánimo, un hábito o una cifra, y el cuaderno no debe escribir por ti. */
   const capsule=cleanText(e.capsule??'','La cápsula del día').slice(0,300);
   if(!Array.isArray(e.gratitude)||e.gratitude.length!==3||e.gratitude.some(x=>typeof x!=='string'||x.length>20000))throw new Error('El agradecimiento debe tener tres campos de texto.');
   if(e.goals!==undefined&&(!Array.isArray(e.goals)||e.goals.length>30||e.goals.some(x=>typeof x!=='string'||x.length>500)))throw new Error('La lista de objetivos no es válida.');
@@ -182,7 +184,7 @@ function persist(entries){const normalized=normalize(entries);writeOrThrow(KEY,J
 export function saveEntry(entry){const clean=validateEntry(entry);clean.updatedAt=new Date().toISOString();const entries=loadEntries();return persist([...entries.filter(e=>e.date!==clean.date),clean]);}
 export function deleteEntry(date){return persist(loadEntries().filter(e=>e.date!==date));}
 export function clearEntries(){
-  commitStorageChanges([[KEY,null,'El cuaderno'],[HABITS_KEY,null,'Los hábitos'],[SETUP_KEY,null,'El perfil'],[THOUGHTS_KEY,null,'El mar']]);
+  commitStorageChanges([[KEY,null,'El cuaderno'],[HABITS_KEY,null,'Los hábitos'],[SETUP_KEY,null,'El perfil'],[THOUGHTS_KEY,null,'El mar'],[PENDING_DAY_KEY,null,'Los cambios del día']]);
   /* Ya no hay nada que reintentar: el cuaderno entero se ha ido. */
   clearPendingWrites();
 }
@@ -407,10 +409,11 @@ export function saveSetup(partial = {}){
 }
 
 /* ----- Exportar / importar ----- */
-/* La copia se lleva **todo**: entradas, hábitos, pensamientos, perfil y también
-   los textos a medias (`diario.drafts.v1`), que antes se quedaban fuera y se
-   perdían al cambiar de dispositivo. */
-export function exportData(entries,habits=loadHabits(),setup=loadSetup(),thoughts=loadThoughts(),drafts=draftsSnapshot()){
+/* La copia se lleva **todo**: entradas, hábitos, pensamientos, perfil, los
+   textos a medias (`diario.drafts.v1`) y los cambios de día que aún no se han
+   guardado (`diario.pendiente-dia.v1`). Nada se queda fuera al cambiar de
+   dispositivo. */
+export function exportData(entries,habits=loadHabits(),setup=loadSetup(),thoughts=loadThoughts(),drafts=draftsSnapshot(),pendingDays=pendingDaysSnapshot()){
   return JSON.stringify({
     app:'diario',
     version:1,
@@ -419,7 +422,8 @@ export function exportData(entries,habits=loadHabits(),setup=loadSetup(),thought
     habits:habits.map(validateHabit),
     thoughts:thoughts.map(validateThought),
     setup:validateSetup(setup),
-    drafts
+    drafts,
+    pendingDays
   },null,2);
 }
 export function parseImport(text){
@@ -430,6 +434,7 @@ export function parseImport(text){
   if(data.thoughts!==undefined&&!Array.isArray(data.thoughts))throw new Error('La lista de pensamientos de la copia no es válida.');
   if(data.setup!==undefined&&data.setup!==null&&(typeof data.setup!=='object'||Array.isArray(data.setup)))throw new Error('Los ajustes de la copia no son válidos.');
   if(data.drafts!==undefined&&data.drafts!==null&&(typeof data.drafts!=='object'||Array.isArray(data.drafts)))throw new Error('Los borradores de la copia no son válidos.');
+  if(data.pendingDays!==undefined&&data.pendingDays!==null&&(typeof data.pendingDays!=='object'||Array.isArray(data.pendingDays)))throw new Error('Los cambios de día de la copia no son válidos.');
   const entries=data.entries.map(validateEntry);
   if(new Set(entries.map(e=>e.date)).size!==entries.length)throw new Error('La copia contiene fechas duplicadas.');
   const habits=(data.habits||[]).map(validateHabit);
@@ -438,7 +443,8 @@ export function parseImport(text){
   if(new Set(thoughts.map(t=>t.id)).size!==thoughts.length)throw new Error('La copia contiene pensamientos duplicados.');
   const setup=data.setup?validateSetup(data.setup):null;
   const drafts=data.drafts?data.drafts:null;
-  return {entries,habits,thoughts,setup,drafts};
+  const pendingDays=data.pendingDays?data.pendingDays:null;
+  return {entries,habits,thoughts,setup,drafts,pendingDays};
 }
 export function importData(incoming){
   if(!incoming||!Array.isArray(incoming.entries)||!Array.isArray(incoming.habits))throw new Error('La copia no contiene listas de entradas y hábitos válidas.');
@@ -474,6 +480,10 @@ export function importData(incoming){
   if(incoming.drafts){
     const mergedDrafts=mergeDrafts(incoming.drafts);
     if(mergedDrafts.ok)changes.push([DRAFTS_KEY,JSON.stringify(mergedDrafts.map),'Los borradores']);
+  }
+  if(incoming.pendingDays){
+    const mergedDays=mergePendingDays(incoming.pendingDays);
+    if(mergedDays.ok)changes.push([PENDING_DAY_KEY,JSON.stringify(mergedDays.map),'Los cambios del día']);
   }
   changes.push([KEY,JSON.stringify(mergedEntries),'El cuaderno']);
   commitStorageChanges(changes);

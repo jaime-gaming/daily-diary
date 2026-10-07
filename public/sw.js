@@ -1,4 +1,4 @@
-const CACHE = 'diario-v8';
+const CACHE = 'diario-v9';
 const ROUTE_PAGES = [];
 const APP_SHELL = ['./', './index.html', ...ROUTE_PAGES, './favicon.svg', './manifest.webmanifest'];
 

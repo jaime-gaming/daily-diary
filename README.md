@@ -28,15 +28,23 @@ También puedes servir la carpeta `docs/` (build de producción) con cualquier s
   y `/pensamientos/archivados`; `/rutina` con `/rutina/semana`, `/rutina/contadores` y `/rutina/rachas`;
   `/archivo` y `/archivo/calendario`; `/progreso`, `/progreso/semana` y `/progreso/mes`; `/ajustes`,
   `/ajustes/apariencia`, `/ajustes/contenido` y `/ajustes/datos`. Atrás y Adelante funcionan; el build crea páginas estáticas.
-- **Hoy** — ánimo, sueño, dedicación, notas, etiquetas, energía, estrés y gratitud. Las tendencias
-  y los resúmenes usan reglas locales.
+- **Hoy** — ánimo, sueño, dedicación, notas, etiquetas, energía, estrés y gratitud. Las notas son
+  opcionales: si solo apuntas el ánimo o una cifra, se guarda eso y nada más (el cuaderno no escribe
+  texto por su cuenta). Las tendencias y los resúmenes usan reglas locales.
 - **Pensamientos** — un espacio independiente. Las botellas no muestran ni permiten abrir el texto
   mientras están a la deriva; solo se leen al volver. La fecha de regreso no aparece en pantalla.
-- **Rutina** — hábitos, rachas, constancia de 35 días, contadores y tareas para mañana.
+- **Rutina** — hábitos, rachas, constancia de 35 días, contadores y tareas para mañana. Lo que
+  marcas queda como *cambio pendiente del día* (nada se pierde al cambiar de página) y entra en el
+  cuaderno cuando guardas ese día.
 - **Ajustes** — perfil, apariencia, contenido y datos. Permite elegir temas, añadir campos y crear
   contadores con unidad, meta e icono.
-- **Guardado local** — conserva cambios y borradores internos, recupera la escritura y sincroniza
-  al cerrar o cambiar de día. La interfaz no muestra avisos de borradores ni de autoguardado.
+- **Guardado local, sin sorpresas** — **un día solo entra en el cuaderno cuando pulsas
+  «Guardar día»**. No hay autoguardado de entradas: mientras escribes, cada tecla queda en un
+  borrador local (`diario.drafts.v1`) y lo que marcas en Rutina o en el mar en los cambios
+  pendientes del día (`diario.pendiente-dia.v1`). Al cerrar la pestaña no se pierde nada y, al
+  volver, todo sigue donde lo dejaste. Junto al botón se ve el estado del día («Guardado a las
+  21:34» o «Cambios sin guardar»), y los días a medias pueden terminarse o descartarse desde
+  *Ajustes → Datos*.
 - **Móvil** — cabecera compacta, acceso a Ajustes y navegación inferior con espacio para las áreas
   seguras del dispositivo.
 - **Movimiento** — transiciones entre páginas y animaciones de tarjetas. Respeta
@@ -67,6 +75,7 @@ src/
 │   ├── stats.js          # métricas, mediana, cobertura, rachas y tendencias
 │   ├── ocean.js          # mareas, clima, sorteo del viaje y estado de cada botella
 │   ├── drafts.js         # los borradores: que nada se quede a medias
+│   ├── pendingDay.js     # los cambios de un día que aún no están en el cuaderno
 │   └── storage.js        # validar, guardar, cargar, borrar, exportar, importar
 ├── styles/
 │   ├── main.css          # identidad de papel, portada, diario, rutina, archivo, progreso
@@ -180,6 +189,22 @@ Los textos a medias viven aparte, en `diario.drafts.v1`, con esta pinta:
 
 Un borrador solo se recupera si es **más reciente** que lo ya guardado, así que nunca te devuelve
 texto viejo ni duplica nada.
+
+Los cambios que aún no son una entrada viven en `diario.pendiente-dia.v1`, un parche por día:
+
+```json
+{
+  "2026-10-04": {
+    "patch": { "habits": { "h-3": true }, "counters": { "water": 6 }, "tomorrow": "Repasar tema" },
+    "savedAt": "…"
+  }
+}
+```
+
+El parche se funde con la entrada guardada para pintar el día completo, y se escribe en el cuaderno
+al pulsar «Guardar día». Un valor vacío también es un cambio: borrar un texto, poner un contador a
+cero o desmarcar un hábito se guardan igual que cualquier otra cosa. En la copia JSON viaja como
+`pendingDays`.
 
 ## Desplegar en GitHub Pages (por branch, sin Actions)
 
