@@ -1,4 +1,4 @@
-import {addDays,dateKey,daysBetween} from './dates.js';
+import {addDays,dateKey,daysBetween,parseDate} from './dates.js';
 export const formatNumber=n=>new Intl.NumberFormat('es-ES',{maximumFractionDigits:1}).format(n);
 const numericValues=values=>values.filter(value=>Number.isFinite(value));
 export function average(values){const v=numericValues(values);return v.length?v.reduce((a,b)=>a+b,0)/v.length:0;}
@@ -50,13 +50,16 @@ export function liveHabitStreak(entries,habitId,today=dateKey()){
   while(dates.has(d)){n++;d=addDays(d,-1);}
   return n;
 }
-/* Cuántos de los últimos `days` días cumpliste el hábito (solo cuenta días pasados). */
+/* Cuántos de los últimos `days` días cumpliste el hábito (solo cuenta días pasados).
+   El porcentaje se mide sobre los días que de verdad anotaste: si un día no hay
+   entrada, no se tiene por qué haber fallado el hábito. */
 export function habitRate(entries,habitId,days=28,today=dateKey()){
   const start=addDays(today,1-days);
-  const done=entries.filter(e=>e.habits?.[habitId]&&e.date>=start&&e.date<=today).length;
-  const tracked=entries.filter(e=>e.date>=start&&e.date<=today).length;
+  const inWindow=entries.filter(e=>e.date>=start&&e.date<=today);
+  const done=inWindow.filter(e=>e.habits?.[habitId]).length;
+  const tracked=inWindow.length;
   const window=Math.min(days,daysBetween(start,today)+1);
-  return {done,tracked,window,pct:window?Math.round((done/window)*100):0};
+  return {done,tracked,window,pct:tracked?Math.min(100,Math.round((done/tracked)*100)):0};
 }
 /* Matriz hábitos × días para el «momentum grid» de la pestaña de Rutina.
    `end` cierra la ventana (puede ser un día pasado) y `today` marca qué días son futuros. */
@@ -221,4 +224,50 @@ export function generateTrends(entries,today=dateKey()){
     if(difference>=.5)messages.push('En tus registros, los días con 20 minutos o más de ejercicio coinciden con una valoración habitual algo más alta. Es una asociación, no una causa demostrada.');
   }
   return messages;
+}
+
+/* ----- La semana, día a día -----
+   Sirve para responder a «¿qué días se me dan mejor?» con datos propios:
+   el ánimo medio y el cumplimiento de la rutina de cada día de la semana. */
+export const WEEKDAY_NAMES=['lunes','martes','miércoles','jueves','viernes','sábado','domingo'];
+export function weekdayIndex(date){return (parseDate(date).getDay()+6)%7;}
+
+export function weekdayStats(entries=[],habits=[],today=dateKey()){
+  const unique=[...new Map(entries.filter(e=>e?.date&&e.date<=today).map(e=>[e.date,e])).values()];
+  const rows=WEEKDAY_NAMES.map((name,index)=>({index,name,entries:0,moodTotal:0,moodCount:0,habitDone:0,habitSlots:0}));
+  for(const entry of unique){
+    const row=rows[weekdayIndex(entry.date)];
+    row.entries++;
+    if(Number.isFinite(entry.mood)){row.moodTotal+=entry.mood;row.moodCount++;}
+    for(const habit of habits){
+      row.habitSlots++;
+      if(entry.habits?.[habit.id])row.habitDone++;
+    }
+  }
+  return rows.map(row=>({
+    index:row.index,
+    name:row.name,
+    entries:row.entries,
+    mood:row.moodCount?row.moodTotal/row.moodCount:null,
+    moodCount:row.moodCount,
+    habitPct:row.habitSlots?Math.round(row.habitDone/row.habitSlots*100):null,
+    habitDays:row.habitDone
+  }));
+}
+
+/* Una frase con el mejor día y el peor, solo si hay datos suficientes para
+   decirlo sin inventarse nada. */
+export function weekdayInsight(rows=[],metric='mood',minimum=3){
+  const value=row=>metric==='habit'?row.habitPct:row.mood;
+  const count=row=>metric==='habit'?row.habitSlots:row.moodCount;
+  const usable=rows.filter(row=>count(row)>=minimum&&Number.isFinite(value(row)));
+  if(usable.length<3)return '';
+  const sorted=[...usable].sort((a,b)=>value(b)-value(a));
+  const best=sorted[0],worst=sorted[sorted.length-1];
+  if(metric==='habit'){
+    if(best.habitPct-worst.habitPct<15)return 'Cumples la rutina parecido todos los días de la semana.';
+    return `Los ${best.name} cumples la rutina más a menudo (${best.habitPct}%) y los ${worst.name}, menos (${worst.habitPct}%).`;
+  }
+  if(value(best)-value(worst)<.4)return 'Tu ánimo se parece bastante todos los días de la semana.';
+  return `Los ${best.name} es cuando mejor te sientes (${formatNumber(value(best))}/5 de media) y los ${worst.name}, cuando más te cuesta (${formatNumber(value(worst))}/5).`;
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {dateKey, parseDate, addDays, daysBetween, dayNumber, weekStart, monthRange, monthMove, generateCalendar, longDate} from '../src/utils/dates.js';
-import {average, meanOrNull, median, standardDeviation, periodCoverage, calculateStats, currentStreak, maxStreak, sleepInterpretation, studyInterpretation, generateSummary, periodSummary, generateTrends, inRange, formatNumber, wordCount, totalWords, habitStreak, habitCount, tagFrequency, counterInterpretation} from '../src/utils/stats.js';
+import {average, meanOrNull, median, standardDeviation, periodCoverage, calculateStats, currentStreak, maxStreak, sleepInterpretation, studyInterpretation, generateSummary, periodSummary, generateTrends, inRange, formatNumber, wordCount, totalWords, habitStreak, habitCount, tagFrequency, counterInterpretation, habitRate, weekdayStats, weekdayInsight} from '../src/utils/stats.js';
 import {detectCrisisRisk, getDailyWord, getDailyTip, getContextualAdvice, calculateEntryCompletion, getGreeting, getAgeProfile, generateThemeFaviconSvg, generateThemeFaviconDataUri, getPersonalQuote, calculateGoalStats} from '../src/utils/wellbeing.js';
 
 const entry = (date, mood, sleepHours, studyHours, extra = {}) => ({
@@ -274,3 +274,50 @@ test('frases personalizadas y metas personales en estadísticas', () => {
 
 
 
+
+test('el hábito se mide sobre los días anotados, no sobre el calendario', () => {
+  const list = [entry('2026-09-01', 3, 7, 1, {habits: {h1: true}}),
+    entry('2026-09-02', 3, 7, 1, {habits: {h1: true}}),
+    entry('2026-09-03', 3, 7, 1, {habits: {h1: false}})];
+  const rate = habitRate(list, 'h1', 28, '2026-09-03');
+  assert.equal(rate.done, 2);
+  assert.equal(rate.tracked, 3);
+  assert.equal(rate.window, 28);
+  assert.equal(rate.pct, 67, 'dos de tres días anotados, no de veintiocho');
+  assert.equal(habitRate(list, 'h1', 7, '2026-09-03').pct, 67);
+  assert.equal(habitRate(list, 'nadie', 7, '2026-09-03').pct, 0);
+});
+
+test('la semana día a día se calcula con las entradas propias', () => {
+  const list = [
+    entry('2026-09-07', 2, 7, 1, {habits: {h1: false}}), // lunes
+    entry('2026-09-08', 5, 7, 1, {habits: {h1: true}}),  // martes
+    entry('2026-09-14', 3, 7, 1, {habits: {h1: false}}), // lunes otra vez
+    entry('2026-09-15', 5, 7, 1, {habits: {h1: true}}),  // martes otra vez
+    entry('2026-09-16', 2, 7, 1, {habits: {h1: false}})  // miércoles
+  ];
+  const rows = weekdayStats(list, [{id: 'h1', name: 'Leer'}], '2026-09-16');
+  assert.equal(rows.length, 7);
+  assert.equal(rows[0].name, 'lunes');
+  assert.equal(rows[0].mood, 2.5);
+  assert.equal(rows[0].entries, 2);
+  assert.equal(rows[1].mood, 5);
+  assert.equal(rows[1].habitPct, 100);
+  assert.equal(rows[2].mood, 2);
+  assert.equal(rows[3].mood, null, 'un día sin entradas no inventa media');
+  assert.equal(rows[3].moodCount, 0);
+  assert.equal(weekdayStats(list, [], '2026-09-16')[4].habitPct, null);
+
+  const masDias = [
+    ...list,
+    entry('2026-09-09', 4, 7, 1), entry('2026-09-10', 4, 7, 1), entry('2026-09-11', 4, 7, 1),
+    entry('2026-09-02', 4, 7, 1), entry('2026-09-03', 4, 7, 1), entry('2026-09-04', 4, 7, 1)
+  ];
+  const insight = weekdayInsight(weekdayStats(masDias, [], '2026-09-16'), 'mood', 2);
+  assert.match(insight, /Los martes es cuando mejor te sientes/);
+  assert.match(insight, /y los lunes, cuando más te cuesta/);
+  assert.match(insight, /de media/);
+  /* con pocos días de un mismo día de la semana, mejor no decir nada */
+  assert.equal(weekdayInsight(weekdayStats(list, [], '2026-09-16'), 'mood'), '');
+  assert.equal(weekdayInsight([{name: 'lunes', mood: 5, moodCount: 9, habitPct: 10, habitSlots: 9, entries: 9}], 'mood'), '');
+});

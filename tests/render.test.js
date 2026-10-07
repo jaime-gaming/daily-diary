@@ -221,3 +221,14 @@ test('las botellas en camino no revelan contenido ni fecha de vuelta', () => {
   assert.match(lost,/recast-bottle/,'las perdidas se pueden volver a lanzar');
   assert.ok(bottleComposer(setup,TODAY,{text:''}).includes('disabled'),'sin texto, el botón de soltar queda apagado');
 });
+
+test('la fila de tarea de mañana se puede pintar sin pasar por el almacén', async () => {
+  const {tomorrowTaskRow}=await import('../src/components/habits.js');
+  const row=tomorrowTaskRow(2,'Regar las plantas');
+  assert.match(row,/data-index="2"/);
+  assert.match(row,/value="Regar las plantas"/);
+  assert.match(row,/data-action="remove-goal-routine"/);
+  assert.match(row,/Tarea 3/,'el número que ve la persona empieza en 1');
+  const empty=tomorrowTaskRow(0);
+  assert.match(empty,/value=""/);
+});

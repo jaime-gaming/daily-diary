@@ -231,7 +231,7 @@ export function planVoyage({text='',castAt=dateKey(),sea='breeze',id='',force=3}
     arriveOn,
     lostOn:returns?null:addDays(castAt,rawDays+grace),
     current:pick(CURRENTS,rnd),
-    glass:pick(GLASS_TINTS,rnd),
+    glass:pick(GLASS_TINTS,rnd).id,
     mottoSeed:Math.floor(r4*1e6),
     weather:part.weather.id,
     wind:part.wind.label,
@@ -240,11 +240,17 @@ export function planVoyage({text='',castAt=dateKey(),sea='breeze',id='',force=3}
   };
 }
 
+/* Una botella con la fecha a medias (importada, o creada a mano) no puede
+   tumbar la vista: sin fecha de salida, simplemente no lleva días de travesía. */
+const isDayKey=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value);
+
 export function daysAtSea(bottle,today=dateKey()){
+  if(!bottle||!isDayKey(bottle.castAt)||!isDayKey(today))return 0;
   return Math.max(0,daysBetween(bottle.castAt,today));
 }
 
 export function fateOf(bottle,today=dateKey()){
+  if(!bottle)return 'drifting';
   if(bottle.status&&bottle.status!=='drifting')return bottle.status;
   if(bottle.returns){
     if(today>=(bottle.arriveOn||bottle.castAt))return 'returned';
@@ -280,12 +286,15 @@ export function settleBottles(bottles=[],today=dateKey()){
 }
 
 export function horizonDate(bottle){
-  if(!bottle.returns&&bottle.lostOn)return bottle.lostOn;
-  return bottle.arriveOn||bottle.castAt;
+  if(!bottle)return null;
+  if(!bottle.returns&&isDayKey(bottle.lostOn))return bottle.lostOn;
+  if(isDayKey(bottle.arriveOn))return bottle.arriveOn;
+  return isDayKey(bottle.castAt)?bottle.castAt:null;
 }
 
 export function voyageProgress(bottle,today=dateKey()){
   const horizon=horizonDate(bottle);
+  if(!horizon)return {fate:fateOf(bottle,today),pct:0,atSea:0,total:0,horizon:null,miles:0,milesHome:null,label:'sin fecha de salida',phase:'mid'};
   const total=Math.max(1,daysBetween(bottle.castAt,horizon));
   const atSea=daysAtSea(bottle,today);
   const fate=fateOf(bottle,today);
@@ -302,6 +311,7 @@ export function voyageProgress(bottle,today=dateKey()){
 
 export function seaPhrase(bottle,today=dateKey()){
   const {phase}=voyageProgress(bottle,today);
+  if(!isDayKey(bottle?.castAt))return 'espera en el puerto, sin fecha de salida';
   const list=PHRASES[phase]||PHRASES.mid;
   const seed=hashSeed(`${bottle.id||''}|${bottle.mottoSeed||0}|${phase}`);
   return list[seed%list.length];
@@ -324,6 +334,49 @@ export function shoreQueue(bottles=[],today=dateKey()){
 }
 
 
+
+/* El viaje contado en una línea, para las tarjetas del mar. */
+export function voyageLine(bottle,today=dateKey()){
+  if(!bottle)return '';
+  const progress=voyageProgress(bottle,today);
+  if(!progress.total)return 'Sin fecha de salida.';
+  if(progress.fate==='returned'){
+    const days=Math.max(0,daysBetween(bottle.castAt,horizonDate(bottle)));
+    return days<=1?'Volvió al día siguiente.':`Volvió a los ${days} días, con la marea viva.`;
+  }
+  if(progress.fate==='lost'){
+    const days=Math.max(0,daysBetween(bottle.castAt,horizonDate(bottle)));
+    return days<=1?'Se perdió en la primera noche.':`Se perdió a los ${days} días de viaje.`;
+  }
+  return `Lleva ${progress.atSea===1?'un día':`${progress.atSea} días`} en el mar.`;
+}
+
+/* Las cuentas del mar: ni más ni menos que lo que hay en las botellas. */
+export function oceanStats(bottles=[],today=dateKey()){
+  const list=Array.isArray(bottles)?bottles.filter(Boolean):[];
+  const groups=groupBottles(list,today);
+  const sent=list.length;
+  const returns=groups.returned.length+groups.lost.length;
+  const miles=list.reduce((sum,bottle)=>sum+Math.round(daysAtSea(bottle,today)*(bottle.speed||0)),0);
+  const answered=groups.returned.filter(bottle=>String(bottle.reply||'').trim()).length;
+  const oldestAtSea=groups.drifting.reduce((oldest,bottle)=>{
+    const days=daysAtSea(bottle,today);
+    return !oldest||days>oldest.days?{bottle,days}:oldest;
+  },null);
+  return {
+    sent,
+    drifting:groups.drifting.length,
+    returned:groups.returned.length,
+    lost:groups.lost.length,
+    kept:groups.kept.length,
+    waiting:groups.returned.filter(bottle=>bottle.seen!==true).length,
+    answered,
+    returnPct:returns?Math.round((groups.returned.length/returns)*100):null,
+    miles,
+    oldestAtSea,
+    latestReturn:groups.returned[0]||null
+  };
+}
 
 export function thoughtWordCount(text=''){
   const t=String(text||'').trim();

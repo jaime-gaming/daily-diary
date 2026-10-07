@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   SEAS,WEATHERS,hashSeed,mulberry32,tideInfo,nextSpringTide,planVoyage,fateOf,canOpenBottle,resolveBottle,
   voyageProgress,seaPhrase,groupBottles,shoreQueue,thoughtWordCount,normalizeThrowForce,
-  weatherOf,driftX,sunPosition
+  weatherOf,driftX,sunPosition,voyageLine,oceanStats
 } from '../src/utils/ocean.js';
 import {addDays,daysBetween} from '../src/utils/dates.js';
 
@@ -245,3 +245,54 @@ test('el parte cambia de verdad la travesía: velocidad y pleamar', () => {
 });
 
 
+
+test('cada botella tiene su cristal y no lo pierde al editarla', async () => {
+  const store=new Map();
+  globalThis.localStorage={
+    getItem:k=>store.has(k)?store.get(k):null,
+    setItem:(k,v)=>store.set(k,String(v)),
+    removeItem:k=>store.delete(k),
+    key:i=>[...store.keys()][i]??null,
+    get length(){return store.size;}
+  };
+  const {saveThought,loadThoughts,updateThought}=await import('../src/utils/storage.js');
+  for(const [i,sea] of SEAS.entries()){
+    saveThought({id:`tint-${i}`,text:`Un pensamiento distinto número ${i}`,sea:sea.id,force:3,castAt:addDays('2026-09-01',i)});
+  }
+  const stored=loadThoughts();
+  const tints=new Set(stored.map(t=>t.glass));
+  assert.ok(tints.size>1,`no todas las botellas son del mismo color (${[...tints].join(', ')})`);
+  assert.ok(stored.every(t=>tints.has(t.glass)&&typeof t.glass==='string'));
+  const first=stored[0];
+  const kept=updateThought(first.id,{kept:true}).find(t=>t.id===first.id);
+  assert.equal(kept.glass,first.glass,'el cristal no cambia al guardarla o responderla');
+});
+
+test('una botella con los datos a medias no rompe la vista', () => {
+  const broken={id:'rota',text:'Sin fecha',returns:true};
+  assert.equal(voyageProgress(broken,'2026-09-30').total,0);
+  assert.equal(voyageProgress(broken,'2026-09-30').pct,0);
+  assert.equal(voyageProgress(broken,'2026-09-30').miles,0);
+  assert.ok(seaPhrase(broken,'2026-09-30').length>0);
+  assert.equal(voyageLine(broken,'2026-09-30'),'Sin fecha de salida.');
+  /* y sin botella, tampoco */
+  assert.equal(voyageProgress(null,'2026-09-30').total,0);
+  assert.equal(seaPhrase(null,'2026-09-30').length>0,true);
+});
+
+test('el viaje se cuenta en una línea y las cifras del mar cuadran', () => {
+  assert.equal(voyageLine(bottle({status:'drifting'}),'2026-09-03'),'Lleva 2 días en el mar.');
+  assert.equal(voyageLine(bottle({status:'returned'}),'2026-09-20'),'Volvió a los 14 días, con la marea viva.');
+  const sunk=bottle({id:'b2',returns:false,status:'lost',lostOn:'2026-09-10',arriveOn:'2026-09-06'});
+  assert.equal(voyageLine(sunk,'2026-09-20'),'Se perdió a los 9 días de viaje.');
+  const sailing=bottle({id:'b3',status:'drifting',castAt:'2026-09-19',arriveOn:'2026-10-02',driftDays:13});
+  const stats=oceanStats([bottle({status:'returned'}),sunk,sailing],'2026-09-20');
+  assert.equal(stats.sent,3);
+  assert.equal(stats.returned,1);
+  assert.equal(stats.lost,1);
+  assert.equal(stats.drifting,1);
+  assert.equal(stats.returnPct,50,'la mitad de las que terminaron volvieron');
+  assert.ok(stats.miles>0);
+  assert.ok(stats.oldestAtSea.days>=0);
+  assert.equal(oceanStats([],'2026-09-20').returnPct,null);
+});

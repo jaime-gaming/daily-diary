@@ -31,10 +31,10 @@ import {
 } from './utils/storage.js';
 import {readSetupFields,setupPatchFromFields,setupStepNotes,setupStepValues,SETUP_LIMITS} from './utils/setupForm.js';
 import {saveIssue,onSaveChange,retryPending,hasPendingWrites,pendingWriteCount} from './utils/persist.js';
-import {groupBottles,shoreQueue,canOpenBottle,sunPosition} from './utils/ocean.js';
-import {seaPanel,bottleComposer,bottleCard,bottleModal,bottleCountOnly,castSplash,wavesSvg,islandSceneSvg,castSplashPoint} from './components/ocean.js';
+import {groupBottles,shoreQueue,canOpenBottle,sunPosition,oceanStats,voyageLine} from './utils/ocean.js';
+import {seaPanel,bottleComposer,bottleCard,bottleModal,bottleCountOnly,castSplash,wavesSvg,islandSceneSvg,castSplashPoint,oceanFigures} from './components/ocean.js';
 import {DRAFT_SCOPES,setDraft,draftData,clearDraft,draftIsNewer,clearAllDrafts,listDrafts,draftTitle,draftSummary,DRAFTS_KEY} from './utils/drafts.js';
-import {habitBoard,momentumGrid,habitStatsList,habitComposer,countersBoard,tomorrowBoard,routineTeaser,progressRing} from './components/habits.js';
+import {habitBoard,momentumGrid,habitStatsList,habitComposer,countersBoard,tomorrowBoard,tomorrowTaskRow,routineTeaser,progressRing} from './components/habits.js';
 import {
   detectCrisisRisk,getWritingPrompt,calculateEntryCompletion,getGreeting,getAgeProfile,
   generateThemeFaviconDataUri,generateThemeFaviconSvg
@@ -43,7 +43,7 @@ import {
   icon,escape as esc,calendar,scaleField,tagPicker,
   moodChart,moodHeatmap,personalGoalsPanel,personalQuoteCard,exLibrisBadge,
   ledger,rankRow,emptyState,meterRows,crisisBanner,crisisSupportModal,
-  dailyInspirationSection,setupWizardModal
+  dailyInspirationSection,setupWizardModal,weekdayPanel
 } from './components/ui.js';
 
 const app=document.querySelector('#app');
@@ -899,6 +899,7 @@ function thoughtsPage(){
           <div><p class="island-kicker">La orilla</p><h2>Tu isla</h2></div>
           <span class="thoughts-drawer-returned">${groups.returned.length} recibidas</span>
         </header>
+        ${oceanFigures(oceanStats(thoughts,today))}
         <div class="thoughts-island-bottles">
           <div class="segmented ocean-tabs" role="tablist" aria-label="Estado de las botellas">
             ${tabs.map(([id,ico,label,count])=>`<button type="button" id="thoughts-tab-${id}" role="tab" aria-controls="ocean-body" aria-selected="${thoughtsTab===id}" data-action="thoughts-tab" data-tab="${id}" class="${thoughtsTab===id?'active':''}">
@@ -1183,9 +1184,11 @@ function statsPulseBody(){
     ${ledger('Sueño habitual',s.metricCounts.sleep?f(s.sleepMedian):'—','h',s.metricCounts.sleep?`media ${f(s.sleep)} h`:'sin datos')}
     ${ledger(profile.focusLabel,s.metricCounts.study?f(s.study):'—','h',evolution('study',' h'))}
     ${ledger('Racha actual',currentStreak(entries),'días',`${maxStreak(entries)} días · mejor racha`)}
+    ${ledger('Palabras escritas',s.words?f(s.words):'—','',s.words?`${f(Math.round(s.words/s.count))} por día anotado`:'sin texto todavía')}
   </div>
   <p class="analytics-footnote">Solo días registrados.</p>
   ${personalGoalsPanel(recent,setup)}
+  ${weekdayPanel(entries,habits,today)}
   <section class="card chart-card">
     <div class="section-heading">
       <h2>Ánimo y sueño</h2>
@@ -1207,12 +1210,12 @@ function statsPulseBody(){
     <section class="card">
       <h2>Tendencias detectadas</h2>
       <div style="margin-top:10px">
-        ${trends.length?trends.map(t=>`<p class="trend-item">${icon('arrow')}<span>${t}</span></p>`).join(''):'<p class="habit-empty">Sin tendencias.</p>'}
+        ${trends.length?trends.map(t=>`<p class="trend-item">${icon('arrow')}<span>${t}</span></p>`).join(''):'<p class="habit-empty">Todavía no hay tendencias claras: hacen falta unos cuantos días de cada semana para poder compararlas.</p>'}
       </div>
     </section>
     <section class="card">
       <h2>Etiquetas más frecuentes</h2>
-      ${tagFrequency(recent).length?meterRows(tagFrequency(recent).slice(0,6).map(([t,c])=>({label:t,count:c,total:recent.length,color:'var(--red)'}))):'<p class="habit-empty">Sin etiquetas.</p>'}
+      ${tagFrequency(recent).length?meterRows(tagFrequency(recent).slice(0,6).map(([t,c])=>({label:t,count:c,total:recent.length,color:'var(--red)'}))):'<p class="habit-empty">Sin etiquetas en estos días: al escribir el día puedes marcar las que te representen.</p>'}
     </section>
   </div>`;
 }
@@ -1743,6 +1746,28 @@ function commitTomorrowFromDom(){
 }
 
 function bindRoutineForm(){
+  /* Los contadores de Rutina se guardan también al escribirlos a mano: antes
+     solo se grababan con los botones +/-, así que una cifra tecleada se perdía
+     al cambiar de página. */
+  document.querySelectorAll('#routine-body [data-counter-input]').forEach(inputEl=>{
+    const key=inputEl.dataset.counterInput;
+    const flush=()=>{
+      clearTimeout(routineCounterTimer);
+      updateCounterRow(inputEl,key,parseFloat(inputEl.value)||0);
+      saveRoutineCounters();
+    };
+    inputEl.addEventListener('input',()=>{
+      updateCounterRow(inputEl,key,parseFloat(inputEl.value)||0);
+      clearTimeout(routineCounterTimer);
+      routineCounterTimer=setTimeout(saveRoutineCounters,500);
+    });
+    inputEl.addEventListener('change',flush);
+    inputEl.addEventListener('blur',flush);
+    inputEl.addEventListener('keydown',event=>{
+      if(event.key==='Enter'){event.preventDefault();flush();}
+      if(event.key==='Escape')render();
+    });
+  });
   const textarea=document.querySelector('#routine-tomorrow');
   if(!textarea)return;
   textarea.addEventListener('change',commitTomorrowFromDom);
@@ -3348,15 +3373,18 @@ app.addEventListener('click',async event=>{
       break;
     }
     case 'add-goal-routine':{
+      /* La fila nueva se pinta directamente: si hubiera una escritura en camino
+         (por ejemplo el debounce de la intención), un viaje de ida y vuelta al
+         almacén podía dejar el botón «Añadir tarea» como si no hiciera nada. */
       commitTomorrowFromDom();
-      const list=currentGoalsRaw().filter(Boolean);
-      list.push('');
-      try{
-        patchDay(selected,{goals:list});
-        render();
-        const inputs=document.querySelectorAll('#routine-goals .task-input');
-        inputs[inputs.length-1]?.focus();
-      }catch(err){toast(err.message||'No se pudo añadir la tarea.',true);}
+      const list=document.querySelector('#routine-goals');
+      if(!list)break;
+      list.querySelector('.habit-empty')?.remove();
+      const rows=list.querySelectorAll('.task-input').length;
+      list.insertAdjacentHTML('beforeend',tomorrowTaskRow(rows,''));
+      const inputs=list.querySelectorAll('.task-input');
+      const last=inputs[inputs.length-1];
+      last?.focus();
       break;
     }
     case 'remove-goal-routine':{

@@ -226,6 +226,7 @@ export function validateThought(t){
   const arrivalDays=isDateKey(t.arriveOn)?daysBetween(castAt,t.arriveOn):null;
   const hasValidVoyage=Number.isInteger(t.driftDays)&&t.driftDays>=1&&arrivalDays===t.driftDays
     &&(storedReturns||isDateKey(t.lostOn)&&t.lostOn>t.arriveOn);
+  const glassId=typeof t.glass==='object'&&t.glass?t.glass.id:t.glass;
   const voyage=hasValidVoyage
     ?{
       force,
@@ -251,7 +252,9 @@ export function validateThought(t){
     sea,
     ...voyage,
     status:THOUGHT_STATUS.has(t.status)?t.status:'drifting',
-    glass:GLASS_IDS.has(t.glass)?t.glass:'amber',
+    /* El viaje sortea el color del cristal de cada botella: si la botella ya
+       existía se respeta el suyo y, si es nueva, se estrena el que le tocó. */
+    glass:GLASS_IDS.has(glassId)?glassId:GLASS_IDS.has(voyage.glass)?voyage.glass:'amber',
     returnedAt:isDateKey(t.returnedAt)?t.returnedAt:null,
     lostAt:isDateKey(t.lostAt)?t.lostAt:null,
     reply:cleanText(t.reply??'','La respuesta').trim().slice(0,1200),
