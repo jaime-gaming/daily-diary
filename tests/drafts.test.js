@@ -8,7 +8,8 @@ globalThis.localStorage={
 };
 const {
   DRAFTS_KEY,setDraft,getDraft,draftData,clearDraft,listDrafts,draftIsNewer,draftMinutes,
-  draftSummary,pendingDrafts,clearAllDrafts,loadDrafts,DRAFT_SCOPES,cutText
+  draftSummary,pendingDrafts,clearAllDrafts,loadDrafts,DRAFT_SCOPES,cutText,MAX_SCOPES,
+  draftTitle,draftsSnapshot,mergeDrafts
 }=await import('../src/utils/drafts.js');
 
 const fresh=()=>store.clear();
@@ -93,12 +94,12 @@ test('el inventario va del más reciente al más viejo y sabe contar',()=>{
 
 test('si hay demasiados borradores se quedan los últimos',()=>{
   fresh();
-  for(let i=0;i<50;i++){
+  for(let i=0;i<MAX_SCOPES+10;i++){
     setDraft(`entrada:2026-01-${String(i+1).padStart(2,'0')}`,{generalDay:`texto ${i}`});
   }
   const list=listDrafts();
-  assert.ok(list.length<=40,`se recorta la lista (${list.length})`);
-  assert.match(draftData('entrada:2026-01-50').generalDay,/49/,'el más reciente sobrevive');
+  assert.ok(list.length<=MAX_SCOPES,`se recorta la lista (${list.length})`);
+  assert.match(draftData(`entrada:2026-01-${String(MAX_SCOPES+10).padStart(2,'0')}`).generalDay,/texto/,'el más reciente sobrevive');
 });
 
 test('vaciar el cuaderno se lleva los borradores por delante',()=>{

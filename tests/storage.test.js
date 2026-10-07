@@ -119,7 +119,7 @@ test('importar una copia conserva el estado previo si una escritura falla', () =
     originalSetItem(key,value);
   };
   try{
-    assert.throws(()=>importData({entries:[valid('2026-10-01')],habits:[{id:'new',name:'Caminar'}],thoughts:[]}),/quota exceeded/);
+    assert.throws(()=>importData({entries:[valid('2026-10-01')],habits:[{id:'new',name:'Caminar'}],thoughts:[]}),/no se ha podido guardar/);
   }finally{
     localStorage.setItem=originalSetItem;
   }
@@ -142,7 +142,7 @@ test('borrar datos revierte la operación si el navegador rechaza un borrado', (
     originalRemoveItem(key);
   };
   try{
-    assert.throws(()=>clearEntries(),/storage blocked/);
+    assert.throws(()=>clearEntries(),/no se ha podido guardar/);
   }finally{
     localStorage.removeItem=originalRemoveItem;
   }

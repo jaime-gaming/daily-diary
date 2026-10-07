@@ -574,7 +574,8 @@ export function setupWizardModal(setup={},habits=[],step=1,mandatory=false){
       <span class="${step>=3?'done':''} ${step===3?'current':''}">3. Papel</span>
     </div>
 
-    <form id="setup-wizard-form">
+    <form id="setup-wizard-form" novalidate>
+      <p class="form-alert" id="setup-wizard-alert" role="alert" hidden></p>
       <div class="wizard-step-body ${step===1?'active':''}" data-step="1" ${step===1?'':'hidden'}>
         <div class="setup-name-age-row">
           <div class="setup-field">
@@ -584,9 +585,10 @@ export function setupWizardModal(setup={},habits=[],step=1,mandatory=false){
           <div class="setup-field">
             <label for="setup-age">¿Cuántos años tienes?</label>
             <div class="age-input-wrap">
-              <input id="setup-age" name="age" type="number" min="10" max="110" step="1" placeholder="Ej. 20" value="${setup.age??''}">
+              <input id="setup-age" name="age" type="number" min="8" max="115" step="1" inputmode="numeric" placeholder="Ej. 20" value="${setup.age??''}" aria-describedby="setup-age-hint">
               <span>años</span>
             </div>
+            <small class="field-hint" id="setup-age-hint">Opcional · entre 8 y 115 años</small>
           </div>
         </div>
 
@@ -630,21 +632,21 @@ export function setupWizardModal(setup={},habits=[],step=1,mandatory=false){
           <div class="setup-field">
             <label for="setup-sleep">${icon('moon')} Meta de sueño</label>
             <div class="number-wrap">
-              <input id="setup-sleep" name="sleepGoal" type="number" min="4" max="14" step="0.5" value="${setup.sleepGoal??profile.sleepRecommended}">
+              <input id="setup-sleep" name="sleepGoal" type="number" min="4" max="14" step="any" inputmode="decimal" value="${setup.sleepGoal??profile.sleepRecommended}">
               <span>h / día</span>
             </div>
           </div>
           <div class="setup-field">
             <label for="setup-study">${icon('study')} Meta de dedicación</label>
             <div class="number-wrap">
-              <input id="setup-study" name="studyGoal" type="number" min="0" max="16" step="0.5" value="${setup.studyGoal??profile.studyRecommended}">
+              <input id="setup-study" name="studyGoal" type="number" min="0" max="16" step="any" inputmode="decimal" value="${setup.studyGoal??profile.studyRecommended}">
               <span>h / día</span>
             </div>
           </div>
           <div class="setup-field">
             <label for="setup-water">${icon('drop')} Vasos de agua</label>
             <div class="number-wrap">
-              <input id="setup-water" name="waterGoal" type="number" min="1" max="25" step="1" value="${setup.waterGoal??8}">
+              <input id="setup-water" name="waterGoal" type="number" min="1" max="25" step="any" inputmode="numeric" value="${setup.waterGoal??8}">
               <span>vasos</span>
             </div>
           </div>

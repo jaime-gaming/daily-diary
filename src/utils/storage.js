@@ -1,33 +1,52 @@
 import {dayNumber,dateKey,daysBetween} from './dates.js';
 import {COUNTERS,TEXT_FIELDS,THEMES,SETUP_PURPOSES,AGE_GROUPS,INTEREST_OPTIONS,WRITING_RITUALS,TONE_STYLES,counterDefs,partDefs,MAX_PARTS,MAX_COUNTERS} from '../data/constants.js';
 import {SEAS,GLASS_TINTS,WEATHERS,planVoyage,resolveBottle,normalizeThrowForce} from './ocean.js';
+import {writeRaw,safeRead,describeReason,clearPendingWrites,dropPendingWrite} from './persist.js';
+import {DRAFTS_KEY,draftsSnapshot,mergeDrafts} from './drafts.js';
 const KEY='diario.entries.v1';
 const HABITS_KEY='diario.habits.v1';
 const SETUP_KEY='diario.setup.v1';
 const THOUGHTS_KEY='diario.thoughts.v1';
 
+/* Un fallo de escritura que el usuario tiene que llegar a saber: lleva el motivo
+   y el mensaje ya en castellano. `persist.js` deja además la escritura en cola,
+   así que casi siempre se recupera sola en cuanto el navegador respire. */
+export class SaveError extends Error{
+  constructor(label,{key,reason}={}){
+    super(`${label}: no se ha podido guardar. ${describeReason(reason)} Lo intento otra vez en cuanto pueda, pero no cierres la pestaña si acabas de escribir algo largo.`);
+    this.name='SaveError';
+    this.key=key;
+    this.reason=reason;
+    this.queued=true;
+  }
+}
+
+/* Toda escritura del cuaderno pasa por aquí: se verifica, y si el navegador no
+   la acepta queda en la cola de reintentos y lanzamos un error legible. */
+function writeOrThrow(key,value,{label='Los datos',prune=null}={}){
+  const result=writeRaw(key,value,{label,prune});
+  if(!result.ok)throw new SaveError(label,{key,reason:result.reason});
+  return result;
+}
+
+function readRaw(key){return safeRead(key);}
+
 function commitStorageChanges(changes){
-  const previous=new Map(changes.map(([key])=>[key,localStorage.getItem(key)]));
+  const previous=new Map(changes.map(([key])=>[key,readRaw(key)]));
   const attempted=[];
-  try{
-    for(const [key,value] of changes){
-      attempted.push(key);
-      if(value===null)localStorage.removeItem(key);
-      else localStorage.setItem(key,value);
-    }
-  }catch(error){
-    let rollbackFailed=false;
-    for(const key of attempted.reverse()){
-      try{
-        const value=previous.get(key);
-        if(value===null)localStorage.removeItem(key);
-        else localStorage.setItem(key,value);
-      }catch{
-        rollbackFailed=true;
+  for(const [key,value,label='Los datos'] of changes){
+    const result=writeRaw(key,value,{label});
+    if(!result.ok){
+      dropPendingWrite(key);
+      let rollbackFailed=false;
+      for(const undone of attempted.reverse()){
+        const restore=writeRaw(undone,previous.get(undone),{label:'La copia anterior'});
+        if(!restore.ok)rollbackFailed=true;
       }
+      if(rollbackFailed)throw new SaveError('La copia de seguridad',{key,reason:result.reason});
+      throw new SaveError(label,{key,reason:result.reason});
     }
-    if(rollbackFailed)throw new Error('No se pudieron restaurar todos los datos tras el fallo. No cierres la página; exporta una copia si todavía puedes.',{cause:error});
-    throw error;
+    attempted.push(key);
   }
 }
 
@@ -157,13 +176,15 @@ export function validateEntry(e){
   };
 }
 function normalize(raw){const entries=raw.map(validateEntry).sort((a,b)=>a.date.localeCompare(b.date));return entries.map(e=>({...e,dayNumber:dayNumber(e.date,entries)}));}
-export function loadEntries(){const raw=localStorage.getItem(KEY);if(!raw)return [];const data=JSON.parse(raw);if(!Array.isArray(data))throw new Error('No se han podido leer tus entradas.');return normalize(data);}
+export function loadEntries(){const raw=readRaw(KEY);if(!raw)return [];const data=JSON.parse(raw);if(!Array.isArray(data))throw new Error('No se han podido leer tus entradas.');return normalize(data);}
 export function loadEntry(date){return loadEntries().find(e=>e.date===date)||null;}
-function persist(entries){const normalized=normalize(entries);localStorage.setItem(KEY,JSON.stringify(normalized));return normalized;}
+function persist(entries){const normalized=normalize(entries);writeOrThrow(KEY,JSON.stringify(normalized),{label:'El cuaderno'});return normalized;}
 export function saveEntry(entry){const clean=validateEntry(entry);clean.updatedAt=new Date().toISOString();const entries=loadEntries();return persist([...entries.filter(e=>e.date!==clean.date),clean]);}
 export function deleteEntry(date){return persist(loadEntries().filter(e=>e.date!==date));}
 export function clearEntries(){
-  commitStorageChanges([[KEY,null],[HABITS_KEY,null],[SETUP_KEY,null],[THOUGHTS_KEY,null]]);
+  commitStorageChanges([[KEY,null,'El cuaderno'],[HABITS_KEY,null,'Los hábitos'],[SETUP_KEY,null,'El perfil'],[THOUGHTS_KEY,null,'El mar']]);
+  /* Ya no hay nada que reintentar: el cuaderno entero se ha ido. */
+  clearPendingWrites();
 }
 
 /* ----- Hábitos (configuración) ----- */
@@ -174,8 +195,8 @@ export function validateHabit(h){
   if(name.length>40)throw new Error('El nombre del hábito debe tener 40 caracteres o menos.');
   return {id:typeof h.id==='string'&&h.id?h.id:crypto.randomUUID(),name,createdAt:typeof h.createdAt==='string'?h.createdAt:new Date().toISOString()};
 }
-export function loadHabits(){const raw=localStorage.getItem(HABITS_KEY);if(!raw)return [];const data=JSON.parse(raw);if(!Array.isArray(data))throw new Error('No se han podido leer tus hábitos.');return data.map(validateHabit);}
-function persistHabits(habits){const list=habits.map(validateHabit);localStorage.setItem(HABITS_KEY,JSON.stringify(list));return list;}
+export function loadHabits(){const raw=readRaw(HABITS_KEY);if(!raw)return [];const data=JSON.parse(raw);if(!Array.isArray(data))throw new Error('No se han podido leer tus hábitos.');return data.map(validateHabit);}
+function persistHabits(habits){const list=habits.map(validateHabit);writeOrThrow(HABITS_KEY,JSON.stringify(list),{label:'Los hábitos'});return list;}
 export function saveHabit(habit){const clean=validateHabit(habit);const habits=loadHabits();return persistHabits([...habits.filter(h=>h.id!==clean.id),clean]);}
 export function deleteHabit(id){return persistHabits(loadHabits().filter(h=>h.id!==id));}
 
@@ -250,7 +271,7 @@ function normalizeThoughts(list,today=dateKey()){
 }
 function persistThoughts(list){
   const clean=normalizeThoughts(list);
-  localStorage.setItem(THOUGHTS_KEY,JSON.stringify(clean));
+  writeOrThrow(THOUGHTS_KEY,JSON.stringify(clean),{label:'El mar'});
   return clean;
 }
 
@@ -264,12 +285,14 @@ function settleThoughts(list){
     if(next!==t)changed=true;
     return next;
   });
-  if(changed)localStorage.setItem(THOUGHTS_KEY,JSON.stringify(out));
+  /* Reparto de fondo: si no se puede escribir no pasa nada, se vuelve a
+     intentar en la siguiente apertura. */
+  if(changed)writeRaw(THOUGHTS_KEY,JSON.stringify(out),{label:'El mar'});
   return out;
 }
 
 export function loadThoughts(){
-  const raw=localStorage.getItem(THOUGHTS_KEY);
+  const raw=readRaw(THOUGHTS_KEY);
   if(!raw)return [];
   const data=JSON.parse(raw);
   if(!Array.isArray(data))throw new Error('No se ha podido leer tu mar de pensamientos.');
@@ -361,7 +384,7 @@ export function validateSetup(s = {}){
 }
 
 export function loadSetup(){
-  const raw = localStorage.getItem(SETUP_KEY);
+  const raw = safeRead(SETUP_KEY);
   if (!raw) return {...DEFAULT_SETUP};
   try {
     const parsed = JSON.parse(raw);
@@ -371,15 +394,20 @@ export function loadSetup(){
   }
 }
 
+/* El perfil se acepta siempre: `validateSetup` recorta lo que haga falta en vez
+   de rechazarlo, así que guardar no puede fallar por un valor raro. */
 export function saveSetup(partial = {}){
   const current = loadSetup();
   const next = validateSetup({...current, ...partial, updatedAt: new Date().toISOString()});
-  localStorage.setItem(SETUP_KEY, JSON.stringify(next));
+  writeOrThrow(SETUP_KEY, JSON.stringify(next), {label:'El perfil'});
   return next;
 }
 
 /* ----- Exportar / importar ----- */
-export function exportData(entries,habits=loadHabits(),setup=loadSetup(),thoughts=loadThoughts()){
+/* La copia se lleva **todo**: entradas, hábitos, pensamientos, perfil y también
+   los textos a medias (`diario.drafts.v1`), que antes se quedaban fuera y se
+   perdían al cambiar de dispositivo. */
+export function exportData(entries,habits=loadHabits(),setup=loadSetup(),thoughts=loadThoughts(),drafts=draftsSnapshot()){
   return JSON.stringify({
     app:'diario',
     version:1,
@@ -387,7 +415,8 @@ export function exportData(entries,habits=loadHabits(),setup=loadSetup(),thought
     entries:normalize(entries),
     habits:habits.map(validateHabit),
     thoughts:thoughts.map(validateThought),
-    setup:validateSetup(setup)
+    setup:validateSetup(setup),
+    drafts
   },null,2);
 }
 export function parseImport(text){
@@ -397,6 +426,7 @@ export function parseImport(text){
   if(data.habits!==undefined&&!Array.isArray(data.habits))throw new Error('La lista de hábitos de la copia no es válida.');
   if(data.thoughts!==undefined&&!Array.isArray(data.thoughts))throw new Error('La lista de pensamientos de la copia no es válida.');
   if(data.setup!==undefined&&data.setup!==null&&(typeof data.setup!=='object'||Array.isArray(data.setup)))throw new Error('Los ajustes de la copia no son válidos.');
+  if(data.drafts!==undefined&&data.drafts!==null&&(typeof data.drafts!=='object'||Array.isArray(data.drafts)))throw new Error('Los borradores de la copia no son válidos.');
   const entries=data.entries.map(validateEntry);
   if(new Set(entries.map(e=>e.date)).size!==entries.length)throw new Error('La copia contiene fechas duplicadas.');
   const habits=(data.habits||[]).map(validateHabit);
@@ -404,7 +434,8 @@ export function parseImport(text){
   const thoughts=(data.thoughts||[]).map(validateThought);
   if(new Set(thoughts.map(t=>t.id)).size!==thoughts.length)throw new Error('La copia contiene pensamientos duplicados.');
   const setup=data.setup?validateSetup(data.setup):null;
-  return {entries,habits,thoughts,setup};
+  const drafts=data.drafts?data.drafts:null;
+  return {entries,habits,thoughts,setup,drafts};
 }
 export function importData(incoming){
   if(!incoming||!Array.isArray(incoming.entries)||!Array.isArray(incoming.habits))throw new Error('La copia no contiene listas de entradas y hábitos válidas.');
@@ -430,14 +461,18 @@ export function importData(incoming){
   const mergedHabits=[...habits.values()].map(validateHabit);
   const mergedThoughts=normalizeThoughts([...thoughts.values()]);
   const changes=[
-    [HABITS_KEY,JSON.stringify(mergedHabits)],
-    [THOUGHTS_KEY,JSON.stringify(mergedThoughts)]
+    [HABITS_KEY,JSON.stringify(mergedHabits),'Los hábitos'],
+    [THOUGHTS_KEY,JSON.stringify(mergedThoughts),'El mar']
   ];
   if(importedSetup){
     const mergedSetup=validateSetup({...loadSetup(),...importedSetup,updatedAt:new Date().toISOString()});
-    changes.push([SETUP_KEY,JSON.stringify(mergedSetup)]);
+    changes.push([SETUP_KEY,JSON.stringify(mergedSetup),'El perfil']);
   }
-  changes.push([KEY,JSON.stringify(mergedEntries)]);
+  if(incoming.drafts){
+    const mergedDrafts=mergeDrafts(incoming.drafts);
+    if(mergedDrafts.ok)changes.push([DRAFTS_KEY,JSON.stringify(mergedDrafts.map),'Los borradores']);
+  }
+  changes.push([KEY,JSON.stringify(mergedEntries),'El cuaderno']);
   commitStorageChanges(changes);
   return mergedEntries;
 }
