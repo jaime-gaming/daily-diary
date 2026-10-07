@@ -21,7 +21,9 @@ test('validación de entradas', () => {
   assert.throws(() => validateEntry(valid('2099-01-01')), /futuros/);
   assert.throws(() => validateEntry(valid('2026-09-30', {mood: 9})), /cómo te ha ido/);
   assert.throws(() => validateEntry(valid('2026-09-30', {sleepHours: 30})), /entre 0 y 24/);
-  assert.throws(() => validateEntry(valid('2026-09-30', {generalDay: '  '})), /en general/);
+  const blank = validateEntry(valid('2026-09-30', {generalDay: '  '}));
+  assert.equal(blank.generalDay.trim(), '', 'un día sin notas es un día válido: el cuaderno no inventa texto');
+  assert.equal(validateEntry(valid('2026-09-30', {generalDay: ''})).generalDay, '');
   assert.throws(() => validateEntry(valid('2026-09-30', {gratitude: ['a', 'b']})), /tres campos/);
   assert.throws(() => validateEntry(valid('2026-09-30', {energy: 9})), /escalas/);
   assert.throws(() => validateEntry(valid('2026-09-30', {tags: ['x'.repeat(50)]})), /etiqueta/);

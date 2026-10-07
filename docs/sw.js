@@ -1,4 +1,4 @@
-const CACHE = 'diario-v8';
+const CACHE = 'diario-v9';
 const ROUTE_PAGES = ["./pensamientos/index.html","./pensamientos/pendientes/index.html","./pensamientos/guardados/index.html","./pensamientos/archivados/index.html","./rutina/index.html","./rutina/semana/index.html","./rutina/contadores/index.html","./rutina/rachas/index.html","./archivo/index.html","./archivo/calendario/index.html","./progreso/index.html","./progreso/semana/index.html","./progreso/mes/index.html","./ajustes/index.html","./ajustes/apariencia/index.html","./ajustes/contenido/index.html","./ajustes/datos/index.html"];
 const APP_SHELL = ['./', './index.html', ...ROUTE_PAGES, './favicon.svg', './manifest.webmanifest'];
 
